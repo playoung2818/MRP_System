@@ -392,11 +392,41 @@ def _lookup_earliest_atp_date(item: str, qty: float = 1.0) -> datetime | None:
         return atp_dt.to_pydatetime()
 
     df_ledger = LEDGER.copy()
-    if "Date" in df_ledger.columns:
-        df_ledger["Date"] = pd.to_datetime(df_ledger["Date"], errors="coerce")
-        dummy_dates = {pd.Timestamp("2099-07-04"), pd.Timestamp("2099-12-31")}
-        df_ledger = df_ledger.loc[~df_ledger["Date"].isin(dummy_dates)]
     atp_view = build_atp_view(df_ledger)
+
+    # Ensure a "today" row exists for this item so ATP can be today
+    if not atp_view.empty and "Date" in atp_view.columns:
+        today_ts = pd.Timestamp(today)
+        item_mask = atp_view["Item"].astype(str) == str(item)
+        has_today = False
+        if item_mask.any():
+            has_today = atp_view.loc[item_mask, "Date"].dt.normalize().eq(today_ts).any()
+        if item_mask.any() and not has_today:
+            df_item = df_ledger.loc[df_ledger["Item"].astype(str) == str(item)].copy()
+            df_item["Date"] = pd.to_datetime(df_item["Date"], errors="coerce")
+            df_item = df_item.loc[df_item["Date"].notna()]
+            if not df_item.empty and "Projected_NAV" in df_item.columns:
+                df_item.sort_values("Date", inplace=True)
+                past = df_item.loc[df_item["Date"] <= today_ts]
+                if not past.empty:
+                    proj_nav = past.iloc[-1]["Projected_NAV"]
+                else:
+                    proj_nav = df_item.iloc[0]["Projected_NAV"]
+                if pd.notna(proj_nav):
+                    future_min = proj_nav
+                    future_rows = atp_view.loc[item_mask & (atp_view["Date"] >= today_ts), "FutureMin_NAV"]
+                    future_rows = pd.to_numeric(future_rows, errors="coerce").dropna()
+                    if not future_rows.empty:
+                        future_min = min(float(proj_nav), float(future_rows.min()))
+                    add_row = pd.DataFrame(
+                        {
+                            "Item": [item],
+                            "Date": [today_ts],
+                            "Projected_NAV": [proj_nav],
+                            "FutureMin_NAV": [future_min],
+                        }
+                    )
+                    atp_view = pd.concat([add_row, atp_view], ignore_index=True, sort=False)
     atp_dt = earliest_atp_strict(atp_view, item, qty, from_date=from_date, allow_zero=True)
     if atp_dt is None:
         return None
