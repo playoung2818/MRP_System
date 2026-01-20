@@ -103,7 +103,7 @@ QUOTE_TPL = """
           <thead class="table-light text-uppercase small text-muted">
             <tr>
               {% for c in ledger_columns %}
-                <th class="{% if c == 'Projected_Qty' %}th-projected{% endif %}">{{ c }}</th>
+                <th class="{% if c == 'Projected_Qty' %}th-projected{% endif %}">{{ 'Projected_OnHand' if c == 'Projected_Qty' else c }}</th>
               {% endfor %}
             </tr>
           </thead>
