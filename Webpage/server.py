@@ -559,8 +559,10 @@ def _open_po_table_for_item(item: str) -> tuple[list[str], list[dict]]:
     item_col = next((c for c in df.columns if c.lower() == "item"), None)
     desc_col = next((c for c in df.columns if c.lower() == "description"), None)
 
+    hide_cols = {"deliv date", "ship date"}
     if item_col is None and desc_col is None:
-        return list(df.columns), []
+        cols = [c for c in df.columns if c.lower() not in hide_cols]
+        return cols, []
 
     mask = pd.Series(False, index=df.index)
     if item_col:
@@ -572,11 +574,16 @@ def _open_po_table_for_item(item: str) -> tuple[list[str], list[dict]]:
 
     result = df.loc[mask].copy()
     if result.empty:
-        return list(df.columns), []
+        cols = [c for c in df.columns if c.lower() not in hide_cols]
+        return cols, []
 
     for col in result.columns:
         if "date" in col.lower():
             _safe_date_col(result, col)
+
+    for col in list(result.columns):
+        if col.lower() in hide_cols:
+            result.drop(columns=[col], inplace=True)
 
     result = result.fillna("").astype(str)
     return list(result.columns), result.to_dict(orient="records")
