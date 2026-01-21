@@ -381,15 +381,15 @@ def _lookup_earliest_atp_date(item: str, qty: float = 1.0) -> datetime | None:
     today = datetime.today().date()
     from_date = pd.Timestamp(today)
 
-    # -------- primary: compute from ledger (exclude placeholder dates) --------
-    if LEDGER is None or LEDGER.empty:
-        # fallback to precomputed item_atp if ledger is unavailable
-        if ITEM_ATP is None or ITEM_ATP.empty:
-            return None
+    # -------- primary: use precomputed item_atp (faster, computed in ETL) --------
+    if ITEM_ATP is not None and not ITEM_ATP.empty:
         atp_dt = earliest_atp_strict(ITEM_ATP, item, qty, from_date=from_date, allow_zero=True)
-        if atp_dt is None:
-            return None
-        return atp_dt.to_pydatetime()
+        if atp_dt is not None:
+            return atp_dt.to_pydatetime()
+
+    # -------- fallback: compute from ledger (exclude placeholder dates) --------
+    if LEDGER is None or LEDGER.empty:
+        return None
 
     df_ledger = LEDGER.copy()
     atp_view = build_atp_view(df_ledger)
