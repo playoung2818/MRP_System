@@ -1132,7 +1132,8 @@ def quotation_lookup():
 
     if item_input and LEDGER is not None and not LEDGER.empty:
         df = LEDGER.copy()
-        df_item = df.loc[df["Item"].astype(str) == item_input].copy()
+        item_col = "Item_raw" if "Item_raw" in df.columns else "Item"
+        df_item = df.loc[df[item_col].astype(str) == item_input].copy()
         if not df_item.empty:
             # Opening snapshot:
             # 1) Prefer explicit OPEN rows; 2) if none, fall back to any Opening values.
