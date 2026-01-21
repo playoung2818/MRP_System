@@ -350,7 +350,7 @@ INDEX_TPL = """
         if (openRows.length) {
           openSection += '<div class="fw-bold small text-muted text-uppercase">Open Purchase Orders</div>' +
             buildTable(openColumns, openRows) +
-            '<div class="text-muted small">Source: public.Open_Purchase_Orders</div>';
+            '<div class="text-muted small">Source: NTA Quickbooks</div>';
         } else {
           openSection += '<div class="text-muted small">No open purchase orders</div>';
         }
