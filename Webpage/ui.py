@@ -330,14 +330,14 @@ INDEX_TPL = """
           title: 'On PO',
           data: po,
           total: so.total_on_po !== null && so.total_on_po !== undefined ? 'On PO (SO_INV): ' + so.total_on_po : null,
-          note: 'Source: public."NT Shipping Schedule"',
+          note: 'Source: Taipei SAP',
         };
       } else {
         card = {
           title: 'On Sales Order',
           data: so,
           total: so.total_on_sales !== null && so.total_on_sales !== undefined ? 'On Sales Order: ' + so.total_on_sales : null,
-          note: 'Source: public.wo_structured',
+          note: 'Source: NTA Quickbooks',
         };
       }
 

@@ -888,7 +888,7 @@ def so_lines():
         on_po=on_po_val,
         open_po_columns=[],
         open_po_rows=[],
-        extra_note_open_po='Source: public.Open_Purchase_Orders',
+        extra_note_open_po='Source: Quickbooks',
     )
 
 @app.route("/po_lines")
@@ -914,11 +914,11 @@ def po_lines():
         title=f"On PO — {item}",
         columns=cols,
         rows=rows,
-        extra_note='Source: public."NT Shipping Schedule"',
+        extra_note='Source: SAP"',
         on_po=on_po_val,
         open_po_columns=open_cols,
         open_po_rows=open_rows,
-        extra_note_open_po='Source: public.Open_Purchase_Orders',
+        extra_note_open_po='Source: Quickbooks',
     )
 
 @app.route("/item_details")
@@ -951,8 +951,8 @@ def item_details():
         open_po_columns=open_po_cols,
         open_po_rows=open_po_rows,
         extra_note_so="Source: public.wo_structured",
-        extra_note_po='Source: public."NT Shipping Schedule"',
-        extra_note_open_po='Source: public.Open_Purchase_Orders',
+        extra_note_po='Source: SAP"',
+        extra_note_open_po='Source: Quickbooks',
         so_total_on_sales=so_totals.get("on_sales_order"),
         so_total_on_po=so_totals.get("on_po"),
     )
