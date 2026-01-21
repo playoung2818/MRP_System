@@ -383,7 +383,11 @@ def _lookup_earliest_atp_date(item: str, qty: float = 1.0) -> datetime | None:
 
     # -------- primary: use precomputed item_atp (faster, computed in ETL) --------
     if ITEM_ATP is not None and not ITEM_ATP.empty:
-        atp_dt = earliest_atp_strict(ITEM_ATP, item, qty, from_date=from_date, allow_zero=True)
+        atp_df = ITEM_ATP
+        if "Item_raw" in atp_df.columns:
+            atp_df = atp_df.copy()
+            atp_df["Item"] = atp_df["Item_raw"]
+        atp_dt = earliest_atp_strict(atp_df, item, qty, from_date=from_date, allow_zero=True)
         if atp_dt is not None:
             return atp_dt.to_pydatetime()
 

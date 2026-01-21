@@ -27,8 +27,12 @@ def build_atp_view(ledger: pd.DataFrame) -> pd.DataFrame:
     df = ledger.copy()
 
     # Basic hygiene
-    if "Item" not in df.columns or "Date" not in df.columns or "Projected_NAV" not in df.columns:
-        raise ValueError("ledger must contain 'Item', 'Date', and 'Projected_NAV' columns.")
+    item_col = "Item_raw" if "Item_raw" in df.columns else "Item"
+    if item_col not in df.columns or "Date" not in df.columns or "Projected_NAV" not in df.columns:
+        raise ValueError("ledger must contain 'Item' (or 'Item_raw'), 'Date', and 'Projected_NAV' columns.")
+
+    if item_col != "Item":
+        df["Item"] = df[item_col]
 
     df = df.loc[df["Item"].notna() & df["Date"].notna()].copy()
 
@@ -148,4 +152,3 @@ def earliest_atp_for_items_strict(
     if not dates:
         return None
     return max(dates)
-
