@@ -1193,6 +1193,26 @@ def quotation_lookup():
 
                 records = df_item[keep_cols].fillna("").astype(str).to_dict(orient="records")
 
+                # Attach waiting/shortage items by QB Num (from structured view)
+                waiting_map: dict[str, str] = {}
+                if SO_INV is not None and not SO_INV.empty and "QB Num" in SO_INV.columns:
+                    so = SO_INV.copy()
+                    if "Component_Status" in so.columns:
+                        so = so.loc[so["Component_Status"].isin(["Waiting", "Shortage"])].copy()
+                        so["QB Num"] = so["QB Num"].astype(str).str.strip()
+                        so["Item"] = so["Item"].astype(str).str.strip()
+                        grouped = so.groupby("QB Num")["Item"].apply(
+                            lambda s: "{%s}" % ", ".join(sorted(set(i for i in s if i)))
+                        )
+                        waiting_map = grouped.to_dict()
+
+                if "QB Num" in keep_cols and "Waiting_Item" not in keep_cols:
+                    qb_idx = keep_cols.index("QB Num")
+                    keep_cols.insert(qb_idx + 1, "Waiting_Item")
+                    for rec in records:
+                        qb = rec.get("QB Num", "")
+                        rec["Waiting_Item"] = waiting_map.get(qb, "{}")
+
                 # Attach _is_min_nav flag for UI highlighting
                 if min_nav_value is not None and proj_series is not None:
                     proj_vals = proj_series.tolist()
