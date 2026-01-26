@@ -152,6 +152,8 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     """
     pod = df_pod.copy()
     pod = pod.drop(columns=['Amount', 'Open Balance', "Rcv'd", "Qty"], errors="ignore")
+    if "Num" in pod.columns and "POD#" not in pod.columns:
+        pod["POD#"] = pod["Num"]
     pod.rename(columns={"Date": "Order Date", "Num": "QB Num", "Backordered": "Qty(+)"}, inplace=True)
     pod = pod.drop(pod.columns[[0]], axis=1)
     # pod = pod[pod['Name'] == 'Neousys Technology Incorp.'].copy()

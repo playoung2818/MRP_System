@@ -98,6 +98,8 @@ def save_not_assigned_so(
     shortage_col: str = "Component_Status",
     shortage_value: str = "Shortage",
     column_widths: dict | None = None,
+    pod_watchlist_df: pd.DataFrame | None = None,
+    pod_watchlist_sheet: str = "POD-Wachlist",
 ) -> dict:
     """
     Save `df` to `output_path`, replacing the first sheet, then apply formatting:
@@ -143,6 +145,8 @@ def save_not_assigned_so(
     # ---------- write df to first sheet (replace) ----------
     with pd.ExcelWriter(output_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
         df.to_excel(writer, sheet_name=first_sheet_name, index=False)
+        if pod_watchlist_df is not None:
+            pod_watchlist_df.to_excel(writer, sheet_name=pod_watchlist_sheet, index=False)
 
     # ---------- open workbook for styling ----------
     wb = load_workbook(output_path)
@@ -241,6 +245,11 @@ def save_not_assigned_so(
     # ---------- rename sheet to today's date ----------
     today_str = datetime.today().strftime("%Y-%m-%d")
     ws.title = today_str
+
+    # ---------- freeze header on POD watchlist sheet ----------
+    if pod_watchlist_df is not None and pod_watchlist_sheet in wb.sheetnames:
+        ws_pod = wb[pod_watchlist_sheet]
+        ws_pod.freeze_panes = "A2"
 
 
     # ---------- save ----------

@@ -82,12 +82,67 @@ def main():
     ERP_df = prepare_erp_view(structured)
     Not_assigned_SO = ERP_df.loc[~ERP_df["AssignedFlag"]].copy()
 
+    # -------- POD watchlist (Waiting/Shortage only) --------
+    pod_watchlist = pd.DataFrame(columns=["QB Num", "Item", "Component_Status", "POD#"])
+    if "Component_Status" in Not_assigned_SO.columns:
+        wait_mask = Not_assigned_SO["Component_Status"].isin(["Waiting", "Shortage"])
+        watch_base = (
+            Not_assigned_SO.loc[
+                wait_mask,
+                ["QB Num", "Name", "Item", "Component_Status", "Order Date", "Qty(-)", "Available", "Available + On PO"],
+            ]
+            .dropna(subset=["QB Num", "Item"])
+            .drop_duplicates()
+        )
+        if not watch_base.empty:
+            if "POD#" in pod.columns:
+                pod_items = pod.loc[:, ["Item", "POD#", "Ship Date"]].copy()
+                pod_items["POD#"] = pod_items["POD#"].astype(str).str.strip()
+                pod_items = pod_items.loc[pod_items["POD#"].ne("")]
+                pod_items["Ship Date"] = pd.to_datetime(pod_items["Ship Date"], errors="coerce")
+                pod_items["Ship Date"] = pod_items["Ship Date"].dt.strftime("%Y-%m-%d")
+                pod_items["Ship Date"] = pod_items["Ship Date"].fillna("TBD")
+                try:
+                    pod_ref_path = r"C:\Users\Admin\OneDrive - neousys-tech\Share NTA Warehouse\01 Incoming\POD-Reference.xlsx"
+                    pod_ref = pd.read_excel(pod_ref_path)
+                    pod_ref = pod_ref.loc[:, ["POD", "Reference"]].dropna(subset=["POD"])
+                    pod_ref["POD"] = pod_ref["POD"].astype(str).str.strip()
+                    pod_ref["Reference"] = pod_ref["Reference"].astype(str).str.strip()
+                    pod_ref = pod_ref.loc[pod_ref["POD"].ne("")]
+                    ref_map = (
+                        pod_ref.groupby("POD")["Reference"]
+                        .apply(lambda s: "; ".join(sorted(set(r for r in s if r))))
+                        .rename("POD_Reference")
+                        .reset_index()
+                    )
+                    pod_items = pod_items.merge(ref_map, left_on="POD#", right_on="POD", how="left")
+                    pod_items.drop(columns=["POD"], inplace=True)
+                except Exception:
+                    pod_items["POD_Reference"] = ""
+                pod_items["POD_Reference"] = pod_items["POD_Reference"].fillna("")
+                pod_items["__pod_label__"] = pod_items["POD#"].astype(str)
+                pod_items.loc[pod_items["POD_Reference"].ne(""), "__pod_label__"] = (
+                    pod_items["POD#"] + " [" + pod_items["POD_Reference"] + "]"
+                )
+                pod_items["__pod_label__"] = pod_items["__pod_label__"] + " (" + pod_items["Ship Date"] + ")"
+                pod_list = (
+                    pod_items.groupby("Item")["__pod_label__"]
+                    .apply(lambda s: ", ".join(sorted(set(s))))
+                    .rename("POD#")
+                    .reset_index()
+                )
+                watch_base = watch_base.merge(pod_list, on="Item", how="left")
+            else:
+                watch_base["POD#"] = ""
+            pod_watchlist = watch_base.sort_values(["QB Num", "Item"]).reset_index(drop=True)
+
     summary = save_not_assigned_so(
         Not_assigned_SO.copy(),
         output_path=r"C:\Users\Admin\OneDrive - neousys-tech\Desktop\Python\ERP_System\Not_assigned_SO.xlsx",
         band_by_col="QB Num",
         shortage_col="Component_Status",
         shortage_value="Shortage",
+        pod_watchlist_df=pod_watchlist,
     )
     print(summary)
 
