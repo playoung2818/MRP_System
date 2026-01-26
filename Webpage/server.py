@@ -1169,6 +1169,17 @@ def quotation_lookup():
                     keep_cols.append(c)
 
             if keep_cols:
+                # Preferred column order: Date, Name, QB Num, then others, Waiting_Item last
+                preferred: list[str] = []
+                if "Date" in keep_cols:
+                    preferred.append("Date")
+                if "Name" in keep_cols:
+                    preferred.append("Name")
+                if "QB Num" in keep_cols:
+                    preferred.append("QB Num")
+                rest = [c for c in keep_cols if c not in preferred and c != "Waiting_Item"]
+                keep_cols = preferred + rest
+
                 df_item = df_item.sort_values(["Date", "Kind"])
                 date_vals = pd.to_datetime(df_item["Date"], errors="coerce")
                 df_item["Date"] = date_vals.dt.strftime("%Y-%m-%d")
@@ -1207,8 +1218,7 @@ def quotation_lookup():
                         waiting_map = grouped.to_dict()
 
                 if "QB Num" in keep_cols and "Waiting_Item" not in keep_cols:
-                    qb_idx = keep_cols.index("QB Num")
-                    keep_cols.insert(qb_idx + 1, "Waiting_Item")
+                    keep_cols.append("Waiting_Item")
                     for rec in records:
                         qb = rec.get("QB Num", "")
                         rec["Waiting_Item"] = waiting_map.get(qb, "{}")
