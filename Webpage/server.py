@@ -644,10 +644,10 @@ def index():
             rows_df["On Hand - WIP"] = rows_df["In Stock(Inventory)"]
 
         required_headers = [
-            "Order Date","Name","P. O. #","QB Num","Item","Qty(-)","Available",
+            "Order Date","Name","P. O. #","QB Num","Item","Component_Status","Qty(-)","Available",
             "Available + On PO","Available + Pre-installed PO","On Hand","On Sales Order","On PO",
             "Assigned Q'ty","On Hand - WIP","Sales/Week",
-            "Recommended Restock Qty","Component_Status","Ship Date"
+            "Recommended Restock Qty","Ship Date"
         ]
         for h in required_headers:
             if h not in rows_df.columns: rows_df[h] = ""
