@@ -36,7 +36,7 @@ def fetch_word_files_df(api_url: str) -> pd.DataFrame:
     return wf
 
 def fetch_pdf_orders_df_from_supabase() -> pd.DataFrame:
-    """Return two columns ['WO','Product Number'] built from pdf_file_log.extracted_data JSON."""
+    """Return columns ['WO','Product Number','Consigned'] built from pdf_file_log.extracted_data JSON."""
     eng = get_engine()
     rows = pd.read_sql('SELECT order_id, extracted_data FROM public.pdf_file_log', eng)
 
@@ -47,20 +47,24 @@ def fetch_pdf_orders_df_from_supabase() -> pd.DataFrame:
             except Exception:
                 extracted_data = {}
         data = extracted_data or {}
-        wo = data.get("wo", order_id)
+        wo = normalize_wo_number(data.get("wo", order_id))
+        consigned = data.get("Consigned")
+        if consigned is None:
+            consigned = data.get("consigned")
+        consigned = bool(consigned) if consigned is not None else False
         items = data.get("items") or []
         if not items:
-            return [{"WO": wo, "Product Number": ""}]
+            return [{"WO": wo, "Product Number": "", "Consigned": consigned}]
         out = []
         for it in items:
             pn = it.get("product_number") or it.get("part_number") or it.get("product") or it.get("part") or ""
-            out.append({"WO": wo, "Product Number": pn})
+            out.append({"WO": wo, "Product Number": pn, "Consigned": consigned})
         return out
 
     all_rows = []
     for _, r in rows.iterrows():
         all_rows.extend(rows_from_json(r.get("extracted_data"), r.get("order_id")))
-    return pd.DataFrame(all_rows, columns=["WO", "Product Number"])
+    return pd.DataFrame(all_rows, columns=["WO", "Product Number", "Consigned"])
 
 # ---------- Load (DB) ----------
 def write_to_db(df: pd.DataFrame, schema: str, table: str):
@@ -71,6 +75,7 @@ def write_final_sales_order_to_gsheet(df: pd.DataFrame, *,
     spreadsheet_name: str = "PDF_WO",
     worksheet_name: str = "Open Sales Order",
     cred_path: str = r"C:\Users\Admin\Downloads\pdfwo-466115-734096e1cef8.json",
+    consigned_wos: set[str] | None = None,
 ):
     scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(cred_path, scope)
@@ -83,6 +88,24 @@ def write_final_sales_order_to_gsheet(df: pd.DataFrame, *,
     set_with_dataframe(ws, df, include_index=False, include_column_header=True, resize=True)
     try: ws.freeze(rows=1)
     except Exception: pass
+    if consigned_wos:
+        try:
+            from gspread.utils import rowcol_to_a1
+            qb_idx = None
+            for idx, col in enumerate(df.columns, 1):
+                if str(col).strip() == "QB Num":
+                    qb_idx = idx
+                    break
+            if qb_idx is not None:
+                max_col = len(df.columns)
+                red_fill = {"backgroundColor": {"red": 1.0, "green": 0.8, "blue": 0.8}}
+                for i, qb in enumerate(df["QB Num"].astype(str), start=2):
+                    if qb in consigned_wos:
+                        start = rowcol_to_a1(i, 1)
+                        end = rowcol_to_a1(i, max_col)
+                        ws.format(f"{start}:{end}", red_fill)
+        except Exception:
+            pass
     print(f"✅ Wrote {len(df)} rows to Google Sheet → {spreadsheet_name} / {worksheet_name}")
 
 # ---------- Excel styling helper functions ----------

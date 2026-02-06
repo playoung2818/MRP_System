@@ -47,6 +47,10 @@ def main():
     so_raw, inv_raw, ship_raw, pod_raw = extract_inputs()
     word_files_df = fetch_word_files_df("http://192.168.60.133:5001/api/word-files")
     pdf_orders_df = fetch_pdf_orders_df_from_supabase()
+    consigned_wos: set[str] = set()
+    if "Consigned" in pdf_orders_df.columns and "WO" in pdf_orders_df.columns:
+        consigned_mask = pdf_orders_df["Consigned"].astype(str).str.strip().str.lower().isin(["true", "1", "yes", "y"])
+        consigned_wos = set(pdf_orders_df.loc[consigned_mask, "WO"].astype(str).str.strip())
 
     # -------- Transform (raw -> tidy) --------
     so_full = transform_sales_order(so_raw)                 # sales orders
@@ -169,7 +173,8 @@ def main():
         write_final_sales_order_to_gsheet(
             final_sales_order.assign(
                 **{"Lead Time": pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date}
-            )
+            ),
+            consigned_wos=consigned_wos,
         )
 
 
