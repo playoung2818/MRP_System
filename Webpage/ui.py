@@ -89,6 +89,41 @@ INDEX_TPL = """
     .detail-panel h6{ text-transform:uppercase; font-size:.85rem; letter-spacing:.08em; font-weight:600; }
     .detail-panel .subcard{ border:1px solid #e2e8f0; border-radius:12px; padding:1rem; background:#f8fafc; height:100%; }
     .detail-panel .subcard.active{ border-color:#0d6efd; box-shadow:0 0 0 3px rgba(13,110,253,.15); }
+    .chat-toggle{
+      position:fixed; right:20px; bottom:20px; z-index:1100;
+      border:none; border-radius:999px; background:#0d6efd; color:#fff;
+      padding:.75rem 1.1rem; font-weight:700; box-shadow:0 10px 24px rgba(13,110,253,.35);
+    }
+    .chatbox{
+      position:fixed; right:20px; bottom:78px; z-index:1100;
+      width:min(380px, calc(100vw - 24px)); border-radius:14px;
+      background:#fff; border:1px solid #dbe4f0; box-shadow:0 18px 40px rgba(2,6,23,.2);
+      display:none; overflow:hidden;
+    }
+    .chatbox.open{ display:block; }
+    .chatbox-head{
+      background:#0d6efd; color:#fff; padding:.7rem .9rem;
+      display:flex; justify-content:space-between; align-items:center;
+      font-weight:700;
+    }
+    .chatbox-close{ background:transparent; border:none; color:#fff; font-size:1.1rem; line-height:1; }
+    .chatbox-body{ max-height:340px; min-height:220px; overflow:auto; background:#f8fbff; padding:.8rem; }
+    .chat-msg{ margin-bottom:.6rem; display:flex; }
+    .chat-msg.user{ justify-content:flex-end; }
+    .chat-bubble{
+      max-width:84%; border-radius:12px; padding:.5rem .65rem; font-size:.92rem; white-space:pre-wrap;
+      border:1px solid #dbe4f0; background:#fff; color:#0f172a;
+    }
+    .chat-msg.user .chat-bubble{
+      background:#0d6efd; color:#fff; border-color:#0d6efd;
+    }
+    .chatbox-form{ border-top:1px solid #e2e8f0; padding:.7rem; display:flex; gap:.5rem; background:#fff; }
+    .chatbox-input{ flex:1; min-width:0; }
+    .chatbox-hint{ padding:0 .75rem .65rem; color:#6b7280; font-size:.77rem; background:#fff; }
+    @media (max-width:576px){
+      .chat-toggle{ right:10px; bottom:10px; }
+      .chatbox{ right:10px; bottom:64px; width:calc(100vw - 20px); }
+    }
   </style>
 </head>
 <body>
@@ -255,7 +290,25 @@ INDEX_TPL = """
   </div>
   {% elif so_num %}
   <div class="alert alert-warning mt-3">No rows found for "{{ so_num }}".</div>
-  {% endif %} 
+  {% endif %}
+
+  <button id="erp-chat-toggle" class="chat-toggle" type="button">Chat</button>
+  <div id="erp-chatbox" class="chatbox" aria-hidden="true">
+    <div class="chatbox-head">
+      <span>ERP Assistant</span>
+      <button id="erp-chat-close" class="chatbox-close" type="button" aria-label="Close">x</button>
+    </div>
+    <div id="erp-chat-body" class="chatbox-body">
+      <div class="chat-msg">
+        <div class="chat-bubble">Ask me inventory, ATP, ATP date, or SO waiting questions.</div>
+      </div>
+    </div>
+    <form id="erp-chat-form" class="chatbox-form">
+      <input id="erp-chat-input" class="form-control form-control-sm chatbox-input" type="text" maxlength="500" placeholder="Type your question...">
+      <button id="erp-chat-send" class="btn btn-primary btn-sm" type="submit">Send</button>
+    </form>
+    <div class="chatbox-hint">Uses your existing LLM parser and DB tools.</div>
+  </div>
   <script>
   (function () {
     var panel = document.getElementById('item-detail-panel');
@@ -411,6 +464,79 @@ INDEX_TPL = """
           panel.innerHTML = '<div class="alert alert-danger mb-0">Error loading ' +
             escapeHtml(item) + ': ' + escapeHtml(err.message) + '</div>';
           panel.style.display = 'block';
+        });
+    });
+  })();
+  </script>
+  <script>
+  (function () {
+    var toggle = document.getElementById("erp-chat-toggle");
+    var box = document.getElementById("erp-chatbox");
+    var closeBtn = document.getElementById("erp-chat-close");
+    var form = document.getElementById("erp-chat-form");
+    var input = document.getElementById("erp-chat-input");
+    var sendBtn = document.getElementById("erp-chat-send");
+    var body = document.getElementById("erp-chat-body");
+    if (!toggle || !box || !closeBtn || !form || !input || !sendBtn || !body) return;
+
+    function setOpen(open) {
+      box.classList.toggle("open", !!open);
+      box.setAttribute("aria-hidden", open ? "false" : "true");
+      if (open) input.focus();
+    }
+
+    function pushMsg(role, text) {
+      var row = document.createElement("div");
+      row.className = "chat-msg" + (role === "user" ? " user" : "");
+      var bubble = document.createElement("div");
+      bubble.className = "chat-bubble";
+      bubble.textContent = text || "";
+      row.appendChild(bubble);
+      body.appendChild(row);
+      body.scrollTop = body.scrollHeight;
+      return bubble;
+    }
+
+    toggle.addEventListener("click", function () {
+      setOpen(!box.classList.contains("open"));
+    });
+    closeBtn.addEventListener("click", function () {
+      setOpen(false);
+    });
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var msg = input.value.trim();
+      if (!msg) return;
+
+      pushMsg("user", msg);
+      input.value = "";
+      input.disabled = true;
+      sendBtn.disabled = true;
+      var pending = pushMsg("assistant", "Thinking...");
+
+      fetch("/api/llm_chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg })
+      })
+        .then(function (resp) {
+          return resp.json().then(function (json) {
+            return { status: resp.status, ok: resp.ok, json: json };
+          });
+        })
+        .then(function (res) {
+          var data = res.json || {};
+          if (!res.ok) throw new Error(data.answer || data.error || ("Server error (" + res.status + ")"));
+          pending.textContent = data.answer || "No answer.";
+        })
+        .catch(function (err) {
+          pending.textContent = "Error: " + err.message;
+        })
+        .finally(function () {
+          input.disabled = false;
+          sendBtn.disabled = false;
+          input.focus();
         });
     });
   })();

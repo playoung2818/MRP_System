@@ -23,9 +23,15 @@ ERP_MODULE_DIR = REPO_ROOT / "ERP_System 2.0"
 if str(ERP_MODULE_DIR) not in sys.path:
     sys.path.append(str(ERP_MODULE_DIR))
 
+# Default LLM runtime for web chat if not explicitly set in shell/.env.
+os.environ.setdefault("LLM_PROVIDER", "ollama")
+os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434")
+os.environ.setdefault("OLLAMA_MODEL", "llama3.1")
+
 from erp_normalize import normalize_item
 from atp import build_atp_view, earliest_atp_strict
 from db_config import get_engine, DATABASE_DSN
+from llm_backend import DataCache as LLMDataCache, answer_question as llm_answer_question
 
 app = Flask(__name__)
 
@@ -45,6 +51,7 @@ LEDGER: pd.DataFrame | None = None
 ITEM_ATP: pd.DataFrame | None = None
 _LAST_LOAD_ERR: str | None = None
 _LAST_LOADED_AT: datetime | None = None
+LLM_CACHE: LLMDataCache | None = None
 
 # =========================
 # PDF settings/cache
@@ -321,6 +328,14 @@ def _ensure_loaded():
         _load_from_db(force=True)
     # Load PDF map on demand as well
     _load_pdf_map()
+
+
+def _ensure_llm_cache() -> LLMDataCache:
+    global LLM_CACHE
+    if LLM_CACHE is None:
+        LLM_CACHE = LLMDataCache()
+    LLM_CACHE.ensure_loaded()
+    return LLM_CACHE
 
 def lookup_on_po_by_item(item: str) -> int | None:
     df = SO_INV[SO_INV["Item"] == item]
@@ -868,6 +883,33 @@ def api_item_overview():
             "on_po_label": on_po_val,
         }
     )
+
+
+@app.route("/api/llm_chat", methods=["POST"])
+def api_llm_chat():
+    payload = request.get_json(silent=True) or {}
+    message = str(payload.get("message") or "").strip()
+    if not message:
+        return jsonify({"ok": False, "answer": "Missing message.", "trace": ["api: empty_message"]}), 400
+
+    try:
+        cache = _ensure_llm_cache()
+        result = llm_answer_question(cache, message)
+        return jsonify(
+            {
+                "ok": bool(result.get("ok")),
+                "answer": str(result.get("answer") or ""),
+                "trace": result.get("trace") or [],
+            }
+        )
+    except Exception as exc:
+        return jsonify(
+            {
+                "ok": False,
+                "answer": f"Chat request failed: {exc}",
+                "trace": ["api: exception"],
+            }
+        ), 500
 
 @app.route("/so_lines")
 def so_lines():
