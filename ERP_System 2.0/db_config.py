@@ -5,6 +5,28 @@ from typing import Any
 
 from sqlalchemy import create_engine
 
+
+def _load_env_file_fallback(env_path: str) -> None:
+    """
+    Minimal .env loader used when python-dotenv is unavailable.
+    """
+    if not os.path.exists(env_path):
+        return
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except Exception:
+        # Do not fail import due to optional local env loading.
+        pass
+
 try:
     # Optional: load variables from a local .env file if python-dotenv
     # is installed. This keeps secrets out of the code while still being
@@ -19,8 +41,9 @@ try:
     if env_nearby.exists():
         load_dotenv(env_nearby)
 except Exception:
-    # If python-dotenv is not installed, we simply skip .env loading.
-    pass
+    # If python-dotenv is not installed, fall back to a minimal parser.
+    _load_env_file_fallback(".env")
+    _load_env_file_fallback(os.path.join(os.path.dirname(__file__), ".env"))
 
 
 # Read the database DSN from environment so credentials

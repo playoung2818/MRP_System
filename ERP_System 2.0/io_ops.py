@@ -1,8 +1,15 @@
 from __future__ import annotations
-import os, json, requests, pandas as pd, numpy as np
-import gspread
-from gspread_dataframe import set_with_dataframe
-from oauth2client.service_account import ServiceAccountCredentials
+import os, json, requests, pandas as pd, numpy as np, tempfile, subprocess, uuid
+from io import BytesIO
+from pathlib import Path
+try:
+    import gspread
+    from gspread_dataframe import set_with_dataframe
+    from oauth2client.service_account import ServiceAccountCredentials
+except ImportError:
+    gspread = None
+    set_with_dataframe = None
+    ServiceAccountCredentials = None
 
 from core import normalize_wo_number
 from db_config import get_engine
@@ -13,12 +20,53 @@ from config import SALES_ORDER_FILE, WAREHOUSE_INV_FILE, SHIPPING_SCHEDULE_FILE,
 def engine():
     return get_engine()
 
+def _copy_via_powershell(src: str, dst: str) -> None:
+    safe_src = src.replace("'", "''")
+    safe_dst = dst.replace("'", "''")
+    ps_cmd = f"Copy-Item -LiteralPath '{safe_src}' -Destination '{safe_dst}' -Force"
+    res = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", ps_cmd],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if res.returncode != 0:
+        raise OSError(
+            f"PowerShell copy failed for Excel fallback: {src} -> {dst}; "
+            f"stderr={res.stderr.strip()}"
+        )
+
+def read_excel_safe(path: str | Path, **kwargs) -> pd.DataFrame:
+    """
+    Read Excel robustly on environments where direct .xlsx open may fail.
+    Falls back to a PowerShell copy + in-memory read.
+    """
+    path_str = str(path)
+    try:
+        return pd.read_excel(path_str, **kwargs)
+    except OSError as e:
+        if e.errno != 22:
+            raise
+
+    tmp_zip = os.path.join(tempfile.gettempdir(), f"excel_fallback_{uuid.uuid4().hex}.zip")
+    try:
+        _copy_via_powershell(path_str, tmp_zip)
+        with open(tmp_zip, "rb") as f:
+            data = f.read()
+        return pd.read_excel(BytesIO(data), **kwargs)
+    finally:
+        try:
+            if os.path.exists(tmp_zip):
+                os.remove(tmp_zip)
+        except Exception:
+            pass
+
 # ---------- Extract ----------
 def extract_inputs():
     # Force str paths for Windows/OneDrive oddities; explicit engine to avoid parser quirks
     df_sales_order       = pd.read_csv(str(SALES_ORDER_FILE), encoding="ISO-8859-1", engine="python")
     inventory_df         = pd.read_csv(str(WAREHOUSE_INV_FILE))
-    df_shipping_schedule = pd.read_excel(str(SHIPPING_SCHEDULE_FILE))
+    df_shipping_schedule = read_excel_safe(SHIPPING_SCHEDULE_FILE)
     df_pod               = pd.read_csv(str(POD_FILE), encoding="ISO-8859-1", engine="python")
     return df_sales_order, inventory_df, df_shipping_schedule, df_pod
 
@@ -74,43 +122,65 @@ def write_to_db(df: pd.DataFrame, schema: str, table: str):
 def write_final_sales_order_to_gsheet(df: pd.DataFrame, *,
     spreadsheet_name: str = "PDF_WO",
     worksheet_name: str = "Open Sales Order",
-    cred_path: str = r"C:\Users\Admin\Downloads\pdfwo-466115-734096e1cef8.json",
+    cred_path: str = r"C:\Users\Admin\OneDrive - neousys-tech\Desktop\Python\pdfwo-466115-734096e1cef8.json",
     consigned_wos: set[str] | None = None,
 ):
+    if gspread is None or set_with_dataframe is None or ServiceAccountCredentials is None:
+        raise ImportError(
+            "Google Sheets dependencies are missing. Install: "
+            "pip install gspread gspread-dataframe oauth2client"
+        )
     scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(cred_path, scope)
-    client = gspread.authorize(creds)
-    sh = client.open(spreadsheet_name)
+    cred_path_use = cred_path
+    temp_cred_path = None
     try:
-        ws = sh.worksheet(worksheet_name); ws.clear()
-    except gspread.exceptions.WorksheetNotFound:
-        ws = sh.add_worksheet(title=worksheet_name, rows=100, cols=26)
-    set_with_dataframe(ws, df, include_index=False, include_column_header=True, resize=True)
-    try: ws.freeze(rows=1)
-    except Exception: pass
-    if consigned_wos:
+        temp_cred_path = os.path.join(tempfile.gettempdir(), f"gsheet_cred_{uuid.uuid4().hex}.json")
+        _copy_via_powershell(cred_path, temp_cred_path)
+        cred_path_use = temp_cred_path
+    except Exception:
+        cred_path_use = cred_path
+    try:
+        creds = ServiceAccountCredentials.from_json_keyfile_name(cred_path_use, scope)
+        client = gspread.authorize(creds)
+        sh = client.open(spreadsheet_name)
         try:
-            from gspread.utils import rowcol_to_a1
-            qb_idx = None
-            for idx, col in enumerate(df.columns, 1):
-                if str(col).strip() == "QB Num":
-                    qb_idx = idx
-                    break
-            if qb_idx is not None:
-                max_col = len(df.columns)
-                red_fill = {"backgroundColor": {"red": 1.0, "green": 0.8, "blue": 0.8}}
-                for i, qb in enumerate(df["QB Num"].astype(str), start=2):
-                    if qb in consigned_wos:
-                        start = rowcol_to_a1(i, 1)
-                        end = rowcol_to_a1(i, max_col)
-                        ws.format(f"{start}:{end}", red_fill)
-        except Exception:
-            pass
-    print(f"✅ Wrote {len(df)} rows to Google Sheet → {spreadsheet_name} / {worksheet_name}")
+            ws = sh.worksheet(worksheet_name); ws.clear()
+        except gspread.exceptions.WorksheetNotFound:
+            ws = sh.add_worksheet(title=worksheet_name, rows=100, cols=26)
+        set_with_dataframe(ws, df, include_index=False, include_column_header=True, resize=True)
+        try: ws.freeze(rows=1)
+        except Exception: pass
+        if consigned_wos:
+            try:
+                from gspread.utils import rowcol_to_a1
+                qb_idx = None
+                for idx, col in enumerate(df.columns, 1):
+                    if str(col).strip() == "QB Num":
+                        qb_idx = idx
+                        break
+                if qb_idx is not None:
+                    max_col = len(df.columns)
+                    red_fill = {"backgroundColor": {"red": 1.0, "green": 0.8, "blue": 0.8}}
+                    for i, qb in enumerate(df["QB Num"].astype(str), start=2):
+                        if qb in consigned_wos:
+                            start = rowcol_to_a1(i, 1)
+                            end = rowcol_to_a1(i, max_col)
+                            ws.format(f"{start}:{end}", red_fill)
+            except Exception:
+                pass
+        print(f"Wrote {len(df)} rows to Google Sheet -> {spreadsheet_name} / {worksheet_name}")
+    finally:
+        if temp_cred_path:
+            try:
+                if os.path.exists(temp_cred_path):
+                    os.remove(temp_cred_path)
+            except Exception:
+                pass
 
 # ---------- Excel styling helper functions ----------
 from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 from datetime import datetime
 
 def save_not_assigned_so(
@@ -154,26 +224,63 @@ def save_not_assigned_so(
             "Sales/Week": 15, 
         }
 
-    # ---------- ensure workbook exists; if not, create with a temp sheet ----------
-    if not os.path.exists(output_path):
-        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-            # create a placeholder first sheet (name will be replaced)
-            df.to_excel(writer, sheet_name="Sheet1", index=False)
+    output_path = str(output_path)
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    use_xlsx_fallback = output_path.lower().endswith(".xlsx")
 
-    # ---------- find current first sheet name ----------
-    _wb = load_workbook(output_path)
-    first_sheet_name = _wb.sheetnames[0]
-    _wb.close()
-
-    # ---------- write df to first sheet (replace) ----------
-    with pd.ExcelWriter(output_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-        df.to_excel(writer, sheet_name=first_sheet_name, index=False)
+    if use_xlsx_fallback:
+        wb = None
+        if os.path.exists(output_path):
+            temp_in = os.path.join(tempfile.gettempdir(), f"not_assigned_in_{uuid.uuid4().hex}.zip")
+            try:
+                _copy_via_powershell(output_path, temp_in)
+                with open(temp_in, "rb") as f:
+                    wb = load_workbook(BytesIO(f.read()))
+            except Exception:
+                wb = None
+            finally:
+                try:
+                    if os.path.exists(temp_in):
+                        os.remove(temp_in)
+                except Exception:
+                    pass
+        if wb is None:
+            wb = Workbook()
+        first_sheet_name = wb.sheetnames[0] if wb.sheetnames else "Sheet1"
+        if first_sheet_name in wb.sheetnames:
+            del wb[first_sheet_name]
+        ws = wb.create_sheet(title=first_sheet_name, index=0)
+        for row in dataframe_to_rows(df, index=False, header=True):
+            ws.append(row)
         if pod_watchlist_df is not None:
-            pod_watchlist_df.to_excel(writer, sheet_name=pod_watchlist_sheet, index=False)
+            if pod_watchlist_sheet in wb.sheetnames:
+                del wb[pod_watchlist_sheet]
+            ws_pod = wb.create_sheet(title=pod_watchlist_sheet)
+            for row in dataframe_to_rows(pod_watchlist_df, index=False, header=True):
+                ws_pod.append(row)
+    else:
+        # ---------- ensure workbook exists; if not, create with a temp sheet ----------
+        if not os.path.exists(output_path):
+            with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+                # create a placeholder first sheet (name will be replaced)
+                df.to_excel(writer, sheet_name="Sheet1", index=False)
 
-    # ---------- open workbook for styling ----------
-    wb = load_workbook(output_path)
-    ws = wb.worksheets[0]  # first sheet
+        # ---------- find current first sheet name ----------
+        _wb = load_workbook(output_path)
+        first_sheet_name = _wb.sheetnames[0]
+        _wb.close()
+
+        # ---------- write df to first sheet (replace) ----------
+        with pd.ExcelWriter(output_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+            df.to_excel(writer, sheet_name=first_sheet_name, index=False)
+            if pod_watchlist_df is not None:
+                pod_watchlist_df.to_excel(writer, sheet_name=pod_watchlist_sheet, index=False)
+
+        # ---------- open workbook for styling ----------
+        wb = load_workbook(output_path)
+        ws = wb.worksheets[0]  # first sheet
 
     # Freeze first row
     ws.freeze_panes = "A2"
@@ -276,7 +383,22 @@ def save_not_assigned_so(
 
 
     # ---------- save ----------
-    wb.save(output_path)
+    if use_xlsx_fallback:
+        out_bytes = BytesIO()
+        wb.save(out_bytes)
+        temp_out = os.path.join(tempfile.gettempdir(), f"not_assigned_out_{uuid.uuid4().hex}.zip")
+        with open(temp_out, "wb") as f:
+            f.write(out_bytes.getvalue())
+        try:
+            _copy_via_powershell(temp_out, output_path)
+        finally:
+            try:
+                if os.path.exists(temp_out):
+                    os.remove(temp_out)
+            except Exception:
+                pass
+    else:
+        wb.save(output_path)
 
     # ---------- summary ----------
     unique_wo = df[band_by_col].nunique() if band_by_col in df.columns else 0

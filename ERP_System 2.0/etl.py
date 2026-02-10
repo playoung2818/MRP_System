@@ -19,6 +19,7 @@ from io_ops import (
     save_not_assigned_so,
     fetch_word_files_df,
     fetch_pdf_orders_df_from_supabase,
+    read_excel_safe,
 )
 from core import (
     transform_sales_order,
@@ -108,7 +109,7 @@ def main():
                 pod_items["Ship Date"] = pod_items["Ship Date"].fillna("TBD")
                 try:
                     pod_ref_path = r"C:\Users\Admin\OneDrive - neousys-tech\Share NTA Warehouse\01 Incoming\POD-Reference.xlsx"
-                    pod_ref = pd.read_excel(pod_ref_path)
+                    pod_ref = read_excel_safe(pod_ref_path)
                     pod_ref = pod_ref.loc[:, ["POD", "Reference"]].dropna(subset=["POD"])
                     pod_ref["POD"] = pod_ref["POD"].astype(str).str.strip()
                     pod_ref["Reference"] = pod_ref["Reference"].astype(str).str.strip()
@@ -161,7 +162,7 @@ def main():
     write_to_db(atp_view,   schema=DB_SCHEMA, table=TBL_ITEM_ATP)
 
     print(
-        f"✅ Loaded: {DB_SCHEMA}.{TBL_SALES_ORDER}={len(so_full)}; "
+        f"Loaded: {DB_SCHEMA}.{TBL_SALES_ORDER}={len(so_full)}; "
         f"{DB_SCHEMA}.{TBL_INVENTORY}={len(inv)}; "
         f"{DB_SCHEMA}.{TBL_STRUCTURED}={len(structured)}; "
         f"{DB_SCHEMA}.{TBL_POD}={len(pod)}; "
@@ -170,12 +171,15 @@ def main():
 
     # -------- Push to Google Sheets --------
     if not final_sales_order.empty:
-        write_final_sales_order_to_gsheet(
-            final_sales_order.assign(
-                **{"Lead Time": pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date}
-            ),
-            consigned_wos=consigned_wos,
-        )
+        try:
+            write_final_sales_order_to_gsheet(
+                final_sales_order.assign(
+                    **{"Lead Time": pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date}
+                ),
+                consigned_wos=consigned_wos,
+            )
+        except Exception as e:
+            logging.warning("Skipping Google Sheets export: %s", e)
 
 
 if __name__ == "__main__":
