@@ -1,0 +1,6 @@
+Item,Category
+SYS-A,Parent
+SYS-B,Parent
+SUB-CTRL,Subassembly
+SHARED-SSD,Component
+CTRL-BOARD,Component

@@ -223,7 +223,7 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
 
     # --- Pre/Bare logic ---
     model_ok = (
-    Ship["Item"].str.upper().str.startswith(("N", "SEMIL", "POC", "F"), na=False)
+    Ship["Item"].str.upper().str.startswith(("N", "SEMIL", "POC", "F", "S1", "S2"), na=False)
     & ~Ship["Item"].str.upper().str.startswith("NRU-52S-NX")
 )
 

@@ -112,6 +112,11 @@ def _write_log_to_db(engine, report: dict[str, pd.DataFrame], checks_passed: boo
     )
     summary.to_sql(RUN_LOG_TABLE, engine, schema=SCHEMA, if_exists="append", index=False, method="multi")
 
+    # Ensure detail table exists even when there are no discrepancy rows.
+    pd.DataFrame(
+        columns=["run_id", "created_at_utc", "bucket", "row_no", "row_json"]
+    ).to_sql(DETAIL_LOG_TABLE, engine, schema=SCHEMA, if_exists="append", index=False, method="multi")
+
     detail_rows: list[dict] = []
     for bucket, df in report.items():
         if df.empty:
