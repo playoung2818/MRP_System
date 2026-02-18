@@ -76,7 +76,7 @@ def main():
     events_all = _order_events(events_inout)   # no concat, no recon
 
     # -------- Ledger from prebuilt events --------
-    ledger, item_summary, violations = build_ledger_from_events(structured, events_all)
+    ledger, item_summary, violations = build_ledger_from_events(structured, events_all, inv)
     cols = ["Date", "Item_raw", "Projected_NAV", "Name", "QB Num"]
     print(violations.loc[:, cols])
 

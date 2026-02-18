@@ -177,7 +177,11 @@ def build_events(
     events = pd.concat([inbound, pod_events, outbound], ignore_index=True, sort=False)
     return _order_events(events)
 
-def build_ledger_from_events(SO: pd.DataFrame, EVENTS: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def build_ledger_from_events(
+    SO: pd.DataFrame,
+    EVENTS: pd.DataFrame,
+    INVENTORY: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Build ledger using prebuilt events (IN/ADJ/OUT already combined).
     SO only used to compute per-item Opening.
@@ -218,8 +222,59 @@ def build_ledger_from_events(SO: pd.DataFrame, EVENTS: pd.DataFrame) -> tuple[pd
               .first()[["Item", "Date", "Projected_NAV"]]
               .rename(columns={"Date": "First_Shortage_Date", "Projected_NAV": "NAV_at_First_Shortage"})
     )
+
+    # Per-item list of customer + QB numbers that consume the item.
+    so_for_users = so.copy()
+    for col in ["Name", "QB Num", "Qty(-)"]:
+        if col not in so_for_users.columns:
+            so_for_users[col] = pd.NA
+    so_for_users["Item"] = _norm_key(so_for_users["Item"])
+    so_for_users["Name"] = so_for_users["Name"].fillna("").astype(str).str.strip()
+    so_for_users["QB Num"] = so_for_users["QB Num"].fillna("").astype(str).str.strip()
+    so_for_users["Qty(-)"] = pd.to_numeric(so_for_users["Qty(-)"], errors="coerce").fillna(0.0)
+
+    item_users = so_for_users.loc[
+        so_for_users["Qty(-)"] > 0, ["Item", "Name", "QB Num"]
+    ].copy()
+    item_users = item_users.loc[item_users["Name"].ne("") | item_users["QB Num"].ne("")]
+    item_users["Customer_QB"] = np.where(
+        item_users["Name"].ne("") & item_users["QB Num"].ne(""),
+        item_users["Name"] + " (" + item_users["QB Num"] + ")",
+        np.where(item_users["Name"].ne(""), item_users["Name"], item_users["QB Num"]),
+    )
+    if item_users.empty:
+        item_users = pd.DataFrame(columns=["Item", "Customer_QB_List"])
+    else:
+        item_users = (
+            item_users.sort_values(["Item", "QB Num", "Name"])
+            .drop_duplicates(subset=["Item", "Customer_QB"])
+            .groupby("Item", as_index=False)["Customer_QB"]
+            .agg(", ".join)
+            .rename(columns={"Customer_QB": "Customer_QB_List"})
+        )
+
+    inv_cols = pd.DataFrame(columns=["Item", "On Sales Order", "On PO"])
+    if INVENTORY is not None and not INVENTORY.empty:
+        inv = INVENTORY.copy()
+        item_col = "Part_Number" if "Part_Number" in inv.columns else ("Item" if "Item" in inv.columns else None)
+        if item_col is not None:
+            inv["Item"] = _norm_key(inv[item_col])
+            for c in ["On Sales Order", "On PO"]:
+                if c not in inv.columns:
+                    inv[c] = 0.0
+                inv[c] = pd.to_numeric(inv[c], errors="coerce").fillna(0.0)
+            inv_cols = (
+                inv[["Item", "On Sales Order", "On PO"]]
+                .groupby("Item", as_index=False)[["On Sales Order", "On PO"]]
+                .sum()
+            )
+
     item_summary = (stock.merge(item_min, on="Item", how="outer")
-                         .merge(first_neg, on="Item", how="left"))
+                         .merge(first_neg, on="Item", how="left")
+                         .merge(item_users, on="Item", how="left")
+                         .merge(inv_cols, on="Item", how="left"))
+    item_summary["On Sales Order"] = pd.to_numeric(item_summary["On Sales Order"], errors="coerce").fillna(0.0)
+    item_summary["On PO"] = pd.to_numeric(item_summary["On PO"], errors="coerce").fillna(0.0)
     item_summary["OK"] = item_summary["Min_Projected_NAV"].fillna(0) >= 0
 
     cutoff = pd.Timestamp("2026-07-04")
