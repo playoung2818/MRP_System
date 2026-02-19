@@ -112,18 +112,65 @@ def _write_report_to_db(
 def test_open_po_vs_ledger_in_item_qty_summary() -> None:
     eng = get_engine()
 
-    pod = pd.read_sql(
+    pod_all = pd.read_sql(
         """
         SELECT "Item" AS item, "Qty(+)" AS qty, "Name" AS vendor_name, "POD#" AS pod_no
         FROM public."Open_Purchase_Orders"
         """,
         eng,
     )
-    pod["item_key"] = _norm_key(pod["item"])
-    pod["qty"] = pd.to_numeric(pod["qty"], errors="coerce").fillna(0.0)
-    pod["vendor_name"] = pod["vendor_name"].fillna("").astype(str).str.strip()
-    pod["pod_no"] = pod["pod_no"].fillna("").astype(str).str.strip()
-    pod = pod.loc[pod["qty"] > 0].copy()
+    pod_all["item_key"] = _norm_key(pod_all["item"])
+    pod_all["qty"] = pd.to_numeric(pod_all["qty"], errors="coerce").fillna(0.0)
+    pod_all["vendor_name"] = pod_all["vendor_name"].fillna("").astype(str).str.strip()
+    pod_all["pod_no"] = pod_all["pod_no"].fillna("").astype(str).str.strip()
+    pod_all = pod_all.loc[pod_all["qty"] > 0].copy()
+
+    ship = pd.read_sql(
+        """
+        SELECT "QB Num" AS qb_num, "P. O. #" AS po_no, "Item" AS item, "Date" AS ship_date
+        FROM public."ledger_analytics"
+        WHERE "Kind" = 'IN'
+        """,
+        eng,
+    )
+    ship["qb_num"] = ship["qb_num"].fillna("").astype(str).str.strip()
+    ship["po_no"] = ship["po_no"].fillna("").astype(str).str.strip()
+    ship["pod_no"] = ship["qb_num"]
+    ship.loc[ship["pod_no"].eq(""), "pod_no"] = ship.loc[ship["pod_no"].eq(""), "po_no"]
+    ship["item_key"] = _norm_key(ship["item"])
+    ship["ship_date"] = pd.to_datetime(ship["ship_date"], errors="coerce")
+    ship_dates = (
+        ship.loc[ship["pod_no"].ne(""), ["item_key", "pod_no", "ship_date"]]
+        .drop_duplicates()
+        .sort_values(["item_key", "pod_no", "ship_date"])
+        .groupby(["item_key", "pod_no"], as_index=False)["ship_date"]
+        .agg(
+            lambda s: "|".join(
+                d.strftime("%Y-%m-%d") for d in s.dropna().drop_duplicates().tolist()
+            )
+        )
+        .rename(columns={"ship_date": "ship_date_list"})
+    )
+
+    pod_all_list = (
+        pod_all.loc[pod_all["pod_no"].ne(""), ["item_key", "pod_no", "qty"]]
+        .groupby(["item_key", "pod_no"], as_index=False)["qty"]
+        .sum()
+        .merge(ship_dates, on=["item_key", "pod_no"], how="left")
+    )
+    pod_all_list["ship_date_list"] = pod_all_list["ship_date_list"].fillna("NULL")
+    pod_all_list["pod_entry"] = pod_all_list.apply(
+        lambda r: f'{r["pod_no"]} (qty={float(r["qty"]):g}, ship={r["ship_date_list"]})',
+        axis=1,
+    )
+    pod_list_by_item = (
+        pod_all_list.sort_values(["item_key", "pod_no"])
+        .groupby("item_key")["pod_entry"]
+        .agg(", ".join)
+        .to_dict()
+    )
+
+    pod = pod_all.copy()
     pod = pod.loc[~pod["vendor_name"].isin(["CoastIPC, Inc.", "Industrial PC, Inc."])].copy()
     # Align scope with ETL shipping filter by keeping only PODs present in NT Shipping Schedule table.
     allowed_pod = pd.read_sql(
@@ -136,14 +183,6 @@ def test_open_po_vs_ledger_in_item_qty_summary() -> None:
         pod.groupby("item_key", as_index=False)["qty"]
         .sum()
         .rename(columns={"qty": "open_po_qty"})
-    )
-    pod_list_by_item = (
-        pod.loc[pod["pod_no"].ne(""), ["item_key", "pod_no"]]
-        .drop_duplicates()
-        .sort_values(["item_key", "pod_no"])
-        .groupby("item_key")["pod_no"]
-        .agg(", ".join)
-        .to_dict()
     )
 
     led = pd.read_sql(

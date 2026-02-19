@@ -131,8 +131,12 @@ def build_events(
     so = _norm_cols(SO)
     nav = _norm_cols(NAV_EXP)
 
+    nav_keep = ["Date", "Item", "Qty(+)", "QB Num", "P. O. #", "Name"]
+    for c in nav_keep:
+        if c not in nav.columns:
+            nav[c] = pd.NA
     inbound = (
-        nav.loc[nav["Qty(+)"] > 0, ["Date", "Item", "Qty(+)"]]
+        nav.loc[nav["Qty(+)"] > 0, nav_keep]
         .rename(columns={"Qty(+)": "Delta"})
         .assign(Kind="IN", Source="NAV")
     )
