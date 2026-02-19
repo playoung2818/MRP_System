@@ -172,13 +172,6 @@ def test_open_po_vs_ledger_in_item_qty_summary() -> None:
 
     pod = pod_all.copy()
     pod = pod.loc[~pod["vendor_name"].isin(["CoastIPC, Inc.", "Industrial PC, Inc."])].copy()
-    # Align scope with ETL shipping filter by keeping only PODs present in NT Shipping Schedule table.
-    allowed_pod = pd.read_sql(
-        'SELECT DISTINCT "QB Num" AS pod_no FROM public."NT Shipping Schedule"',
-        eng,
-    )
-    allowed_set = set(allowed_pod["pod_no"].fillna("").astype(str).str.strip())
-    pod = pod.loc[pod["pod_no"].isin(allowed_set)].copy()
     pod_item = (
         pod.groupby("item_key", as_index=False)["qty"]
         .sum()
@@ -193,7 +186,7 @@ def test_open_po_vs_ledger_in_item_qty_summary() -> None:
         """,
         eng,
     )
-    filter_used = "Kind='IN' + POD# in NT Shipping Schedule (Ship-to filtered)"
+    filter_used = "Kind='IN' (Open PO excludes CoastIPC/Industrial PC only)"
 
     led["item_key"] = _norm_key(led["item"])
     led["qty"] = pd.to_numeric(led["qty"], errors="coerce").fillna(0.0)
