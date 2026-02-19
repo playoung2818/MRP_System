@@ -27,7 +27,7 @@ python -m pytest -q ".\ERP_System 2.0\tests\test_ledger_e2e_snapshot.py"
 ### `test_pod_vs_ledger_in.py`
 - Type: DB reconciliation test for inbound flow.
 - Compares:
-  - `NT Shipping Schedule` (parsed/expanded) vs `ledger_analytics` (`Kind='IN'`, `Source='NAV'`)
+  - `NT Shipping Schedule` (parsed/expanded) vs `ledger_analytics` (`Kind='IN'`, `Source='NAV'`, SAP inbound stream)
   - `Open_Purchase_Orders` vs `ledger_analytics` (`Kind='IN'`, `Source='POD'`)
   - item-level supply overcount checks
 - Writes logs to:
@@ -39,20 +39,24 @@ Run:
 python -m pytest -s -q ".\ERP_System 2.0\tests\test_pod_vs_ledger_in.py"
 ```
 
-### `test_ledger_out_reconciliation.py`
-- Type: DB reconciliation test for outbound flow.
-- Compares:
-  - `wo_structured` demand rows (`Qty(-)`) vs `ledger_analytics` (`Kind='OUT'`, `Source='SO'`)
-  - signs (`OUT` delta must be negative)
-  - item/date and QB/item/date quantity matching
+### `test_shipping_reference_so_match.py`
+- Type: DB + source-file reconciliation test for shipping `Reference` to SO mapping.
+- Reads shipping source Excel (`config.SHIPPING_SCHEDULE_FILE`) to use `Reference` text, then:
+  - runs `transform_shipping`
+  - runs `expand_nav_preinstalled`
+  - extracts SO numbers from `Reference` (e.g. `NTA_Applied Intuition_SO-20251788`)
+  - checks `Pre` component rows can be matched to `wo_structured` by `QB Num` + item
 - Writes logs to:
-  - `public.qa_ledger_out_recon_runs`
-  - `public.qa_ledger_out_recon_details`
+  - `public.qa_shipping_ref_so_runs`
+  - `public.qa_shipping_ref_so_details`
 
 Run:
 ```powershell
-python -m pytest -s -q ".\ERP_System 2.0\tests\test_ledger_out_reconciliation.py"
+python -m pytest -s -q ".\ERP_System 2.0\tests\test_shipping_reference_so_match.py"
 ```
+
+Current expected behavior:
+- This test may fail if parsing artifacts exist in shipping descriptions (for example `_x000D_` token fragments), which indicates real mismatch risk between parsed components and `wo_structured`.
 
 ## Run All Current Tests
 ```powershell

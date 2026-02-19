@@ -6,7 +6,7 @@ from pandas.api.types import CategoricalDtype
 from core import _norm_cols, _norm_key
 from erp_normalize import normalize_item
 
-## 1) NAV (shipping) → expand pre-installed components
+## 1) SAP (shipping) → expand pre-installed components
 INCL_SPLIT = re.compile(r"\bincluding\b", re.IGNORECASE)
 QTYX_RE = re.compile(r"^\s*(\d+)\s*x\s*(.+)\s*$", re.IGNORECASE)  # "2x SSD-1TB"
 

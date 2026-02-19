@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-# MAP from QB to NAV
+# MAP from QB to SAP
 ITEM_MAPPINGS: dict[str, str] = {
     "AccsyBx-Cardholder-10108GC-5080": "AccsyBx-Cardholder-10108GC-5080_70_70Ti",
     "AccsyBx-Cardholder-10208GC-5080": "AccsyBx-Cardholder-10208GC-5080_70_70Ti",
@@ -22,8 +22,29 @@ ITEM_MAPPINGS: dict[str, str] = {
     "M.280-SSD-512GB-PCIe44-TLC5WT-T": "M.280-SSD-512GB-PCIe44-TLC5WT-TD",
 }
 
-# MAP from NAV to QB
+# MAP from SAP to QB
 PATTERN_MAPPINGS = [
+    (
+        re.compile(
+            r"^GC[-_ ]?AGXORIN64G[-_ ]?(?:JETPACK|JP)\s*[\d\.]*(?:[_ -].*)?$",
+            re.IGNORECASE,
+        ),
+        "GC-JETSON-AGX64GB-ORIN-NVIDIA",
+    ),
+    (
+        re.compile(
+            r"^GC[-_ ]?AGXORIN\s*IND\.?\s*64G[-_ ]?(?:JETPACK|JP)\s*[\d\.]*(?:[_ -].*)?$",
+            re.IGNORECASE,
+        ),
+        "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
+    ),
+    (
+        re.compile(
+            r"^GC[-_ ]?ORINNX16G[-_ ]?(?:JETPACK|JP)\s*[\d\.]*(?:[_ -].*)?$",
+            re.IGNORECASE,
+        ),
+        "GC-JETSON-NX16G-ORIN-NVIDIA",
+    ),
     (
         re.compile(
             r"^GC-Jetson-AGX64GB-Orin-Nvidia(?:[- ]?JetPack[-_ ]?[\d\\.]+)?$",

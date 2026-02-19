@@ -322,18 +322,18 @@ def test_inbound_reconciliation_shipping_and_pod() -> None:
     print("\n[1] NT Shipping Schedule rows that become NULL ship date after parsing")
     print(_short(report["shipping_rows_missing_ship_date"]))
 
-    print("\n[2] Shipping-derived NAV expected but missing/short in ledger (Kind='IN', Source='NAV')")
+    print("\n[2] Shipping-derived SAP expected but missing/short in ledger (Kind='IN', Source='NAV')")
     print(_short(report["nav_missing_or_short_vs_shipping"]))
 
-    print("\n[3] Extra NAV rows in ledger not explained by parsed shipping schedule")
+    print("\n[3] Extra SAP rows in ledger not explained by parsed shipping schedule")
     print(_short(report["nav_extra_vs_shipping"]))
 
-    print("\n[4] Potential NULL-Ship-Date shipping qty counted in ledger NAV (suspicious)")
+    print("\n[4] Potential NULL-Ship-Date shipping qty counted in ledger SAP stream (suspicious)")
     print(_short(report["null_ship_potentially_counted_in_nav"]))
 
     print("\n[5] Open_Purchase_Orders vs ledger (Kind='IN', Source='POD') mismatches")
     print(_short(report["pod_mismatch_vs_open_purchase_orders"]))
-    print("\n[6] Item-level NAV qty mismatch: shipping(expanded, dated) vs ledger NAV")
+    print("\n[6] Item-level SAP qty mismatch: shipping(expanded, dated) vs ledger NAV source")
     print(_short(report["nav_item_qty_mismatch"]))
     print("\n[7] Item-level POD overcount: ledger POD qty > Open_Purchase_Orders qty")
     print(_short(report["pod_item_qty_overcount_in_ledger"]))
@@ -344,16 +344,16 @@ def test_inbound_reconciliation_shipping_and_pod() -> None:
     print(f"\n[LOG] Supabase run_id: {run_id} (tables: {SCHEMA}.{RUN_LOG_TABLE}, {SCHEMA}.{DETAIL_LOG_TABLE})")
 
     assert report["nav_missing_or_short_vs_shipping"].empty, (
-        "Some shipping-schedule rows (after parse) are missing/short in ledger NAV."
+        "Some shipping-schedule rows (after parse) are missing/short in ledger SAP stream."
     )
     assert report["nav_extra_vs_shipping"].empty, (
-        "Some ledger NAV rows are extra vs parsed shipping schedule."
+        "Some ledger SAP-stream rows are extra vs parsed shipping schedule."
     )
     assert report["null_ship_potentially_counted_in_nav"].empty, (
-        "Potential NULL-Ship-Date shipping quantity appears counted in ledger NAV."
+        "Potential NULL-Ship-Date shipping quantity appears counted in ledger SAP stream."
     )
     assert report["nav_item_qty_mismatch"].empty, (
-        "Item-level NAV quantity mismatch between shipping(expanded) and ledger NAV."
+        "Item-level SAP quantity mismatch between shipping(expanded) and ledger NAV source."
     )
     assert report["pod_item_qty_overcount_in_ledger"].empty, (
         "Item-level overcount: ledger POD quantity exceeds Open_Purchase_Orders."

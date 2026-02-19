@@ -159,7 +159,13 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     # pod = pod[pod['Name'] == 'Neousys Technology Incorp.'].copy()
     pod = pod.dropna(axis=0, how='all', subset=None, inplace=False)
     pod = pod.dropna(thresh=5)
-    pod['Memo'] = pod['Memo'].str.split(' ', expand=True)[0]
+    pod['Memo'] = pod['Memo'].astype(str).str.strip()
+    dust_cover_mask = pod['Memo'].str.upper().str.startswith("DUST COVER")
+    pod['Memo'] = np.where(
+        dust_cover_mask,
+        pod['Memo'],
+        pod['Memo'].str.split(' ', expand=True)[0],
+    )
     pod['QB Num'] = pod['QB Num'].str.split('(', expand=True)[0]
     # print(pod['Memo'].str.split('*',expand=True)[0])
     pod['Memo'] = pod['Memo'].str.replace("*", "")

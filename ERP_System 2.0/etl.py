@@ -68,7 +68,7 @@ def main():
     # Vectorized “On Hand - WIP”
     inv = add_onhand_minus_wip(inv, structured)
 
-    # -------- NAV preinstall expansion (for IN events) --------
+    # -------- SAP preinstall expansion (for IN events) --------
     nav_exp = expand_nav_preinstalled(ship)
 
     # -------- Build events: IN/OUT only (no reconcile) --------
