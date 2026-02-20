@@ -146,30 +146,60 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     Steps:
       - drop finance/qty columns we do not need
       - rename to unified column names (Order Date, QB Num, Qty(+))
-      - discard the leftmost index-like column
+      - derive Item from the first-column section blocks:
+        header item -> detail lines -> Total <item>
       - drop fully-empty rows and rows with too few populated fields
-      - trim memo/QB Num text and normalize item numbers
+      - trim QB Num text and normalize item numbers
     """
     pod = df_pod.copy()
     pod = pod.drop(columns=['Amount', 'Open Balance', "Rcv'd", "Qty"], errors="ignore")
+    first_col = pod.columns[0] if len(pod.columns) > 0 else None
     if "Num" in pod.columns and "POD#" not in pod.columns:
         pod["POD#"] = pod["Num"]
     pod.rename(columns={"Date": "Order Date", "Num": "QB Num", "Backordered": "Qty(+)"}, inplace=True)
-    pod = pod.drop(pod.columns[[0]], axis=1)
     # pod = pod[pod['Name'] == 'Neousys Technology Incorp.'].copy()
     pod = pod.dropna(axis=0, how='all', subset=None, inplace=False)
+    pod['QB Num'] = pod['QB Num'].astype(str).str.split('(', expand=True)[0].str.strip()
+
+    # Build Item by section from the first column:
+    # rows with "Total ..." close a section; rows with non-empty label start a section.
+    if first_col is not None and first_col in pod.columns:
+        labels = (
+            pod[first_col]
+            .astype(str)
+            .str.replace("\u00A0", " ", regex=False)
+            .str.strip()
+        )
+        labels = labels.mask(labels.str.lower().isin(["nan", "none", ""]))
+        is_total = labels.str.match(r"(?i)^total\b", na=False)
+        is_header = labels.notna() & ~is_total
+
+        section_item: list[str | None] = []
+        current_item: str | None = None
+        for lbl, total, header in zip(labels.tolist(), is_total.tolist(), is_header.tolist()):
+            if total:
+                current_item = None
+            elif header:
+                current_item = str(lbl).strip()
+            section_item.append(current_item)
+
+        pod["Item"] = pd.Series(section_item, index=pod.index, dtype="string")
+    else:
+        pod["Item"] = pd.NA
+
+    # Keep detail rows only after section-item is assigned so inherited headers survive.
     pod = pod.dropna(thresh=5)
-    pod['Memo'] = pod['Memo'].astype(str).str.strip()
-    dust_cover_mask = pod['Memo'].str.upper().str.startswith("DUST COVER")
-    pod['Memo'] = np.where(
-        dust_cover_mask,
-        pod['Memo'],
-        pod['Memo'].str.split(' ', expand=True)[0],
-    )
-    pod['QB Num'] = pod['QB Num'].str.split('(', expand=True)[0]
-    # print(pod['Memo'].str.split('*',expand=True)[0])
-    pod['Memo'] = pod['Memo'].str.replace("*", "")
-    pod.rename(columns={"Memo": "Item"}, inplace=True)
+
+    # Fallback: if section-based Item is missing, derive from Memo using legacy rule.
+    if "Memo" in pod.columns:
+        memo = pod["Memo"].astype(str).str.strip()
+        memo_item = memo.str.split(' ', expand=True)[0]
+        memo_item = pd.Series(memo_item, index=pod.index, dtype="string").str.replace("*", "", regex=False).str.strip()
+        pod["Item"] = pod["Item"].fillna(memo_item)
+
+    # Keep only detail rows that carry a POD number.
+    pod = pod.loc[pod["QB Num"].notna() & pod["QB Num"].ne("")].copy()
+
     pod['Order Date'] = pd.to_datetime(pod['Order Date'])
     if 'Deliv Date' in pod.columns:
         pod['Deliv Date'] = pd.to_datetime(pod['Deliv Date'], errors="coerce")
@@ -178,6 +208,7 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     if 'Source Name' in pod.columns and 'Deliv Date' in pod.columns:
         mask = pod['Source Name'].astype(str).ne("Neousys Technology Incorp.")
         pod.loc[mask, 'Ship Date'] = pod.loc[mask, 'Deliv Date']
+    pod["Item"] = pod["Item"].astype(str).str.strip()
     pod["Item"] = pod["Item"].map(normalize_item)
     df_pod = pd.DataFrame(pod)
     return df_pod
@@ -228,9 +259,23 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
     Ship["Qty(+)"] = pd.to_numeric(Ship["Qty(+)"], errors="coerce").fillna(0).astype(int)
 
     # --- Pre/Bare logic ---
+    model_excluded_from_pre_expand = {
+        "NRU-120S-AGX32G",
+        "NRU-120S-JAXI32GB",
+        "NRU-154-JON16-NS",
+        "NRU-154-JON8-NS",
+        "NRU-156-JON8-128GB",
+        "NRU-156-JON8-NS",
+        "NRU-161V-AWP-JON16-NS",
+        "NRU-162S-AWP-JON16-NS",
+        "NRU-171V-PPC-JON16-NS",
+        "NRU-172S-PPC-JON16-NS",
+    }
+    model_key = Ship["Item"].astype(str).str.upper().str.strip()
     model_ok = (
-    Ship["Item"].str.upper().str.startswith(("N", "SEMIL", "POC", "F", "S1", "S2"), na=False)
-    & ~Ship["Item"].str.upper().str.startswith("NRU-52S-NX")
+    model_key.str.startswith(("N", "SEMIL", "POC", "F", "S1", "S2"), na=False)
+    & ~model_key.str.startswith("NRU-52S-NX")
+    & ~model_key.isin(model_excluded_from_pre_expand)
 )
 
     # accept English or Chinese comma: ", including" or "， including"
