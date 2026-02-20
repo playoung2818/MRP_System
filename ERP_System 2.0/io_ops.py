@@ -116,7 +116,48 @@ def fetch_pdf_orders_df_from_supabase() -> pd.DataFrame:
 
 # ---------- Load (DB) ----------
 def write_to_db(df: pd.DataFrame, schema: str, table: str):
-    df.to_sql(table, engine(), schema=schema, if_exists="replace", index=False, method="multi", chunksize=10_000)
+    if df is None:
+        return
+
+    out = df.copy()
+    # Normalize nested objects so DB adapters do not choke on dict/list payloads.
+    for c in out.columns:
+        if out[c].dtype == "object":
+            out[c] = out[c].map(
+                lambda v: json.dumps(v, ensure_ascii=False)
+                if isinstance(v, (dict, list, tuple, set))
+                else v
+            )
+
+    # Keep SQLAlchemy parameter payload stable.
+    out = out.where(pd.notna(out), None)
+
+    eng = engine()
+    try:
+        out.to_sql(
+            table,
+            eng,
+            schema=schema,
+            if_exists="replace",
+            index=False,
+            method="multi",
+            chunksize=2_000,
+        )
+    except Exception as exc:
+        msg = str(exc)
+        # Fallback for SQLAlchemy bulk bind failures (e.g. e3q8 / bind parameter errors).
+        if ("sqlalche.me/e/20/e3q8" in msg) or ("bind parameter" in msg.lower()):
+            out.to_sql(
+                table,
+                eng,
+                schema=schema,
+                if_exists="replace",
+                index=False,
+                method=None,
+                chunksize=500,
+            )
+        else:
+            raise
 
 # ---------- Google Sheets ----------
 def write_final_sales_order_to_gsheet(df: pd.DataFrame, *,

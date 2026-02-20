@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, render_template_string, jsonify, abort, redirect, url_for, send_file, Response
 import pandas as pd
+import numpy as np
 from sqlalchemy import text
 
 from ui import (
@@ -15,6 +16,7 @@ from ui import (
     ITEM_TPL,
     INVENTORY_TPL,
     PRODUCTION_TPL,
+    PHASE1_TPL,
 )
 from quote_ui import QUOTE_TPL
 
@@ -606,6 +608,104 @@ def _open_po_table_for_item(item: str) -> tuple[list[str], list[dict]]:
 
     result = result.fillna("").astype(str)
     return list(result.columns), result.to_dict(orient="records")
+
+
+def _phase1_board_data(
+    *,
+    item_filter: str = "",
+    so_filter: str = "",
+    customer_filter: str = "",
+    status_filter: str = "",
+    limit: int = 300,
+) -> dict[str, list[dict]]:
+    if SO_INV is None or OPEN_PO is None:
+        return {"demand_rows": [], "supply_rows": [], "coverage_rows": []}
+
+    so = SO_INV.copy()
+    po = OPEN_PO.copy()
+
+    for c in ["QB Num", "Item", "Name", "Component_Status", "Ship Date", "Qty(-)", "Assigned Q'ty"]:
+        if c not in so.columns:
+            so[c] = pd.NA
+    so["QB Num"] = so["QB Num"].astype(str).str.strip()
+    so["Item"] = so["Item"].astype(str).str.strip()
+    so["Name"] = so["Name"].astype(str).str.strip()
+    so["Component_Status"] = so["Component_Status"].astype(str).str.strip()
+    so["Qty(-)"] = pd.to_numeric(so["Qty(-)"], errors="coerce").fillna(0.0)
+    so["Assigned Q'ty"] = pd.to_numeric(so["Assigned Q'ty"], errors="coerce").fillna(0.0)
+    so["Ship Date"] = pd.to_datetime(so["Ship Date"], errors="coerce")
+
+    demand = so.loc[so["Component_Status"].isin(["Waiting", "Shortage"])].copy()
+
+    if status_filter in {"Waiting", "Shortage"}:
+        demand = demand.loc[demand["Component_Status"].eq(status_filter)].copy()
+    if item_filter:
+        demand = demand.loc[demand["Item"].str.contains(item_filter, case=False, na=False)].copy()
+    if so_filter:
+        demand = demand.loc[demand["QB Num"].str.contains(so_filter, case=False, na=False)].copy()
+    if customer_filter:
+        demand = demand.loc[demand["Name"].str.contains(customer_filter, case=False, na=False)].copy()
+
+    demand_g = (
+        demand.groupby(["QB Num", "Name", "Item", "Component_Status", "Ship Date"], dropna=False, as_index=False)
+        .agg(demand_qty=("Qty(-)", "sum"), assigned_qty=("Assigned Q'ty", "max"))
+    )
+    demand_g["gap_qty"] = (demand_g["demand_qty"] - demand_g["assigned_qty"]).clip(lower=0.0)
+    demand_g["need_date"] = demand_g["Ship Date"].dt.strftime("%Y-%m-%d").fillna("")
+    demand_g.rename(
+        columns={"QB Num": "qb_num", "Name": "customer", "Item": "item", "Component_Status": "status"},
+        inplace=True,
+    )
+    demand_g = demand_g.sort_values(["need_date", "status", "qb_num", "item"], kind="mergesort")
+
+    for c in ["POD#", "Item", "Qty(+)", "Name", "Ship Date", "Deliv Date"]:
+        if c not in po.columns:
+            po[c] = pd.NA
+    po["POD#"] = po["POD#"].astype(str).str.strip()
+    po["Item"] = po["Item"].astype(str).str.strip()
+    po["Name"] = po["Name"].astype(str).str.strip()
+    po["Qty(+)"] = pd.to_numeric(po["Qty(+)"], errors="coerce").fillna(0.0)
+    po["Ship Date"] = pd.to_datetime(po["Ship Date"], errors="coerce")
+    po["Deliv Date"] = pd.to_datetime(po["Deliv Date"], errors="coerce")
+    po["eta_date"] = po["Ship Date"].fillna(po["Deliv Date"])
+    po["eta_date"] = po["eta_date"].dt.strftime("%Y-%m-%d").fillna("")
+
+    supply = po.loc[(po["Qty(+)"] > 0) & po["POD#"].ne("")].copy()
+    if item_filter:
+        supply = supply.loc[supply["Item"].str.contains(item_filter, case=False, na=False)].copy()
+    if demand_g.empty:
+        allowed_items: set[str] = set()
+    else:
+        allowed_items = set(demand_g["item"].dropna().astype(str).tolist())
+    if so_filter and allowed_items:
+        supply = supply.loc[supply["Item"].isin(allowed_items)].copy()
+
+    supply_g = (
+        supply.groupby(["POD#", "Item", "eta_date", "Name"], dropna=False, as_index=False)["Qty(+)"]
+        .sum()
+        .rename(columns={"POD#": "pod_no", "Item": "item", "Name": "vendor", "Qty(+)": "remaining_qty"})
+    )
+    supply_g = supply_g.sort_values(["eta_date", "pod_no", "item"], kind="mergesort")
+
+    demand_item = demand_g.groupby("item", as_index=False)["demand_qty"].sum() if not demand_g.empty else pd.DataFrame(columns=["item", "demand_qty"])
+    supply_item = supply_g.groupby("item", as_index=False)["remaining_qty"].sum() if not supply_g.empty else pd.DataFrame(columns=["item", "remaining_qty"])
+
+    coverage = demand_item.merge(supply_item, on="item", how="outer")
+    coverage["demand_qty"] = pd.to_numeric(coverage["demand_qty"], errors="coerce").fillna(0.0)
+    coverage["supply_qty"] = pd.to_numeric(coverage["remaining_qty"], errors="coerce").fillna(0.0)
+    coverage.drop(columns=["remaining_qty"], inplace=True, errors="ignore")
+    coverage["gap_qty"] = coverage["supply_qty"] - coverage["demand_qty"]
+    coverage["coverage_pct"] = np.where(
+        coverage["demand_qty"] > 0,
+        (coverage["supply_qty"] / coverage["demand_qty"]) * 100.0,
+        np.where(coverage["supply_qty"] > 0, 999.0, 0.0),
+    )
+    coverage = coverage.sort_values(["gap_qty", "item"], ascending=[True, True], kind="mergesort")
+
+    demand_rows = demand_g.head(limit).to_dict(orient="records")
+    supply_rows = supply_g.head(limit).to_dict(orient="records")
+    coverage_rows = coverage.head(limit).to_dict(orient="records")
+    return {"demand_rows": demand_rows, "supply_rows": supply_rows, "coverage_rows": coverage_rows}
 
 # initial load
 _load_from_db(force=True)
@@ -1298,6 +1398,35 @@ def quotation_lookup():
         ledger_rows=ledger_rows,
         loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
     )
+
+
+@app.route("/phase1")
+def phase1_board():
+    _ensure_loaded()
+    if _LAST_LOAD_ERR:
+        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
+    return render_template_string(
+        PHASE1_TPL,
+        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
+    )
+
+
+@app.route("/api/phase1/board")
+def api_phase1_board():
+    _ensure_loaded()
+    if _LAST_LOAD_ERR:
+        return jsonify({"ok": False, "error": _LAST_LOAD_ERR}), 503
+    try:
+        payload = _phase1_board_data(
+            item_filter=(request.args.get("item") or "").strip(),
+            so_filter=(request.args.get("so") or "").strip(),
+            customer_filter=(request.args.get("customer") or "").strip(),
+            status_filter=(request.args.get("status") or "").strip(),
+            limit=max(50, min(1000, int(request.args.get("limit") or 300))),
+        )
+        return jsonify({"ok": True, **payload})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 if __name__ == "__main__":
     # Flask dev server

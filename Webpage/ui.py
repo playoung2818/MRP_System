@@ -177,6 +177,14 @@ INDEX_TPL = """
     <a class="btn btn-lg" href="/quotation_lookup">Open</a>
   </div>
 
+  <div class="inv-cta mt-3" style="background:#1f4ed8;">
+    <div>
+      <div class="title">Phase 1 Board</div>
+      <div class="sub">Read-only training view: Demand Queue, Supply Pool, Coverage</div>
+    </div>
+    <a class="btn btn-lg" href="/phase1">Open</a>
+  </div>
+
   {% if customer_query is not none %}
   <div class="card-lite bg-white my-4 p-4">
     <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center mb-3">
@@ -542,6 +550,228 @@ INDEX_TPL = """
   })();
   </script>
 
+</body>
+</html>
+"""
+
+PHASE1_TPL = """
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Phase 1 - Read-only Allocation Board</title>
+  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-1:#f4f8ff; --bg-2:#f3fff6; --ink:#10213a; --muted:#5a6b85;
+      --card:#ffffff; --line:#dbe4f2; --accent:#1769ff; --warn:#b42318;
+    }
+    body{
+      font-family:"Space Grotesk",sans-serif;
+      color:var(--ink);
+      background:radial-gradient(1200px 500px at 5% -10%, #e0edff 0%, transparent 55%),
+                 radial-gradient(1100px 500px at 95% -15%, #e5ffef 0%, transparent 50%),
+                 linear-gradient(180deg,var(--bg-1),var(--bg-2));
+      min-height:100vh;
+    }
+    .wrap{ padding:24px; max-width:1500px; margin:0 auto; }
+    .title{ font-size:2rem; font-weight:700; letter-spacing:.02em; }
+    .sub{ color:var(--muted); }
+    .badge-ro{ background:#fff1cc; color:#6f4f00; font-weight:700; border-radius:999px; padding:.25rem .7rem; }
+    .card-lite{
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:var(--card);
+      box-shadow:0 14px 30px rgba(16,33,58,.08);
+    }
+    .table-wrap{ max-height:55vh; overflow:auto; border-radius:12px; border:1px solid var(--line); }
+    .table{ margin:0; }
+    .table thead th{
+      position:sticky; top:0; z-index:2; background:#f8fbff; white-space:nowrap;
+      text-transform:uppercase; font-size:.75rem; letter-spacing:.06em; color:#4f5f78;
+    }
+    .mono{ font-family:"IBM Plex Mono",monospace; font-size:.9rem; }
+    .num{ text-align:right; font-variant-numeric:tabular-nums; }
+    .num.neg{ color:var(--warn); font-weight:700; }
+    .pill{
+      display:inline-block; border-radius:999px; padding:.2rem .55rem; font-size:.75rem; font-weight:700;
+    }
+    .pill.wait{ background:#fff3cd; color:#664d03; }
+    .pill.short{ background:#ffe2e0; color:#9d1b13; }
+    .kpi{ border:1px solid var(--line); border-radius:12px; background:#f9fbff; padding:.65rem .8rem; }
+    .kpi .lbl{ color:var(--muted); font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; }
+    .kpi .val{ font-weight:700; font-size:1.1rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+      <div>
+        <div class="title">Phase 1: Read-only Allocation Board</div>
+        <div class="sub">Training mode for Demand Queue, Supply Pool, and Coverage. Loaded {{ loaded_at }}</div>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge-ro">READ ONLY</span>
+        <a class="btn btn-outline-secondary btn-sm" href="/">Back</a>
+      </div>
+    </div>
+
+    <div class="card-lite p-3 mb-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-1">Item contains</label>
+          <input id="flt-item" class="form-control" placeholder="e.g. I9-14900">
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-1">SO / QB</label>
+          <input id="flt-so" class="form-control" placeholder="e.g. SO-2025xxxx">
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-1">Customer contains</label>
+          <input id="flt-customer" class="form-control" placeholder="e.g. Applied">
+        </div>
+        <div class="col-12 col-md-2">
+          <label class="form-label mb-1">Status</label>
+          <select id="flt-status" class="form-select">
+            <option value="">Waiting + Shortage</option>
+            <option value="Waiting">Waiting</option>
+            <option value="Shortage">Shortage</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-1 d-grid">
+          <button id="btn-refresh" class="btn btn-primary">Load</button>
+        </div>
+      </div>
+      <div class="row g-2 mt-2">
+        <div class="col-6 col-md-3"><div class="kpi"><div class="lbl">Demand Rows</div><div id="kpi-demand-rows" class="val mono">0</div></div></div>
+        <div class="col-6 col-md-3"><div class="kpi"><div class="lbl">Supply Rows</div><div id="kpi-supply-rows" class="val mono">0</div></div></div>
+        <div class="col-6 col-md-3"><div class="kpi"><div class="lbl">Coverage Rows</div><div id="kpi-cov-rows" class="val mono">0</div></div></div>
+        <div class="col-6 col-md-3"><div class="kpi"><div class="lbl">Items in Deficit</div><div id="kpi-deficit" class="val mono">0</div></div></div>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-12 col-xl-4">
+        <div class="card-lite p-3">
+          <div class="fw-bold mb-2">Demand Queue</div>
+          <div class="table-wrap">
+            <table class="table table-sm table-hover align-middle">
+              <thead><tr><th>SO</th><th>Customer</th><th>Item</th><th class="num">Demand</th><th class="num">Assigned</th><th class="num">Gap</th><th>Status</th><th>Need Date</th></tr></thead>
+              <tbody id="tb-demand"><tr><td colspan="8" class="text-center text-muted py-3">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-4">
+        <div class="card-lite p-3">
+          <div class="fw-bold mb-2">Supply Pool</div>
+          <div class="table-wrap">
+            <table class="table table-sm table-hover align-middle">
+              <thead><tr><th>POD</th><th>Item</th><th class="num">Remaining</th><th>ETA</th><th>Vendor</th></tr></thead>
+              <tbody id="tb-supply"><tr><td colspan="5" class="text-center text-muted py-3">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-4">
+        <div class="card-lite p-3">
+          <div class="fw-bold mb-2">Coverage by Item</div>
+          <div class="table-wrap">
+            <table class="table table-sm table-hover align-middle">
+              <thead><tr><th>Item</th><th class="num">Demand</th><th class="num">Supply</th><th class="num">Gap</th><th class="num">Coverage %</th></tr></thead>
+              <tbody id="tb-cover"><tr><td colspan="5" class="text-center text-muted py-3">Loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    const q = (id) => document.getElementById(id);
+    const fmtNum = (v) => {
+      const n = Number(v || 0);
+      return Number.isFinite(n) ? n.toLocaleString(undefined, {maximumFractionDigits: 2}) : "0";
+    };
+    const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;");
+
+    function demandRow(r){
+      const gap = Number(r.gap_qty || 0);
+      const statusClass = String(r.status || "").toLowerCase().startsWith("short") ? "short" : "wait";
+      return `<tr>
+        <td class="mono">${esc(r.qb_num)}</td>
+        <td>${esc(r.customer)}</td>
+        <td>${esc(r.item)}</td>
+        <td class="num mono">${fmtNum(r.demand_qty)}</td>
+        <td class="num mono">${fmtNum(r.assigned_qty)}</td>
+        <td class="num mono ${gap>0?'neg':''}">${fmtNum(r.gap_qty)}</td>
+        <td><span class="pill ${statusClass}">${esc(r.status)}</span></td>
+        <td class="mono">${esc(r.need_date)}</td>
+      </tr>`;
+    }
+
+    function supplyRow(r){
+      return `<tr>
+        <td class="mono">${esc(r.pod_no)}</td>
+        <td>${esc(r.item)}</td>
+        <td class="num mono">${fmtNum(r.remaining_qty)}</td>
+        <td class="mono">${esc(r.eta_date)}</td>
+        <td>${esc(r.vendor)}</td>
+      </tr>`;
+    }
+
+    function coverRow(r){
+      const gap = Number(r.gap_qty || 0);
+      return `<tr>
+        <td>${esc(r.item)}</td>
+        <td class="num mono">${fmtNum(r.demand_qty)}</td>
+        <td class="num mono">${fmtNum(r.supply_qty)}</td>
+        <td class="num mono ${gap<0?'neg':''}">${fmtNum(r.gap_qty)}</td>
+        <td class="num mono">${fmtNum(r.coverage_pct)}</td>
+      </tr>`;
+    }
+
+    async function loadBoard(){
+      const params = new URLSearchParams({
+        item: q("flt-item").value.trim(),
+        so: q("flt-so").value.trim(),
+        customer: q("flt-customer").value.trim(),
+        status: q("flt-status").value.trim()
+      });
+      const res = await fetch(`/api/phase1/board?${params.toString()}`);
+      const data = await res.json();
+      if (!data.ok){ throw new Error(data.error || "Load failed"); }
+
+      const d = data.demand_rows || [];
+      const s = data.supply_rows || [];
+      const c = data.coverage_rows || [];
+
+      q("tb-demand").innerHTML = d.length ? d.map(demandRow).join("") : '<tr><td colspan="8" class="text-center text-muted py-3">No rows</td></tr>';
+      q("tb-supply").innerHTML = s.length ? s.map(supplyRow).join("") : '<tr><td colspan="5" class="text-center text-muted py-3">No rows</td></tr>';
+      q("tb-cover").innerHTML = c.length ? c.map(coverRow).join("") : '<tr><td colspan="5" class="text-center text-muted py-3">No rows</td></tr>';
+
+      q("kpi-demand-rows").textContent = String(d.length);
+      q("kpi-supply-rows").textContent = String(s.length);
+      q("kpi-cov-rows").textContent = String(c.length);
+      q("kpi-deficit").textContent = String(c.filter(x => Number(x.gap_qty || 0) < 0).length);
+    }
+
+    q("btn-refresh").addEventListener("click", function(){ loadBoard().catch(alert); });
+    ["flt-item","flt-so","flt-customer"].forEach((id) => {
+      q(id).addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); loadBoard().catch(alert); }});
+    });
+    q("flt-status").addEventListener("change", function(){ loadBoard().catch(alert); });
+
+    loadBoard().catch((e) => {
+      q("tb-demand").innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">${esc(e.message)}</td></tr>`;
+      q("tb-supply").innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">${esc(e.message)}</td></tr>`;
+      q("tb-cover").innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">${esc(e.message)}</td></tr>`;
+    });
+  })();
+  </script>
 </body>
 </html>
 """
