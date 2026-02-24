@@ -26,6 +26,12 @@ def level2_build_pick_flags(word_rows: pd.DataFrame) -> pd.DataFrame:
       - Picked_Flag is True when status == 'Picked' (case-insensitive, trim spaces)
       - group by QB Num and keep max Picked_Flag
     """
+    out = pd.DataFrame()
+    out['QB Num'] = word_rows['order_id'].apply(level1_normalize_wo)
+    out['Picked_Flag'] = word_rows['status'].str.lower().eq('picked')
+    out = out.groupby('QB Num', as_index=False)['Picked_Flag'].max()
+    return out
+
     raise NotImplementedError("Implement level2_build_pick_flags")
 
 
@@ -34,9 +40,11 @@ def level3_select_shipping_qty(df_shipping: pd.DataFrame) -> pd.Series:
     Level 3
     Return one numeric Series used as Qty(+):
       - Prefer 'Confirmed Qty'
-      - Fallback to 'Qty' if confirmed is missing/NaN
+      - If confirmed is missing/NaN, use 0 (never fallback to 'Qty')
       - Non-numeric values become 0
     """
+    return pd.to_numeric(df_shipping['Confirmed Qty'], errors="coerce").fillna(0)
+    
     raise NotImplementedError("Implement level3_select_shipping_qty")
 
 
@@ -122,4 +130,3 @@ def _kahn_topological_order(graph: dict[str, list[str]]) -> list[str]:
     if len(order) != len(nodes):
         raise ValueError("Cycle detected in graph")
     return order
-

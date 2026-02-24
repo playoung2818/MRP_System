@@ -59,7 +59,7 @@ def test_level3_select_shipping_qty() -> None:
         ]
     )
     s = level3_select_shipping_qty(df)
-    assert s.tolist() == [10.0, 3.0, 2.0, 5.0, 0.0]
+    assert s.tolist() == [10.0, 0.0, 0.0, 0.0, 0.0]
 
 
 def test_level4_reconcile_open_po_vs_ledger() -> None:

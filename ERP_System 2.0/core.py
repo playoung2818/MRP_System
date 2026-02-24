@@ -255,7 +255,8 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
 
     Ship["Ship Date"] = pd.to_datetime(Ship["Ship Date"], errors="coerce")
 
-    # Qty(+) numeric
+    # Qty(+) numeric from Confirmed Qty only.
+    # Missing/non-numeric confirmed values are treated as 0 (no fallback to Qty).
     Ship["Qty(+)"] = pd.to_numeric(Ship["Qty(+)"], errors="coerce").fillna(0).astype(int)
 
     # --- Pre/Bare logic ---

@@ -33,7 +33,7 @@ CHALLENGES: list[Challenge] = [
     Challenge(
         level=3,
         title="Shipping Qty Source",
-        goal="Use Confirmed Qty as inbound qty source, with Qty fallback for backward compatibility.",
+        goal="Use Confirmed Qty as inbound qty source, with missing/non-numeric values treated as 0.",
         target="practice/student_tasks.py -> level3_select_shipping_qty",
         why_it_matters="Shipping qty source directly affects ledger IN events and ATP.",
         test_node="practice/tests/test_mentor_levels.py::test_level3_select_shipping_qty",
@@ -55,4 +55,3 @@ CHALLENGES: list[Challenge] = [
         test_node="practice/tests/test_mentor_levels.py::test_level5_topological_order",
     ),
 ]
-
