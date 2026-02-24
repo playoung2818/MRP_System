@@ -152,8 +152,12 @@ def test_open_po_vs_ledger_in_item_qty_summary() -> None:
         .rename(columns={"ship_date": "ship_date_list"})
     )
 
+    pod_filtered = pod_all.loc[
+        ~pod_all["vendor_name"].isin(["CoastIPC, Inc.", "Industrial PC, Inc."])
+    ].copy()
+
     pod_all_list = (
-        pod_all.loc[pod_all["pod_no"].ne(""), ["item_key", "pod_no", "qty"]]
+        pod_filtered.loc[pod_filtered["pod_no"].ne(""), ["item_key", "pod_no", "qty"]]
         .groupby(["item_key", "pod_no"], as_index=False)["qty"]
         .sum()
         .merge(ship_dates, on=["item_key", "pod_no"], how="left")
@@ -170,8 +174,7 @@ def test_open_po_vs_ledger_in_item_qty_summary() -> None:
         .to_dict()
     )
 
-    pod = pod_all.copy()
-    pod = pod.loc[~pod["vendor_name"].isin(["CoastIPC, Inc.", "Industrial PC, Inc."])].copy()
+    pod = pod_filtered.copy()
     pod_item = (
         pod.groupby("item_key", as_index=False)["qty"]
         .sum()

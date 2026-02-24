@@ -104,14 +104,14 @@ def _build_report(engine) -> dict[str, pd.DataFrame]:
 
     # Rebuild the same key fields from raw so we can carry Reference into transformed rows.
     src = raw.copy()
-    for c in ["Customer PO No.", "Model Name", "Description", "Ship Date", "Qty", "Reference"]:
+    for c in ["Customer PO No.", "Model Name", "Description", "Ship Date", "Confirmed Qty", "Reference"]:
         if c not in src.columns:
             src[c] = pd.NA
     src["QB Num"] = src["Customer PO No."].astype(str).str.split("(").str[0].str.strip()
     src["Item"] = src["Model Name"].astype(str).str.strip()
     src["Description"] = src["Description"].astype(str)
     src["Ship Date"] = pd.to_datetime(src["Ship Date"], errors="coerce")
-    src["Qty(+)"] = pd.to_numeric(src["Qty"], errors="coerce").fillna(0).astype(int)
+    src["Qty(+)"] = pd.to_numeric(src["Confirmed Qty"], errors="coerce").fillna(0).astype(int)
     src["Reference"] = src["Reference"].astype(str).str.strip()
     src = src[["QB Num", "Item", "Description", "Ship Date", "Qty(+)", "Reference"]]
 

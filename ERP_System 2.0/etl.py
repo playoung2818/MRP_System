@@ -46,7 +46,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 def main():
     # -------- Extract --------
     so_raw, inv_raw, ship_raw, pod_raw = extract_inputs()
-    word_files_df = fetch_word_files_df("http://192.168.60.133:5001/api/word-files")
+    word_files_df = fetch_word_files_df(
+        [
+            "http://127.0.0.1:5001/api/word-files",
+            "http://localhost:5001/api/word-files",
+            "http://192.168.60.133:5001/api/word-files",
+        ]
+    )
     pdf_orders_df = fetch_pdf_orders_df_from_supabase()
     consigned_wos: set[str] = set()
     if "Consigned" in pdf_orders_df.columns and "WO" in pdf_orders_df.columns:

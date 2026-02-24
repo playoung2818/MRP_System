@@ -70,14 +70,18 @@ def extract_inputs():
     df_pod               = pd.read_csv(str(POD_FILE), encoding="ISO-8859-1", engine="python")
     return df_sales_order, inventory_df, df_shipping_schedule, df_pod
 
-def fetch_word_files_df(api_url: str) -> pd.DataFrame:
-    try:
-        r = requests.get(api_url, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        wf = pd.DataFrame(data.get("word_files", []))
-    except Exception:
-        wf = pd.DataFrame(columns=["file_name","order_id","status"])
+def fetch_word_files_df(api_url: str | list[str] | tuple[str, ...]) -> pd.DataFrame:
+    urls = [api_url] if isinstance(api_url, str) else list(api_url)
+    wf = pd.DataFrame(columns=["file_name", "order_id", "status"])
+    for url in urls:
+        try:
+            r = requests.get(url, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            wf = pd.DataFrame(data.get("word_files", []))
+            break
+        except Exception:
+            continue
     if "order_id" in wf.columns:
         wf = wf.rename(columns={"order_id":"WO_Number"})
     wf["WO_Number"] = wf["WO_Number"].astype(str).apply(normalize_wo_number)

@@ -232,7 +232,7 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["SO NO.", "QB Num", "Item", "Description", "Ship Date", "Qty(+)", "Pre/Bare"])
 
     # --- make sure the columns exist (create empty ones if missing) ---
-    need = ['SO NO.', 'Customer PO No.', 'Model Name', 'Ship Date', 'Qty', 'Description']
+    need = ['SO NO.', 'Customer PO No.', 'Model Name', 'Ship Date', 'Confirmed Qty', 'Description']
     for c in need:
         if c not in df.columns:
             df[c] = np.nan
@@ -242,7 +242,7 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
     Ship.rename(columns={
         "Customer PO No.": "QB Num",
         "Model Name": "Item",
-        "Qty": "Qty(+)"
+        "Confirmed Qty": "Qty(+)"
     }, inplace=True)
 
     # --- basic cleaning ---
