@@ -69,6 +69,28 @@ def level4_reconcile_open_po_vs_ledger(
       - gap_qty = ledger_in_qty - open_po_qty
       - return only rows where abs(gap_qty) > eps, sorted by gap_qty desc
     """
+    df = pd.DataFrame()
+    open_po = open_po.loc[~open_po["Name"].isin(excluded_vendors)].copy()
+
+    open_po['item_key']=open_po["Item"].astype(str).str.upper().str.strip()
+    ledger_in['item_key']=ledger_in["Item"].astype(str).str.upper().str.strip()
+
+    open_po["Qty(+)"] = pd.to_numeric(open_po["Qty(+)"], errors="coerce").fillna(0)
+    ledger_in["Delta"] = pd.to_numeric(ledger_in["Delta"], errors="coerce").fillna(0)
+
+    open_po = open_po.loc[open_po["Qty(+)"] > 0].copy()
+    ledger_in = ledger_in.loc[ledger_in["Delta"] > 0].copy()
+
+    po = open_po.groupby('item_key', as_index=False)["Qty(+)"].sum().rename(columns={"Qty(+)": "open_po_qty"})
+    led = ledger_in.groupby("item_key", as_index=False)["Delta"].sum().rename(columns={"Delta": "ledger_in_qty"})
+
+    df = po.merge(led, on='item_key', how='outer')
+    df["open_po_qty"] = pd.to_numeric(df["open_po_qty"], errors="coerce").fillna(0.0)
+    df["ledger_in_qty"] = pd.to_numeric(df["ledger_in_qty"], errors="coerce").fillna(0.0)
+    df['gap_qty'] = df['ledger_in_qty'] - df['open_po_qty']
+    
+    result = df[df['gap_qty'].abs() > eps].sort_values('gap_qty', ascending=False)
+    return result
     raise NotImplementedError("Implement level4_reconcile_open_po_vs_ledger")
 
 
