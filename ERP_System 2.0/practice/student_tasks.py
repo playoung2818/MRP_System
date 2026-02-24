@@ -11,6 +11,8 @@ def level1_normalize_wo(raw: str) -> str:
     Level 1
     Goal: normalize any WO/SO text to canonical 'SO-20xxxxxx' when possible.
     """
+    m = re.search(r'(20\d{6})', raw)
+    return f"SO-{m.group(0)}" if m else raw
     raise NotImplementedError("Implement level1_normalize_wo")
 
 
