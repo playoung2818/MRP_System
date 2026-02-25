@@ -16,6 +16,7 @@ from io_ops import (
     extract_inputs,
     write_to_db,
     write_final_sales_order_to_gsheet,
+    merge_open_sales_order_to_allocation_reference_gsheet,
     save_not_assigned_so,
     fetch_word_files_df,
     fetch_pdf_orders_df_from_supabase,
@@ -178,11 +179,10 @@ def main():
     # -------- Push to Google Sheets --------
     if not final_sales_order.empty:
         try:
-            write_final_sales_order_to_gsheet(
+            merge_open_sales_order_to_allocation_reference_gsheet(
                 final_sales_order.assign(
                     **{"Lead Time": pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date}
-                ),
-                consigned_wos=consigned_wos,
+                )
             )
         except Exception as e:
             logging.warning("Skipping Google Sheets export: %s", e)

@@ -222,6 +222,217 @@ def write_final_sales_order_to_gsheet(df: pd.DataFrame, *,
             except Exception:
                 pass
 
+
+def merge_open_sales_order_to_allocation_reference_gsheet(
+    df: pd.DataFrame,
+    *,
+    spreadsheet_name: str = "PDF_WO",
+    worksheet_name: str = "allocation_reference",
+    diff_worksheet_name: str = "allocation_reference_diff",
+    cred_path: str = r"C:\Users\Admin\OneDrive - neousys-tech\Desktop\Python\pdfwo-466115-734096e1cef8.json",
+) -> dict:
+    """
+    Merge current Open Sales Order rows into allocation_reference sheet.
+    Preserves manual input columns: Pre/Bare, POD.
+    Writes a row-level/column-level diff view to diff worksheet.
+    """
+    if gspread is None or set_with_dataframe is None or ServiceAccountCredentials is None:
+        raise ImportError(
+            "Google Sheets dependencies are missing. Install: "
+            "pip install gspread gspread-dataframe oauth2client"
+        )
+
+    ref_cols = ["Customer", "Customer PO", "QB Num", "Item", "Qty", "Lead Time", "Pre/Bare", "POD"]
+    sys_cols = ["Customer", "Customer PO", "QB Num", "Item", "Qty", "Lead Time"]
+    input_cols = ["Pre/Bare", "POD"]
+
+    def _col(series_df: pd.DataFrame, *candidates: str) -> pd.Series:
+        for c in candidates:
+            if c in series_df.columns:
+                return series_df[c]
+        return pd.Series([""] * len(series_df), index=series_df.index, dtype="object")
+
+    def _norm_ref_frame(src: pd.DataFrame) -> pd.DataFrame:
+        out = pd.DataFrame(index=src.index)
+        out["Customer"] = _col(src, "Customer", "Name").astype(str).str.strip()
+        out["Customer PO"] = _col(src, "Customer PO", "P. O. #").astype(str).str.strip()
+        out["QB Num"] = _col(src, "QB Num").astype(str).str.strip()
+        out["Item"] = _col(src, "Item").astype(str).str.strip()
+        out["Qty"] = pd.to_numeric(_col(src, "Qty", "Qty(-)"), errors="coerce").fillna(0.0)
+        lead = pd.to_datetime(_col(src, "Lead Time", "Ship Date"), errors="coerce")
+        out["Lead Time"] = lead.dt.strftime("%Y-%m-%d").fillna("")
+        out["Pre/Bare"] = _col(src, "Pre/Bare").astype(str).replace("nan", "").str.strip()
+        out["POD"] = _col(src, "POD").astype(str).replace("nan", "").str.strip()
+        return out[ref_cols].copy()
+
+    def _add_row_key(frame: pd.DataFrame) -> pd.DataFrame:
+        x = frame.copy()
+        x["__ord"] = (
+            x["Customer PO"].astype(str) + "|" + x["Lead Time"].astype(str) + "|" + x["Qty"].astype(str) + "|" + x["Customer"].astype(str)
+        )
+        x = x.sort_values(["QB Num", "Item", "__ord"]).reset_index(drop=True)
+        x["__occ"] = x.groupby(["QB Num", "Item"]).cumcount()
+        x["__row_key"] = x["QB Num"].astype(str) + "||" + x["Item"].astype(str) + "||" + x["__occ"].astype(str)
+        x.drop(columns=["__ord"], inplace=True)
+        return x
+
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    cred_path_use = cred_path
+    temp_cred_path = None
+    try:
+        temp_cred_path = os.path.join(tempfile.gettempdir(), f"gsheet_cred_{uuid.uuid4().hex}.json")
+        _copy_via_powershell(cred_path, temp_cred_path)
+        cred_path_use = temp_cred_path
+    except Exception:
+        cred_path_use = cred_path
+
+    try:
+        creds = ServiceAccountCredentials.from_json_keyfile_name(cred_path_use, scope)
+        client = gspread.authorize(creds)
+        sh = client.open(spreadsheet_name)
+
+        # Existing reference sheet (if any)
+        try:
+            ws_ref = sh.worksheet(worksheet_name)
+            old_records = ws_ref.get_all_records()
+            old_df = pd.DataFrame(old_records) if old_records else pd.DataFrame(columns=ref_cols)
+        except gspread.exceptions.WorksheetNotFound:
+            ws_ref = sh.add_worksheet(title=worksheet_name, rows=500, cols=20)
+            old_df = pd.DataFrame(columns=ref_cols)
+
+        # Normalize both sides
+        new_df = _norm_ref_frame(df.copy())
+        old_df = _norm_ref_frame(old_df.copy()) if not old_df.empty else pd.DataFrame(columns=ref_cols)
+
+        old_k = _add_row_key(old_df)
+        new_k = _add_row_key(new_df)
+
+        # Preserve user input columns from existing sheet by row_key
+        keep = old_k[["__row_key"] + input_cols].copy() if not old_k.empty else pd.DataFrame(columns=["__row_key"] + input_cols)
+        merged = new_k.merge(keep, on="__row_key", how="left", suffixes=("", "_old"))
+        for c in input_cols:
+            old_c = f"{c}_old"
+            if old_c in merged.columns:
+                merged[c] = merged[old_c].where(merged[old_c].astype(str).str.strip().ne(""), merged[c])
+                merged.drop(columns=[old_c], inplace=True)
+            merged[c] = merged[c].fillna("").astype(str).str.strip()
+
+        out_df = merged[ref_cols].copy()
+
+        # Build diff view
+        now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        diff_rows: list[dict] = []
+        old_map = old_k.set_index("__row_key") if not old_k.empty else pd.DataFrame(columns=old_k.columns).set_index(pd.Index([], name="__row_key"))
+        new_map = merged.set_index("__row_key") if not merged.empty else pd.DataFrame(columns=merged.columns).set_index(pd.Index([], name="__row_key"))
+
+        old_keys = set(old_map.index.tolist())
+        new_keys = set(new_map.index.tolist())
+
+        for k in sorted(new_keys - old_keys):
+            r = new_map.loc[k]
+            diff_rows.append(
+                {
+                    "generated_at_utc": now_utc,
+                    "change_type": "ADDED",
+                    "row_key": k,
+                    "QB Num": r.get("QB Num", ""),
+                    "Item": r.get("Item", ""),
+                    "column": "",
+                    "old_value": "",
+                    "new_value": "new row",
+                }
+            )
+        for k in sorted(old_keys - new_keys):
+            r = old_map.loc[k]
+            diff_rows.append(
+                {
+                    "generated_at_utc": now_utc,
+                    "change_type": "REMOVED",
+                    "row_key": k,
+                    "QB Num": r.get("QB Num", ""),
+                    "Item": r.get("Item", ""),
+                    "column": "",
+                    "old_value": "old row",
+                    "new_value": "",
+                }
+            )
+        for k in sorted(new_keys & old_keys):
+            r_old = old_map.loc[k]
+            r_new = new_map.loc[k]
+            for c in ref_cols:
+                ov = "" if pd.isna(r_old.get(c, "")) else str(r_old.get(c, ""))
+                nv = "" if pd.isna(r_new.get(c, "")) else str(r_new.get(c, ""))
+                if ov != nv:
+                    diff_rows.append(
+                        {
+                            "generated_at_utc": now_utc,
+                            "change_type": "CHANGED",
+                            "row_key": k,
+                            "QB Num": r_new.get("QB Num", ""),
+                            "Item": r_new.get("Item", ""),
+                            "column": c,
+                            "old_value": ov,
+                            "new_value": nv,
+                        }
+                    )
+
+        diff_df = pd.DataFrame(
+            diff_rows,
+            columns=["generated_at_utc", "change_type", "row_key", "QB Num", "Item", "column", "old_value", "new_value"],
+        )
+        if diff_df.empty:
+            diff_df = pd.DataFrame(
+                [
+                    {
+                        "generated_at_utc": now_utc,
+                        "change_type": "NO_CHANGE",
+                        "row_key": "",
+                        "QB Num": "",
+                        "Item": "",
+                        "column": "",
+                        "old_value": "",
+                        "new_value": "",
+                    }
+                ]
+            )
+
+        ws_ref.clear()
+        set_with_dataframe(ws_ref, out_df, include_index=False, include_column_header=True, resize=True)
+        try:
+            ws_ref.freeze(rows=1)
+        except Exception:
+            pass
+
+        try:
+            ws_diff = sh.worksheet(diff_worksheet_name)
+            ws_diff.clear()
+        except gspread.exceptions.WorksheetNotFound:
+            ws_diff = sh.add_worksheet(title=diff_worksheet_name, rows=500, cols=20)
+        set_with_dataframe(ws_diff, diff_df, include_index=False, include_column_header=True, resize=True)
+        try:
+            ws_diff.freeze(rows=1)
+        except Exception:
+            pass
+
+        summary = {
+            "rows_written": int(len(out_df)),
+            "added": int((diff_df["change_type"] == "ADDED").sum()),
+            "removed": int((diff_df["change_type"] == "REMOVED").sum()),
+            "changed_cells": int((diff_df["change_type"] == "CHANGED").sum()),
+        }
+        print(
+            "Merged Open Sales Order to Google Sheet -> "
+            f"{spreadsheet_name} / {worksheet_name}; diff -> {diff_worksheet_name}; summary={summary}"
+        )
+        return summary
+    finally:
+        if temp_cred_path:
+            try:
+                if os.path.exists(temp_cred_path):
+                    os.remove(temp_cred_path)
+            except Exception:
+                pass
+
 # ---------- Excel styling helper functions ----------
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl import load_workbook, Workbook

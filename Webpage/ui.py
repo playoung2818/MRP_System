@@ -586,6 +586,19 @@ PHASE1_TPL = """
       background:var(--card);
       box-shadow:0 14px 30px rgba(16,33,58,.08);
     }
+    .panel-split{
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:#fff;
+      padding:1rem;
+      height:100%;
+    }
+    .panel-title{
+      font-size:1rem;
+      font-weight:700;
+      letter-spacing:.02em;
+      margin-bottom:.45rem;
+    }
     .table-wrap{ max-height:55vh; overflow:auto; border-radius:12px; border:1px solid var(--line); }
     .table{ margin:0; }
     .table thead th{
@@ -603,6 +616,24 @@ PHASE1_TPL = """
     .kpi{ border:1px solid var(--line); border-radius:12px; background:#f9fbff; padding:.65rem .8rem; }
     .kpi .lbl{ color:var(--muted); font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; }
     .kpi .val{ font-weight:700; font-size:1.1rem; }
+    .result-section{
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:#fff;
+      box-shadow:0 10px 22px rgba(16,33,58,.06);
+      overflow:hidden;
+    }
+    .result-head{
+      padding:.7rem .9rem;
+      font-weight:700;
+      letter-spacing:.03em;
+      text-transform:uppercase;
+      font-size:.8rem;
+    }
+    .result-head.demand{ background:#e8f0ff; color:#1148a6; border-bottom:1px solid #cdddfd; }
+    .result-head.supply{ background:#e9fbf1; color:#166b46; border-bottom:1px solid #c6eed8; }
+    .result-head.cover{ background:#eef3fb; color:#3a4e71; border-bottom:1px solid #d8e2f1; }
+    .result-body{ padding:.8rem; }
   </style>
 </head>
 <body>
@@ -619,29 +650,49 @@ PHASE1_TPL = """
     </div>
 
     <div class="card-lite p-3 mb-3">
-      <div class="row g-2 align-items-end">
-        <div class="col-12 col-md-3">
-          <label class="form-label mb-1">Item contains</label>
-          <input id="flt-item" class="form-control" placeholder="e.g. I9-14900">
+      <div class="row g-3">
+        <div class="col-12 col-lg-6">
+          <div class="panel-split">
+            <div class="panel-title">Demand</div>
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-md-6">
+                <label class="form-label mb-1">SO / QB</label>
+                <input id="flt-so" class="form-control" placeholder="e.g. SO-2025xxxx">
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label mb-1">Customer contains</label>
+                <input id="flt-customer" class="form-control" placeholder="e.g. Applied">
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label mb-1">Status</label>
+                <select id="flt-status" class="form-select">
+                  <option value="">Waiting + Shortage</option>
+                  <option value="Waiting">Waiting</option>
+                  <option value="Shortage">Shortage</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-3 d-grid">
+                <button id="btn-demand-search" class="btn btn-primary">Search</button>
+              </div>
+              <div class="col-6 col-md-3 d-grid">
+                <button id="btn-demand-load" class="btn btn-outline-secondary">Load</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label mb-1">SO / QB</label>
-          <input id="flt-so" class="form-control" placeholder="e.g. SO-2025xxxx">
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label mb-1">Customer contains</label>
-          <input id="flt-customer" class="form-control" placeholder="e.g. Applied">
-        </div>
-        <div class="col-12 col-md-2">
-          <label class="form-label mb-1">Status</label>
-          <select id="flt-status" class="form-select">
-            <option value="">Waiting + Shortage</option>
-            <option value="Waiting">Waiting</option>
-            <option value="Shortage">Shortage</option>
-          </select>
-        </div>
-        <div class="col-12 col-md-1 d-grid">
-          <button id="btn-refresh" class="btn btn-primary">Load</button>
+        <div class="col-12 col-lg-6">
+          <div class="panel-split">
+            <div class="panel-title">Supply</div>
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-md-9">
+                <label class="form-label mb-1">Item contains</label>
+                <input id="flt-item" class="form-control" placeholder="e.g. I9-14900">
+              </div>
+              <div class="col-12 col-md-3 d-grid">
+                <button id="btn-supply-search" class="btn btn-primary">Search</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="row g-2 mt-2">
@@ -653,36 +704,45 @@ PHASE1_TPL = """
     </div>
 
     <div class="row g-3">
-      <div class="col-12 col-xl-4">
-        <div class="card-lite p-3">
-          <div class="fw-bold mb-2">Demand Queue</div>
-          <div class="table-wrap">
-            <table class="table table-sm table-hover align-middle">
-              <thead><tr><th>SO</th><th>Customer</th><th>Item</th><th class="num">Demand</th><th class="num">Assigned</th><th class="num">Gap</th><th>Status</th><th>Need Date</th></tr></thead>
-              <tbody id="tb-demand"><tr><td colspan="8" class="text-center text-muted py-3">Loading...</td></tr></tbody>
-            </table>
+      <div class="col-12 col-xl-6">
+        <div class="result-section h-100">
+          <div class="result-head demand">Demand Section</div>
+          <div class="result-body">
+            <div class="fw-bold mb-2">Demand Queue</div>
+            <div class="table-wrap">
+              <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>SO</th><th>Customer</th><th>Item</th><th class="num">Demand</th><th class="num">Assigned</th><th class="num">Gap</th><th>Status</th><th>Need Date</th></tr></thead>
+                <tbody id="tb-demand"><tr><td colspan="8" class="text-center text-muted py-3">Loading...</td></tr></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
-      <div class="col-12 col-xl-4">
-        <div class="card-lite p-3">
-          <div class="fw-bold mb-2">Supply Pool</div>
-          <div class="table-wrap">
-            <table class="table table-sm table-hover align-middle">
-              <thead><tr><th>POD</th><th>Item</th><th class="num">Remaining</th><th>ETA</th><th>Vendor</th></tr></thead>
-              <tbody id="tb-supply"><tr><td colspan="5" class="text-center text-muted py-3">Loading...</td></tr></tbody>
-            </table>
+      <div class="col-12 col-xl-6">
+        <div class="result-section h-100">
+          <div class="result-head supply">Supply Section</div>
+          <div class="result-body">
+            <div class="fw-bold mb-2">Supply Pool</div>
+            <div class="table-wrap">
+              <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>POD</th><th>Item</th><th class="num">Remaining</th><th>ETA</th><th>Vendor</th></tr></thead>
+                <tbody id="tb-supply"><tr><td colspan="5" class="text-center text-muted py-3">Loading...</td></tr></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
-      <div class="col-12 col-xl-4">
-        <div class="card-lite p-3">
-          <div class="fw-bold mb-2">Coverage by Item</div>
-          <div class="table-wrap">
-            <table class="table table-sm table-hover align-middle">
-              <thead><tr><th>Item</th><th class="num">Demand</th><th class="num">Supply</th><th class="num">Gap</th><th class="num">Coverage %</th></tr></thead>
-              <tbody id="tb-cover"><tr><td colspan="5" class="text-center text-muted py-3">Loading...</td></tr></tbody>
-            </table>
+      <div class="col-12">
+        <div class="result-section">
+          <div class="result-head cover">Coverage (Demand vs Supply)</div>
+          <div class="result-body">
+            <div class="fw-bold mb-2">Coverage by Item</div>
+            <div class="table-wrap">
+              <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>Item</th><th class="num">Demand</th><th class="num">Supply</th><th class="num">Gap</th><th class="num">Coverage %</th></tr></thead>
+                <tbody id="tb-cover"><tr><td colspan="5" class="text-center text-muted py-3">Loading...</td></tr></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -759,7 +819,9 @@ PHASE1_TPL = """
       q("kpi-deficit").textContent = String(c.filter(x => Number(x.gap_qty || 0) < 0).length);
     }
 
-    q("btn-refresh").addEventListener("click", function(){ loadBoard().catch(alert); });
+    ["btn-demand-search","btn-demand-load","btn-supply-search"].forEach((id) => {
+      q(id).addEventListener("click", function(){ loadBoard().catch(alert); });
+    });
     ["flt-item","flt-so","flt-customer"].forEach((id) => {
       q(id).addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); loadBoard().catch(alert); }});
     });
@@ -789,6 +851,8 @@ INVENTORY_TPL = """
     html,body{ background:var(--bg); color:var(--ink); }
     body{ padding:28px; }
     .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); }
+    .split-card{ border:1px solid #e2e8f0; border-radius:14px; background:#fff; padding:1rem; height:100%; }
+    .split-title{ font-weight:700; letter-spacing:.02em; margin-bottom:.5rem; }
     .summary{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; }
     .metric{ border:1px solid #e2e8f0; border-radius:12px; padding:1rem; background:#fff; }
     .metric .label{ text-transform:uppercase; font-size:.75rem; letter-spacing:.08em; color:var(--muted); font-weight:600; }
@@ -808,25 +872,44 @@ INVENTORY_TPL = """
     </div>
   </div>
 
-  <form class="row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
-    <div class="col-12 col-md-4">
-      <label class="form-label" for="inv-so">By SO / QB</label>
-      <input id="inv-so" class="form-control form-control-lg" style="height:60px;font-size:1.05rem" name="so" placeholder="SO-20251368 or 20251368" value="{{ so_val or '' }}">
-    </div>
-    <div class="col-12 col-md-4">
-      <label class="form-label" for="inv-item">By Item</label>
-      <div style="position:relative;">
-        <input id="inv-item" autocomplete="off" class="form-control form-control-lg" style="height:60px;font-size:1.05rem" name="item" placeholder="Type to search (fuzzy)" value="{{ item_val or '' }}">
-        <div id="inv-suggest" class="list-group" style="position:absolute; top:62px; left:0; right:0; z-index:1000; display:none; max-height:240px; overflow:auto;"></div>
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+      <div class="split-card">
+        <div class="split-title">Demand</div>
+        <form method="get" class="row gy-3 align-items-end">
+          <input type="hidden" name="item" value="{{ item_val or '' }}">
+          <div class="col-12">
+            <label class="form-label" for="inv-so">Search By SO / QB</label>
+            <input id="inv-so" class="form-control form-control-lg" style="height:60px;font-size:1.05rem" name="so" placeholder="SO-20251368 or 20251368" value="{{ so_val or '' }}">
+          </div>
+          <div class="col-6">
+            <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
+          </div>
+          <div class="col-6">
+            <a class="btn btn-outline-secondary w-100" style="height:52px;font-size:1rem;font-weight:600" href="/inventory_count?reload=1">Load</a>
+          </div>
+        </form>
       </div>
     </div>
-    <div class="col-6 col-md-auto">
-      <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
+    <div class="col-12 col-lg-6">
+      <div class="split-card">
+        <div class="split-title">Supply</div>
+        <form method="get" class="row gy-3 align-items-end">
+          <input type="hidden" name="so" value="{{ so_val or '' }}">
+          <div class="col-12">
+            <label class="form-label" for="inv-item">Search By Item</label>
+            <div style="position:relative;">
+              <input id="inv-item" autocomplete="off" class="form-control form-control-lg" style="height:60px;font-size:1.05rem" name="item" placeholder="Type to search (fuzzy)" value="{{ item_val or '' }}">
+              <div id="inv-suggest" class="list-group" style="position:absolute; top:62px; left:0; right:0; z-index:1000; display:none; max-height:240px; overflow:auto;"></div>
+            </div>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
+          </div>
+        </form>
+      </div>
     </div>
-    <div class="col-6 col-md-auto">
-      <a class="btn btn-outline-secondary w-100" style="height:52px;font-size:1rem;font-weight:600" href="/inventory_count?reload=1">Reload</a>
-    </div>
-  </form>
+  </div>
 
   <div class="summary mb-4">
     <div class="metric">

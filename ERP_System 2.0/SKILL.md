@@ -78,7 +78,8 @@ Follow this workflow when changing parsing, normalization, or reconciliation beh
 Generate `ledger_analytics` as core pillar as this MRP system
 
 For each item in wo_structured table, it has status column, for Status == 'Waiting' or 'Shortage', I need build a reference table where i can assign POD to that item.
-At the same time, a Supply ussage view is required. So i can know how many supply by item by pod can i assign. After assign POD to that item, the qty of pod is locked to that SO that item. 
+At the same time, a Supply ussage view is required. So i can know how many supply by item by pod i can assign. After assign POD to that item, the qty of pod is locked to that SO that item. 
+
 The UI needs discussion
 
 Success defination: a workflow where i can assign supply to demand easily. a test that make sure every item in ledger would never have negative projected qty any time.

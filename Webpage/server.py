@@ -677,7 +677,7 @@ def _phase1_board_data(
         allowed_items: set[str] = set()
     else:
         allowed_items = set(demand_g["item"].dropna().astype(str).tolist())
-    if so_filter and allowed_items:
+    if so_filter:
         supply = supply.loc[supply["Item"].isin(allowed_items)].copy()
 
     supply_g = (
