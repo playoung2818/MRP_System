@@ -178,14 +178,24 @@ def main():
 
     # -------- Push to Google Sheets --------
     if not final_sales_order.empty:
+        so_for_sheet = final_sales_order.assign(
+            **{"Lead Time": pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date}
+        )
         try:
-            merge_open_sales_order_to_allocation_reference_gsheet(
-                final_sales_order.assign(
-                    **{"Lead Time": pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date}
-                )
+            write_final_sales_order_to_gsheet(
+                so_for_sheet,
+                spreadsheet_name="PDF_WO",
+                worksheet_name="Open Sales Order",
+                consigned_wos=consigned_wos,
             )
         except Exception as e:
-            logging.warning("Skipping Google Sheets export: %s", e)
+            logging.warning("Skipping Open Sales Order export: %s", e)
+        try:
+            merge_open_sales_order_to_allocation_reference_gsheet(
+                so_for_sheet
+            )
+        except Exception as e:
+            logging.warning("Skipping allocation_reference export: %s", e)
 
 
 if __name__ == "__main__":

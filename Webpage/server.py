@@ -54,6 +54,10 @@ ITEM_ATP: pd.DataFrame | None = None
 _LAST_LOAD_ERR: str | None = None
 _LAST_LOADED_AT: datetime | None = None
 LLM_CACHE: LLMDataCache | None = None
+SO_PHASE1_BASE: pd.DataFrame | None = None
+PO_PHASE1_BASE: pd.DataFrame | None = None
+ITEM_SUGGEST_CACHE: list[str] = []
+PHASE1_CACHE: dict[tuple[str, str, str, str, int], dict[str, list[dict]]] = {}
 
 # =========================
 # PDF settings/cache
@@ -272,8 +276,39 @@ def _load_pdf_map(force: bool = False):
     else:
         PDF_MAP = {}
 
+def _build_phase1_bases(so_src: pd.DataFrame, po_src: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Pre-normalize heavy Phase1 source frames once per DB reload."""
+    so = so_src.copy()
+    po = po_src.copy()
+
+    for c in ["QB Num", "Item", "Name", "Component_Status", "Ship Date", "Qty(-)", "Assigned Q'ty"]:
+        if c not in so.columns:
+            so[c] = pd.NA
+    so["QB Num"] = so["QB Num"].astype(str).str.strip()
+    so["Item"] = so["Item"].astype(str).str.strip()
+    so["Name"] = so["Name"].astype(str).str.strip()
+    so["Component_Status"] = so["Component_Status"].astype(str).str.strip()
+    so["Qty(-)"] = pd.to_numeric(so["Qty(-)"], errors="coerce").fillna(0.0)
+    so["Assigned Q'ty"] = pd.to_numeric(so["Assigned Q'ty"], errors="coerce").fillna(0.0)
+    so["Ship Date"] = pd.to_datetime(so["Ship Date"], errors="coerce")
+    so = so.loc[so["Component_Status"].isin(["Waiting", "Shortage"])].copy()
+
+    for c in ["POD#", "Item", "Qty(+)", "Name", "Ship Date", "Deliv Date"]:
+        if c not in po.columns:
+            po[c] = pd.NA
+    po["POD#"] = po["POD#"].astype(str).str.strip()
+    po["Item"] = po["Item"].astype(str).str.strip()
+    po["Name"] = po["Name"].astype(str).str.strip()
+    po["Qty(+)"] = pd.to_numeric(po["Qty(+)"], errors="coerce").fillna(0.0)
+    po["Ship Date"] = pd.to_datetime(po["Ship Date"], errors="coerce")
+    po["Deliv Date"] = pd.to_datetime(po["Deliv Date"], errors="coerce")
+    po["eta_date"] = po["Ship Date"].fillna(po["Deliv Date"]).dt.strftime("%Y-%m-%d").fillna("")
+    po = po.loc[(po["Qty(+)"] > 0) & po["POD#"].ne("")].copy()
+    return so, po
+
 def _load_from_db(force: bool = False):
     global SO_INV, NAV, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
+    global SO_PHASE1_BASE, PO_PHASE1_BASE, ITEM_SUGGEST_CACHE, PHASE1_CACHE
     try:
         if (
             force
@@ -307,6 +342,13 @@ def _load_from_db(force: bool = False):
             FINAL_SO = _build_final_sales_order_from_db()
             LEDGER = ledger
             ITEM_ATP = item_atp
+            SO_PHASE1_BASE, PO_PHASE1_BASE = _build_phase1_bases(so, open_po)
+            ITEM_SUGGEST_CACHE = (
+                so["Item"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist()
+                if "Item" in so.columns
+                else []
+            )
+            PHASE1_CACHE = {}
             _LAST_LOAD_ERR = None
             _LAST_LOADED_AT = datetime.now()
     except Exception as e:
@@ -316,6 +358,10 @@ def _load_from_db(force: bool = False):
         FINAL_SO = None
         LEDGER = None
         ITEM_ATP = None
+        SO_PHASE1_BASE = None
+        PO_PHASE1_BASE = None
+        ITEM_SUGGEST_CACHE = []
+        PHASE1_CACHE = {}
         _LAST_LOAD_ERR = f"DB load error: {e}"
 
 def _ensure_loaded():
@@ -618,33 +664,23 @@ def _phase1_board_data(
     status_filter: str = "",
     limit: int = 300,
 ) -> dict[str, list[dict]]:
-    if SO_INV is None or OPEN_PO is None:
+    if SO_PHASE1_BASE is None or PO_PHASE1_BASE is None:
         return {"demand_rows": [], "supply_rows": [], "coverage_rows": []}
+    key = (item_filter, so_filter, customer_filter, status_filter, int(limit))
+    cached = PHASE1_CACHE.get(key)
+    if cached is not None:
+        return cached
 
-    so = SO_INV.copy()
-    po = OPEN_PO.copy()
-
-    for c in ["QB Num", "Item", "Name", "Component_Status", "Ship Date", "Qty(-)", "Assigned Q'ty"]:
-        if c not in so.columns:
-            so[c] = pd.NA
-    so["QB Num"] = so["QB Num"].astype(str).str.strip()
-    so["Item"] = so["Item"].astype(str).str.strip()
-    so["Name"] = so["Name"].astype(str).str.strip()
-    so["Component_Status"] = so["Component_Status"].astype(str).str.strip()
-    so["Qty(-)"] = pd.to_numeric(so["Qty(-)"], errors="coerce").fillna(0.0)
-    so["Assigned Q'ty"] = pd.to_numeric(so["Assigned Q'ty"], errors="coerce").fillna(0.0)
-    so["Ship Date"] = pd.to_datetime(so["Ship Date"], errors="coerce")
-
-    demand = so.loc[so["Component_Status"].isin(["Waiting", "Shortage"])].copy()
+    demand = SO_PHASE1_BASE
 
     if status_filter in {"Waiting", "Shortage"}:
-        demand = demand.loc[demand["Component_Status"].eq(status_filter)].copy()
+        demand = demand.loc[demand["Component_Status"].eq(status_filter)]
     if item_filter:
-        demand = demand.loc[demand["Item"].str.contains(item_filter, case=False, na=False)].copy()
+        demand = demand.loc[demand["Item"].str.contains(item_filter, case=False, na=False)]
     if so_filter:
-        demand = demand.loc[demand["QB Num"].str.contains(so_filter, case=False, na=False)].copy()
+        demand = demand.loc[demand["QB Num"].str.contains(so_filter, case=False, na=False)]
     if customer_filter:
-        demand = demand.loc[demand["Name"].str.contains(customer_filter, case=False, na=False)].copy()
+        demand = demand.loc[demand["Name"].str.contains(customer_filter, case=False, na=False)]
 
     demand_g = (
         demand.groupby(["QB Num", "Name", "Item", "Component_Status", "Ship Date"], dropna=False, as_index=False)
@@ -658,21 +694,9 @@ def _phase1_board_data(
     )
     demand_g = demand_g.sort_values(["need_date", "status", "qb_num", "item"], kind="mergesort")
 
-    for c in ["POD#", "Item", "Qty(+)", "Name", "Ship Date", "Deliv Date"]:
-        if c not in po.columns:
-            po[c] = pd.NA
-    po["POD#"] = po["POD#"].astype(str).str.strip()
-    po["Item"] = po["Item"].astype(str).str.strip()
-    po["Name"] = po["Name"].astype(str).str.strip()
-    po["Qty(+)"] = pd.to_numeric(po["Qty(+)"], errors="coerce").fillna(0.0)
-    po["Ship Date"] = pd.to_datetime(po["Ship Date"], errors="coerce")
-    po["Deliv Date"] = pd.to_datetime(po["Deliv Date"], errors="coerce")
-    po["eta_date"] = po["Ship Date"].fillna(po["Deliv Date"])
-    po["eta_date"] = po["eta_date"].dt.strftime("%Y-%m-%d").fillna("")
-
-    supply = po.loc[(po["Qty(+)"] > 0) & po["POD#"].ne("")].copy()
+    supply = PO_PHASE1_BASE
     if item_filter:
-        supply = supply.loc[supply["Item"].str.contains(item_filter, case=False, na=False)].copy()
+        supply = supply.loc[supply["Item"].str.contains(item_filter, case=False, na=False)]
     if demand_g.empty:
         allowed_items: set[str] = set()
     else:
@@ -705,7 +729,12 @@ def _phase1_board_data(
     demand_rows = demand_g.head(limit).to_dict(orient="records")
     supply_rows = supply_g.head(limit).to_dict(orient="records")
     coverage_rows = coverage.head(limit).to_dict(orient="records")
-    return {"demand_rows": demand_rows, "supply_rows": supply_rows, "coverage_rows": coverage_rows}
+    out = {"demand_rows": demand_rows, "supply_rows": supply_rows, "coverage_rows": coverage_rows}
+    # Keep cache bounded to avoid unbounded memory from ad-hoc filters.
+    if len(PHASE1_CACHE) >= 128:
+        PHASE1_CACHE.clear()
+    PHASE1_CACHE[key] = out
+    return out
 
 # initial load
 _load_from_db(force=True)
@@ -1247,7 +1276,7 @@ def api_item_suggest():
     if not q:
         return jsonify({"ok": True, "items": []})
     try:
-        items = SO_INV["Item"].astype(str).dropna().unique().tolist()
+        items = ITEM_SUGGEST_CACHE
         ql = q.lower()
         starts = [i for i in items if i.lower().startswith(ql)]
         contains = [i for i in items if ql in i.lower() and i not in starts]
