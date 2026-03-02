@@ -58,6 +58,12 @@ SO_PHASE1_BASE: pd.DataFrame | None = None
 PO_PHASE1_BASE: pd.DataFrame | None = None
 ITEM_SUGGEST_CACHE: list[str] = []
 PHASE1_CACHE: dict[tuple[str, str, str, str, int], dict[str, list[dict]]] = {}
+SO_LOOKUP_BASE: pd.DataFrame | None = None
+WAITING_ITEMS_BY_QB: dict[str, str] = {}
+LEDGER_ITEM_INDEX: dict[str, pd.DataFrame] = {}
+PDF_DB_SEARCH_CACHE: dict[tuple[str, int], list[dict]] = {}
+INDEX_VIEW_CACHE: dict[tuple[str, str], dict] = {}
+QUOTATION_VIEW_CACHE: dict[tuple[str, int], dict] = {}
 
 # =========================
 # PDF settings/cache
@@ -217,6 +223,9 @@ def _pdf_db_search_by_filename(search_query: str, limit: int = 10) -> list[dict]
     """
     if not search_query:
         return []
+    key = (str(search_query).strip().lower(), int(limit))
+    if key in PDF_DB_SEARCH_CACHE:
+        return PDF_DB_SEARCH_CACHE[key]
     try:
         sql = text(
             'SELECT id, order_id, file_name, file_path, extracted_data '
@@ -225,7 +234,11 @@ def _pdf_db_search_by_filename(search_query: str, limit: int = 10) -> list[dict]
         )
         with engine.connect() as conn:
             res = conn.execute(sql, {"q": f"%{search_query}%", "lim": limit})
-            return [dict(row) for row in res.mappings().all()]
+            out = [dict(row) for row in res.mappings().all()]
+            if len(PDF_DB_SEARCH_CACHE) >= 512:
+                PDF_DB_SEARCH_CACHE.clear()
+            PDF_DB_SEARCH_CACHE[key] = out
+            return out
     except Exception:
         # Table might not exist, or permissions issues; return empty silently
         return []
@@ -306,9 +319,46 @@ def _build_phase1_bases(so_src: pd.DataFrame, po_src: pd.DataFrame) -> tuple[pd.
     po = po.loc[(po["Qty(+)"] > 0) & po["POD#"].ne("")].copy()
     return so, po
 
+def _build_runtime_indexes(
+    so_src: pd.DataFrame, ledger_src: pd.DataFrame
+) -> tuple[pd.DataFrame, dict[str, str], dict[str, pd.DataFrame]]:
+    """Build read-optimized indexes used by index() and quotation_lookup()."""
+    so = so_src.copy()
+    if "QB Num" not in so.columns:
+        so["QB Num"] = ""
+    if "Name" not in so.columns:
+        so["Name"] = ""
+    so["__qb_upper"] = so["QB Num"].astype(str).str.upper().str.strip()
+    so["__name_text"] = so["Name"].astype(str).str.strip()
+
+    waiting_map: dict[str, str] = {}
+    if {"QB Num", "Item", "Component_Status"}.issubset(so.columns):
+        so_wait = so.loc[so["Component_Status"].isin(["Waiting", "Shortage"])].copy()
+        so_wait["QB Num"] = so_wait["QB Num"].astype(str).str.strip()
+        so_wait["Item"] = so_wait["Item"].astype(str).str.strip()
+        if not so_wait.empty:
+            waiting_map = (
+                so_wait.groupby("QB Num")["Item"]
+                .apply(lambda s: "{%s}" % ", ".join(sorted(set(i for i in s if i))))
+                .to_dict()
+            )
+
+    ledger_index: dict[str, pd.DataFrame] = {}
+    if ledger_src is not None and not ledger_src.empty:
+        item_col = "Item_raw" if "Item_raw" in ledger_src.columns else ("Item" if "Item" in ledger_src.columns else None)
+        if item_col is not None:
+            work = ledger_src.copy()
+            work[item_col] = work[item_col].astype(str)
+            for item_key, grp in work.groupby(item_col, sort=False):
+                ledger_index[str(item_key)] = grp.copy()
+
+    return so, waiting_map, ledger_index
+
 def _load_from_db(force: bool = False):
     global SO_INV, NAV, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
     global SO_PHASE1_BASE, PO_PHASE1_BASE, ITEM_SUGGEST_CACHE, PHASE1_CACHE
+    global SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX
+    global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE
     try:
         if (
             force
@@ -343,12 +393,16 @@ def _load_from_db(force: bool = False):
             LEDGER = ledger
             ITEM_ATP = item_atp
             SO_PHASE1_BASE, PO_PHASE1_BASE = _build_phase1_bases(so, open_po)
+            SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX = _build_runtime_indexes(so, ledger)
             ITEM_SUGGEST_CACHE = (
                 so["Item"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist()
                 if "Item" in so.columns
                 else []
             )
             PHASE1_CACHE = {}
+            PDF_DB_SEARCH_CACHE = {}
+            INDEX_VIEW_CACHE = {}
+            QUOTATION_VIEW_CACHE = {}
             _LAST_LOAD_ERR = None
             _LAST_LOADED_AT = datetime.now()
     except Exception as e:
@@ -360,8 +414,14 @@ def _load_from_db(force: bool = False):
         ITEM_ATP = None
         SO_PHASE1_BASE = None
         PO_PHASE1_BASE = None
+        SO_LOOKUP_BASE = None
+        WAITING_ITEMS_BY_QB = {}
+        LEDGER_ITEM_INDEX = {}
         ITEM_SUGGEST_CACHE = []
         PHASE1_CACHE = {}
+        PDF_DB_SEARCH_CACHE = {}
+        INDEX_VIEW_CACHE = {}
+        QUOTATION_VIEW_CACHE = {}
         _LAST_LOAD_ERR = f"DB load error: {e}"
 
 def _ensure_loaded():
@@ -754,6 +814,27 @@ def index():
     # ---- read inputs (work with GET or POST) ----
     so_input = (request.values.get("so") or "").strip()
     customer_input = (request.values.get("customer") or "").strip()
+    cache_key = (so_input, customer_input)
+    if cache_key in INDEX_VIEW_CACHE:
+        cached = INDEX_VIEW_CACHE[cache_key]
+        return render_template_string(
+            INDEX_TPL,
+            so_num=so_input,
+            customer_val=customer_input,
+            customer_query=cached["customer_query"],
+            customer_options=cached["customer_options"],
+            rows=cached["rows"],
+            count=cached["count"],
+            loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "—",
+            order_summary=cached["order_summary"],
+            headers=cached["table_headers"],
+            header_labels=TABLE_HEADER_LABELS,
+            numeric_cols=[
+                "Qty(-)","Available","Available + Pre-installed PO","On Hand",
+                "On Sales Order","On PO","Assigned Q'ty","On Hand - WIP",
+                "Available + On PO","Sales/Week","Recommended Restock Qty"
+            ],
+        )
 
     # Flexible SO handling: allow "20251368", "SO20251368", or "so-20251368"
     so_num = ""
@@ -771,15 +852,17 @@ def index():
     table_headers = None
     customer_options = None
     customer_query = None
+    so_base = SO_LOOKUP_BASE if SO_LOOKUP_BASE is not None else SO_INV
     if so_input:
         rows_df = pd.DataFrame()
 
         if so_num:
-            mask = SO_INV["QB Num"].astype(str).str.upper() == so_num
+            mask = so_base["__qb_upper"] == so_num if "__qb_upper" in so_base.columns else so_base["QB Num"].astype(str).str.upper() == so_num
             rows_df = SO_INV.loc[mask].copy()
 
         if (rows_df is None or rows_df.empty) and "Name" in SO_INV.columns:
-            name_mask = SO_INV["Name"].astype(str).str.contains(so_input, case=False, na=False)
+            name_col = so_base["__name_text"] if "__name_text" in so_base.columns else so_base["Name"].astype(str)
+            name_mask = name_col.str.contains(so_input, case=False, na=False)
             rows_df = SO_INV.loc[name_mask].copy()
 
         count = len(rows_df)
@@ -865,7 +948,8 @@ def index():
         customer_query = customer_input
         customer_options = []
         if "Name" in SO_INV.columns:
-            name_mask = SO_INV["Name"].astype(str).str.contains(customer_input, case=False, na=False)
+            name_col = so_base["__name_text"] if "__name_text" in so_base.columns else so_base["Name"].astype(str)
+            name_mask = name_col.str.contains(customer_input, case=False, na=False)
             cust_df = SO_INV.loc[name_mask].copy()
             if not cust_df.empty:
                 if "QB Num" not in cust_df.columns:
@@ -885,6 +969,18 @@ def index():
                         "order_date": first.get("Order Date", ""),
                     })
                 customer_options.sort(key=lambda x: x.get("qb_num", ""))
+
+    cache_payload = {
+        "rows": rows,
+        "count": count,
+        "order_summary": order_summary,
+        "table_headers": table_headers,
+        "customer_options": customer_options,
+        "customer_query": customer_query,
+    }
+    if len(INDEX_VIEW_CACHE) >= 256:
+        INDEX_VIEW_CACHE.clear()
+    INDEX_VIEW_CACHE[cache_key] = cache_payload
 
     return render_template_string(
         INDEX_TPL,
@@ -1152,8 +1248,6 @@ def inventory_count():
     so_rows: list[dict] | None = None
     on_hand: int | float | None = None
     on_hand_wip: int | float | None = None
-    open_po_columns: list[str] | None = None
-    open_po_rows: list[dict] | None = None
 
     filtered_df = SO_INV.copy()
     if item_input:
@@ -1170,26 +1264,6 @@ def inventory_count():
         # If SO also provided, further filter rows to that SO
         if so_num and so_rows:
             so_rows = [r for r in so_rows if str(r.get("QB Num", "")).upper() == so_num]
-        # Add extra columns for Inventory module view
-        on_so_val = lookup_on_sales_by_item(item_input)
-        on_po_val = lookup_on_po_by_item(item_input)
-        if so_rows is None:
-            so_rows = []
-        for r in so_rows:
-            if on_so_val is not None:
-                r["On SO"] = on_so_val
-            if on_po_val is not None:
-                r["On PO"] = on_po_val
-        if so_columns is None:
-            so_columns = []
-        for extra in ("On SO", "On PO"):
-            if extra not in so_columns:
-                so_columns.append(extra)
-        # Also load Open Purchase Orders table for the item
-        try:
-            open_po_columns, open_po_rows = _open_po_table_for_item(item_input)
-        except Exception:
-            open_po_columns, open_po_rows = [], []
     elif so_num:
         so_columns, so_rows = _so_table_for_so(so_num)
     else:
@@ -1204,8 +1278,6 @@ def inventory_count():
         on_hand_wip=on_hand_wip,
         so_columns=so_columns,
         so_rows=so_rows,
-        open_po_columns=open_po_columns or [],
-        open_po_rows=open_po_rows or [],
     )
 
 
@@ -1304,11 +1376,31 @@ def quotation_lookup():
     ledger_rows: list[dict] = []
     opening_qty = None
     earliest_atp = None
+    cache_key = (item_input, int(qty_val))
+    cached = QUOTATION_VIEW_CACHE.get(cache_key)
+    if cached is not None:
+        ledger_columns = cached.get("ledger_columns", [])
+        ledger_rows = cached.get("ledger_rows", [])
+        opening_qty = cached.get("opening_qty")
+        earliest_atp = cached.get("earliest_atp")
+        return render_template_string(
+            QUOTE_TPL,
+            item_val=item_input,
+            qty_val=qty_val,
+            opening_qty=opening_qty,
+            earliest_atp=earliest_atp,
+            ledger_columns=ledger_columns,
+            ledger_rows=ledger_rows,
+            loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
+        )
 
     if item_input and LEDGER is not None and not LEDGER.empty:
-        df = LEDGER.copy()
-        item_col = "Item_raw" if "Item_raw" in df.columns else "Item"
-        df_item = df.loc[df[item_col].astype(str) == item_input].copy()
+        if item_input in LEDGER_ITEM_INDEX:
+            df_item = LEDGER_ITEM_INDEX[item_input].copy()
+        else:
+            df = LEDGER
+            item_col = "Item_raw" if "Item_raw" in df.columns else "Item"
+            df_item = df.loc[df[item_col].astype(str) == item_input].copy()
         if not df_item.empty:
             # Opening snapshot:
             # 1) Prefer explicit OPEN rows; 2) if none, fall back to any Opening values.
@@ -1375,24 +1467,11 @@ def quotation_lookup():
 
                 records = df_item[keep_cols].fillna("").astype(str).to_dict(orient="records")
 
-                # Attach waiting/shortage items by QB Num (from structured view)
-                waiting_map: dict[str, str] = {}
-                if SO_INV is not None and not SO_INV.empty and "QB Num" in SO_INV.columns:
-                    so = SO_INV.copy()
-                    if "Component_Status" in so.columns:
-                        so = so.loc[so["Component_Status"].isin(["Waiting", "Shortage"])].copy()
-                        so["QB Num"] = so["QB Num"].astype(str).str.strip()
-                        so["Item"] = so["Item"].astype(str).str.strip()
-                        grouped = so.groupby("QB Num")["Item"].apply(
-                            lambda s: "{%s}" % ", ".join(sorted(set(i for i in s if i)))
-                        )
-                        waiting_map = grouped.to_dict()
-
                 if "QB Num" in keep_cols and "Waiting_Item" not in keep_cols:
                     keep_cols.append("Waiting_Item")
                     for rec in records:
                         qb = rec.get("QB Num", "")
-                        rec["Waiting_Item"] = waiting_map.get(qb, "{}")
+                        rec["Waiting_Item"] = WAITING_ITEMS_BY_QB.get(str(qb), "{}")
 
                 # Attach _is_min_nav flag for UI highlighting
                 if min_nav_value is not None and proj_series is not None:
@@ -1416,6 +1495,16 @@ def quotation_lookup():
             earliest_atp = earliest_atp_dt.strftime("%Y-%m-%d")
         else:
             earliest_atp = "Out of Stock"
+
+    if item_input:
+        if len(QUOTATION_VIEW_CACHE) >= 256:
+            QUOTATION_VIEW_CACHE.clear()
+        QUOTATION_VIEW_CACHE[cache_key] = {
+            "ledger_columns": ledger_columns,
+            "ledger_rows": ledger_rows,
+            "opening_qty": opening_qty,
+            "earliest_atp": earliest_atp,
+        }
 
     return render_template_string(
         QUOTE_TPL,
