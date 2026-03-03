@@ -51,19 +51,40 @@ except Exception:
 #
 # Example .env line:
 #   DATABASE_DSN=postgresql+psycopg://user:password@host:6543/postgres?sslmode=require
+#
+# DuckDB examples:
+#   DATABASE_DSN=duckdb:///C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb
+#   DUCKDB_PATH=C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb
 DATABASE_DSN: str | None = os.getenv("DATABASE_DSN")
+DUCKDB_PATH: str | None = os.getenv("DUCKDB_PATH")
+
+
+def resolve_dsn() -> str | None:
+    """
+    Resolve an effective DSN from environment.
+    Priority:
+      1) DATABASE_DSN
+      2) DUCKDB_PATH -> duckdb:///...
+    """
+    if DATABASE_DSN:
+        return DATABASE_DSN
+    if DUCKDB_PATH:
+        path = DUCKDB_PATH.replace("\\", "/")
+        return f"duckdb:///{path}"
+    return None
 
 
 def require_dsn() -> str:
     """
     Return DATABASE_DSN or raise a clear error if it's missing.
     """
-    if not DATABASE_DSN:
+    dsn = resolve_dsn()
+    if not dsn:
         raise RuntimeError(
-            "DATABASE_DSN environment variable is not set. "
-            "Set it before running the ERP ETL or web server."
+            "Database DSN is not set. Set DATABASE_DSN, or set DUCKDB_PATH "
+            "to use a local DuckDB file."
         )
-    return DATABASE_DSN
+    return dsn
 
 
 def get_engine(*, pool_pre_ping: bool = True, **kwargs: Any):
@@ -73,7 +94,10 @@ def get_engine(*, pool_pre_ping: bool = True, **kwargs: Any):
     of using create_engine directly so the DSN and options stay in sync.
     """
     dsn = require_dsn()
+    # DuckDB engines do not need connection pool pre-ping.
+    if dsn.startswith("duckdb:"):
+        return create_engine(dsn, **kwargs)
     return create_engine(dsn, pool_pre_ping=pool_pre_ping, **kwargs)
 
 
-__all__ = ["DATABASE_DSN", "get_engine", "require_dsn"]
+__all__ = ["DATABASE_DSN", "DUCKDB_PATH", "resolve_dsn", "get_engine", "require_dsn"]

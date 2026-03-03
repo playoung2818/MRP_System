@@ -24,6 +24,16 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 - Run `erp.bat` or `python "ERP_System 2.0/etl.py"`.
 - Outputs: inventory_status, structured sales orders, POD, shipping, ledger, item summary, ATP, and Not_assigned_SO exports; pushed to DB and Sheets when configured.
 
+## Migrate Supabase -> DuckDB
+- Install new DB deps:
+  - `pip install duckdb duckdb-engine`
+- Run migration script (copies all `public` tables by default):
+  - `python "ERP_System 2.0/scripts/migrate_supabase_to_duckdb.py" --source-dsn "<your_supabase_postgres_dsn>" --duckdb-path "C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb"`
+- Point app/ETL to DuckDB:
+  - Option A: `set DATABASE_DSN=duckdb:///C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb`
+  - Option B: `set DUCKDB_PATH=C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb`
+- Then run ETL/web as usual; `db_config.py` will use DuckDB automatically.
+
 
 ## Potential Improvement
 -   Dedicate each SO, POD, Shipping schedule is Pre-installed or Barebone is top priority. Idea output is each line in SO, POD, Shipping schedule can be difined as pre/bare. SO it can be acted as a locking item for deidcated SO function. a quick testing is a nice have

@@ -2,6 +2,7 @@ from __future__ import annotations
 import os, json, requests, pandas as pd, numpy as np, tempfile, subprocess, uuid
 from io import BytesIO
 from pathlib import Path
+from sqlalchemy import text
 try:
     import gspread
     from gspread_dataframe import set_with_dataframe
@@ -137,6 +138,13 @@ def write_to_db(df: pd.DataFrame, schema: str, table: str):
     out = out.where(pd.notna(out), None)
 
     eng = engine()
+    # Keep schema handling portable between Postgres and DuckDB.
+    try:
+        with eng.begin() as conn:
+            conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    except Exception:
+        # If schema creation is not allowed/needed, proceed and let to_sql surface issues.
+        pass
     try:
         out.to_sql(
             table,

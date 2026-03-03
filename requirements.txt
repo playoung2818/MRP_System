@@ -55,6 +55,8 @@ rsa==4.9.1
 six==1.17.0
 python-dotenv==1.0.1
 SQLAlchemy==2.0.43
+duckdb==1.2.2
+duckdb-engine==0.15.0
 stack-data==0.6.3
 tornado==6.5.2
 traitlets==5.14.3
