@@ -52,6 +52,26 @@ QUOTE_TPL = """
       background:#dcfce7;
     }
     .suggest-empty{ padding:.75rem; color:var(--muted); background:#fff; border:1px solid #dee2e6; border-radius:.5rem; }
+    .quote-legend{
+      display:flex;
+      gap:1rem;
+      align-items:center;
+      flex-wrap:wrap;
+      font-size:.82rem;
+      color:var(--muted);
+      margin-top:.45rem;
+    }
+    .quote-legend .swatch{
+      width:.8rem;
+      height:.8rem;
+      border-radius:999px;
+      display:inline-block;
+      margin-right:.35rem;
+      vertical-align:middle;
+      border:1px solid rgba(15,23,42,.08);
+    }
+    .quote-legend .swatch-red{ background:#fecdd3; }
+    .quote-legend .swatch-green{ background:#bbf7d0; }
   </style>
 </head>
 <body>
@@ -83,6 +103,10 @@ QUOTE_TPL = """
         </div>
         <div id="quote-suggest" class="list-group"
              style="position:absolute; top:96px; left:0; right:0; z-index:1000; display:none; max-height:280px; overflow:auto;"></div>
+      </div>
+      <div class="quote-legend">
+        <span><span class="swatch swatch-red"></span>red = Max 0</span>
+        <span><span class="swatch swatch-green"></span>green = Max 99</span>
       </div>
     </div>
     <div class="col-6 col-md-auto">

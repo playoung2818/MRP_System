@@ -67,6 +67,7 @@ LEDGER_ITEM_INDEX: dict[str, pd.DataFrame] = {}
 PDF_DB_SEARCH_CACHE: dict[tuple[str, int], list[dict]] = {}
 INDEX_VIEW_CACHE: dict[tuple[str, str], dict] = {}
 QUOTATION_VIEW_CACHE: dict[tuple[str, int], dict] = {}
+CHAT_LOG_FILE = REPO_ROOT / "Webpage" / "chatbox.log"
 
 # =========================
 # PDF settings/cache
@@ -534,6 +535,24 @@ def _ensure_llm_cache() -> LLMDataCache:
         LLM_CACHE = LLMDataCache()
     LLM_CACHE.ensure_loaded()
     return LLM_CACHE
+
+
+def _append_chat_log(role: str, content: str, *, ok: bool | None = None, trace: list[str] | None = None) -> None:
+    try:
+        record = {
+            "ts": datetime.now().isoformat(),
+            "role": str(role),
+            "content": str(content),
+        }
+        if ok is not None:
+            record["ok"] = bool(ok)
+        if trace:
+            record["trace"] = list(trace)
+        with CHAT_LOG_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        # Logging must not break chat responses.
+        pass
 
 def lookup_on_po_by_item(item: str) -> int | None:
     df = SO_INV[SO_INV["Item"] == item]
@@ -1246,10 +1265,17 @@ def api_llm_chat():
     message = str(payload.get("message") or "").strip()
     if not message:
         return jsonify({"ok": False, "answer": "Missing message.", "trace": ["api: empty_message"]}), 400
+    _append_chat_log("user", message)
 
     try:
         cache = _ensure_llm_cache()
         result = llm_answer_question(cache, message)
+        _append_chat_log(
+            "assistant",
+            str(result.get("answer") or ""),
+            ok=bool(result.get("ok")),
+            trace=result.get("trace") or [],
+        )
         return jsonify(
             {
                 "ok": bool(result.get("ok")),
@@ -1258,6 +1284,7 @@ def api_llm_chat():
             }
         )
     except Exception as exc:
+        _append_chat_log("assistant", f"Chat request failed: {exc}", ok=False, trace=["api: exception"])
         return jsonify(
             {
                 "ok": False,

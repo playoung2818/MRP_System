@@ -153,6 +153,14 @@ INDEX_TPL = """
     </div>
   </form>
 
+  <div class="inv-cta mt-3" style="background:#dc2626;">
+    <div>
+      <div class="title">Quotation Lookup</div>
+      <div class="sub">Ledger + earliest ATP date by item</div>
+    </div>
+    <a class="btn btn-lg" href="/quotation_lookup">Open</a>
+  </div>
+
   <div class="inv-cta mt-2">
     <div>
       <div class="title">Inventory Count</div>
@@ -167,14 +175,6 @@ INDEX_TPL = """
       <div class="sub">Calendar-style view of final sales orders by Lead Time</div>
     </div>
     <a class="btn btn-lg" href="/production_planning">Open</a>
-  </div>
-
-  <div class="inv-cta mt-3" style="background:#dc2626;">
-    <div>
-      <div class="title">Quotation Lookup</div>
-      <div class="sub">Ledger + earliest ATP date by item</div>
-    </div>
-    <a class="btn btn-lg" href="/quotation_lookup">Open</a>
   </div>
 
   <div class="inv-cta mt-3" style="background:#1f4ed8;">
