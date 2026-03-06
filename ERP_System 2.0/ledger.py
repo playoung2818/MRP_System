@@ -94,7 +94,33 @@ def expand_nav_preinstalled(NAV: pd.DataFrame) -> pd.DataFrame:
 
 
 ## 2) Events + Ledger
-def build_opening_stock(SO: pd.DataFrame) -> pd.DataFrame:
+def build_opening_stock(
+    SO: pd.DataFrame,
+    INVENTORY: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    if INVENTORY is not None and not INVENTORY.empty:
+        inv = INVENTORY.copy()
+        item_col = "Part_Number" if "Part_Number" in inv.columns else ("Item" if "Item" in inv.columns else None)
+        qty_col = "On Hand" if "On Hand" in inv.columns else ("On Hand - WIP" if "On Hand - WIP" in inv.columns else None)
+        if item_col is not None and qty_col is not None:
+            stock = (
+                inv[[item_col, qty_col]]
+                .rename(columns={item_col: "Item", qty_col: "Opening"})
+                .dropna(subset=["Item"])
+                .copy()
+            )
+            stock["Item"] = stock["Item"].astype(str).str.strip()
+            stock["Opening"] = pd.to_numeric(stock["Opening"], errors="coerce").fillna(0.0)
+            stock = stock.loc[stock["Item"].ne("")]
+            stock["Item"] = _norm_key(stock["Item"].map(normalize_item))
+            stock = (
+                stock.groupby("Item", as_index=False)["Opening"]
+                .sum()
+                .sort_values("Item", kind="mergesort")
+                .reset_index(drop=True)
+            )
+            return stock
+
     src = SO.copy()
     col = "On Hand"
     if col not in src.columns:
@@ -118,7 +144,9 @@ def _order_events(df: pd.DataFrame) -> pd.DataFrame:
     if not set(["Date", "Item", "Delta", "Kind"]).issubset(out.columns):
         raise ValueError("events must have columns: ['Date','Item','Delta','Kind']")
     out = out.dropna(subset=["Date", "Item"]).loc[out["Delta"].notna()]
-    out = out.loc[out["Delta"].ne(0)].copy()
+    zero_mask = out["Delta"].eq(0)
+    keep_zero_open = zero_mask & out["Kind"].astype(str).eq("OPEN")
+    out = out.loc[out["Delta"].ne(0) | keep_zero_open].copy()
     out.sort_values(["Item", "Date", "Kind"], inplace=True, kind="mergesort")
     out.reset_index(drop=True, inplace=True)
     return out
@@ -191,7 +219,7 @@ def build_ledger_from_events(
     SO only used to compute per-item Opening.
     """
     so = _norm_cols(SO)
-    stock = build_opening_stock(so)  # Item, Opening
+    stock = build_opening_stock(so, INVENTORY)  # Item, Opening
 
     events = EVENTS.copy()
     events = events.merge(stock, on="Item", how="left")
@@ -204,6 +232,7 @@ def build_ledger_from_events(
         "Delta":  0.0,
         "Kind":   "OPEN",
         "Source": "Snapshot",
+        "Item_raw": stock["Item"].values,
         "Opening": stock["Opening"].values,
     })
 

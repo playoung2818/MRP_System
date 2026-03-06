@@ -84,7 +84,9 @@ def fetch_word_files_df(api_url: str | list[str] | tuple[str, ...]) -> pd.DataFr
         except Exception:
             continue
     if "order_id" in wf.columns:
-        wf = wf.rename(columns={"order_id":"WO_Number"})
+        wf = wf.rename(columns={"order_id": "WO_Number"})
+    if "WO_Number" not in wf.columns:
+        wf["WO_Number"] = ""
     wf["WO_Number"] = wf["WO_Number"].astype(str).apply(normalize_wo_number)
     return wf
 

@@ -2,6 +2,7 @@
 import os
 import sys
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, render_template_string, jsonify, abort, redirect, url_for, send_file, Response
@@ -46,6 +47,7 @@ engine = get_engine()
 # Data cache
 # =========================
 SO_INV: pd.DataFrame | None = None
+INVENTORY_STATUS: pd.DataFrame | None = None
 NAV: pd.DataFrame | None = None
 OPEN_PO: pd.DataFrame | None = None
 FINAL_SO: pd.DataFrame | None = None
@@ -98,6 +100,12 @@ def _safe_date_col(df: pd.DataFrame, col: str):
 def _to_date_str(s: pd.Series, fmt="%Y-%m-%d") -> pd.Series:
     s = pd.to_datetime(s, errors="coerce")
     return s.apply(lambda x: x.strftime(fmt) if pd.notnull(x) else "")
+
+
+def _normalize_so_key(v: str) -> str:
+    """Normalize SO/QB key for tolerant matching (SO-20260328 == so20260328)."""
+    s = str(v or "").upper().strip()
+    return re.sub(r"[^A-Z0-9]", "", s)
 
 def _read_table(schema: str, table: str) -> pd.DataFrame:
     sql = f'SELECT * FROM "{schema}"."{table}"'
@@ -355,7 +363,7 @@ def _build_runtime_indexes(
     return so, waiting_map, ledger_index
 
 def _load_from_db(force: bool = False):
-    global SO_INV, NAV, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
+    global SO_INV, INVENTORY_STATUS, NAV, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
     global SO_PHASE1_BASE, PO_PHASE1_BASE, ITEM_SUGGEST_CACHE, PHASE1_CACHE
     global SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX
     global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE
@@ -370,6 +378,7 @@ def _load_from_db(force: bool = False):
             or ITEM_ATP is None
         ):
             so = _read_table("public", "wo_structured")
+            inventory = _read_table("public", "inventory_status")
             nav = _read_table("public", "NT Shipping Schedule")
             open_po = _read_table("public", "Open_Purchase_Orders")
             ledger = _read_table("public", "ledger_analytics")
@@ -388,17 +397,22 @@ def _load_from_db(force: bool = False):
             if "Date" in ledger.columns:
                 _safe_date_col(ledger, "Date")
 
-            SO_INV, NAV, OPEN_PO = so, nav, open_po
+            SO_INV, INVENTORY_STATUS, NAV, OPEN_PO = so, inventory, nav, open_po
             FINAL_SO = _build_final_sales_order_from_db()
             LEDGER = ledger
             ITEM_ATP = item_atp
             SO_PHASE1_BASE, PO_PHASE1_BASE = _build_phase1_bases(so, open_po)
             SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX = _build_runtime_indexes(so, ledger)
-            ITEM_SUGGEST_CACHE = (
-                so["Item"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist()
-                if "Item" in so.columns
-                else []
-            )
+            suggest_items: list[str] = []
+            if "Item" in so.columns:
+                suggest_items.extend(
+                    so["Item"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].tolist()
+                )
+            if "Part_Number" in inventory.columns:
+                suggest_items.extend(
+                    inventory["Part_Number"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].tolist()
+                )
+            ITEM_SUGGEST_CACHE = sorted(set(suggest_items))
             PHASE1_CACHE = {}
             PDF_DB_SEARCH_CACHE = {}
             INDEX_VIEW_CACHE = {}
@@ -407,6 +421,7 @@ def _load_from_db(force: bool = False):
             _LAST_LOADED_AT = datetime.now()
     except Exception as e:
         SO_INV = None
+        INVENTORY_STATUS = None
         NAV = None
         OPEN_PO = None
         FINAL_SO = None
@@ -427,6 +442,7 @@ def _load_from_db(force: bool = False):
 def _ensure_loaded():
     if (
         SO_INV is None
+        or INVENTORY_STATUS is None
         or NAV is None
         or OPEN_PO is None
         or FINAL_SO is None
@@ -491,6 +507,19 @@ def _aggregate_metric(series: pd.Series) -> int | float | None:
         return _coerce_total(first)
     total = numeric.sum()
     return _coerce_total(total)
+
+
+def _resolve_ledger_item_key(item: str) -> str:
+    raw = str(item or "").strip()
+    if not raw:
+        return ""
+    if raw in LEDGER_ITEM_INDEX:
+        return raw
+    lowered = raw.lower()
+    for key in LEDGER_ITEM_INDEX.keys():
+        if str(key).lower() == lowered:
+            return str(key)
+    return raw
 
 
 def _lookup_earliest_atp_date(item: str, qty: float = 1.0) -> datetime | None:
@@ -558,6 +587,7 @@ def _lookup_earliest_atp_date(item: str, qty: float = 1.0) -> datetime | None:
     if atp_dt is None:
         return None
     return atp_dt.to_pydatetime()
+
 
 
 def _find_pdf_url_for_so(so_num: str, po_num: str | None = None) -> str | None:
@@ -860,6 +890,12 @@ def index():
             mask = so_base["__qb_upper"] == so_num if "__qb_upper" in so_base.columns else so_base["QB Num"].astype(str).str.upper() == so_num
             rows_df = SO_INV.loc[mask].copy()
 
+            # Fallback: tolerant key match for formatting differences.
+            if rows_df.empty and "QB Num" in SO_INV.columns:
+                target_key = _normalize_so_key(so_num)
+                qb_norm = SO_INV["QB Num"].astype(str).map(_normalize_so_key)
+                rows_df = SO_INV.loc[qb_norm.eq(target_key)].copy()
+
         if (rows_df is None or rows_df.empty) and "Name" in SO_INV.columns:
             name_col = so_base["__name_text"] if "__name_text" in so_base.columns else so_base["Name"].astype(str)
             name_mask = name_col.str.contains(so_input, case=False, na=False)
@@ -1008,6 +1044,26 @@ def api_reload():
     if _LAST_LOAD_ERR:
         return jsonify({"ok": False, "error": _LAST_LOAD_ERR}), 500
     return jsonify({"ok": True, "loaded_at": _LAST_LOADED_AT.isoformat()})
+
+
+@app.route("/api/debug/db_state")
+def api_debug_db_state():
+    _ensure_loaded()
+    so = (request.args.get("so") or "").strip()
+    so_count = None
+    if so and SO_INV is not None and not SO_INV.empty and "QB Num" in SO_INV.columns:
+        so_count = int(SO_INV["QB Num"].astype(str).str.upper().eq(so.upper()).sum())
+    return jsonify(
+        {
+            "ok": _LAST_LOAD_ERR is None,
+            "loaded_at": _LAST_LOADED_AT.isoformat() if _LAST_LOADED_AT else None,
+            "database_dsn": str(engine.url),
+            "pdf_folder": PDF_FOLDER,
+            "so_inv_rows": int(len(SO_INV)) if SO_INV is not None else None,
+            "wo_structured_match_count": so_count,
+            "last_load_error": _LAST_LOAD_ERR,
+        }
+    )
 
 @app.route("/pdf/<order_id>")
 def serve_pdf(order_id: str):
@@ -1364,6 +1420,7 @@ def quotation_lookup():
         return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
 
     item_input = (request.values.get("item") or "").strip()
+    item_lookup = _resolve_ledger_item_key(item_input)
     qty_raw = (request.values.get("qty") or "").strip()
     try:
         qty_val = int(float(qty_raw)) if qty_raw else 1
@@ -1376,7 +1433,7 @@ def quotation_lookup():
     ledger_rows: list[dict] = []
     opening_qty = None
     earliest_atp = None
-    cache_key = (item_input, int(qty_val))
+    cache_key = (item_lookup, int(qty_val))
     cached = QUOTATION_VIEW_CACHE.get(cache_key)
     if cached is not None:
         ledger_columns = cached.get("ledger_columns", [])
@@ -1394,13 +1451,13 @@ def quotation_lookup():
             loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
         )
 
-    if item_input and LEDGER is not None and not LEDGER.empty:
-        if item_input in LEDGER_ITEM_INDEX:
-            df_item = LEDGER_ITEM_INDEX[item_input].copy()
+    if item_lookup and LEDGER is not None and not LEDGER.empty:
+        if item_lookup in LEDGER_ITEM_INDEX:
+            df_item = LEDGER_ITEM_INDEX[item_lookup].copy()
         else:
             df = LEDGER
             item_col = "Item_raw" if "Item_raw" in df.columns else "Item"
-            df_item = df.loc[df[item_col].astype(str) == item_input].copy()
+            df_item = df.loc[df[item_col].astype(str).str.lower() == item_lookup.lower()].copy()
         if not df_item.empty:
             # Opening snapshot:
             # 1) Prefer explicit OPEN rows; 2) if none, fall back to any Opening values.
@@ -1490,13 +1547,13 @@ def quotation_lookup():
                 ledger_rows = records
 
 
-        earliest_atp_dt = _lookup_earliest_atp_date(item_input, qty=qty_val)
+        earliest_atp_dt = _lookup_earliest_atp_date(item_lookup, qty=qty_val)
         if earliest_atp_dt is not None:
             earliest_atp = earliest_atp_dt.strftime("%Y-%m-%d")
         else:
             earliest_atp = "Out of Stock"
 
-    if item_input:
+    if item_lookup:
         if len(QUOTATION_VIEW_CACHE) >= 256:
             QUOTATION_VIEW_CACHE.clear()
         QUOTATION_VIEW_CACHE[cache_key] = {
@@ -1508,7 +1565,7 @@ def quotation_lookup():
 
     return render_template_string(
         QUOTE_TPL,
-        item_val=item_input,
+        item_val=item_lookup or item_input,
         qty_val=qty_val,
         opening_qty=opening_qty,
         earliest_atp=earliest_atp,

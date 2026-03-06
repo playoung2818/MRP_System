@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import create_engine
 
 
-def _load_env_file_fallback(env_path: str) -> None:
+def _load_env_file_fallback(env_path: str, *, override: bool = False) -> None:
     """
     Minimal .env loader used when python-dotenv is unavailable.
     """
@@ -21,7 +21,7 @@ def _load_env_file_fallback(env_path: str) -> None:
                 key, value = line.split("=", 1)
                 key = key.strip()
                 value = value.strip().strip('"').strip("'")
-                if key and key not in os.environ:
+                if key and (override or key not in os.environ):
                     os.environ[key] = value
     except Exception:
         # Do not fail import due to optional local env loading.
@@ -39,11 +39,13 @@ try:
     load_dotenv()  # CWD
     env_nearby = Path(__file__).resolve().parent / ".env"
     if env_nearby.exists():
-        load_dotenv(env_nearby)
+        # Repository-local .env should win over inherited shell variables so
+        # the web app, ETL, and tests all target the same intended database.
+        load_dotenv(env_nearby, override=True)
 except Exception:
     # If python-dotenv is not installed, fall back to a minimal parser.
     _load_env_file_fallback(".env")
-    _load_env_file_fallback(os.path.join(os.path.dirname(__file__), ".env"))
+    _load_env_file_fallback(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 
 # Read the database DSN from environment so credentials
