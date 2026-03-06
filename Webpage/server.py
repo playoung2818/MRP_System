@@ -59,6 +59,7 @@ LLM_CACHE: LLMDataCache | None = None
 SO_PHASE1_BASE: pd.DataFrame | None = None
 PO_PHASE1_BASE: pd.DataFrame | None = None
 ITEM_SUGGEST_CACHE: list[str] = []
+QUOTE_ITEM_SUGGEST_ROWS: list[dict[str, object]] = []
 PHASE1_CACHE: dict[tuple[str, str, str, str, int], dict[str, list[dict]]] = {}
 SO_LOOKUP_BASE: pd.DataFrame | None = None
 WAITING_ITEMS_BY_QB: dict[str, str] = {}
@@ -362,11 +363,82 @@ def _build_runtime_indexes(
 
     return so, waiting_map, ledger_index
 
+
+def _build_quote_item_summaries(
+    inventory_src: pd.DataFrame,
+    ledger_src: pd.DataFrame,
+) -> list[dict[str, object]]:
+    if inventory_src is None or inventory_src.empty or "Part_Number" not in inventory_src.columns:
+        return []
+
+    inv = inventory_src.copy()
+    inv["Part_Number"] = inv["Part_Number"].astype(str).str.strip()
+    inv = inv.loc[inv["Part_Number"].ne("")].copy()
+    if "Available" not in inv.columns:
+        inv["Available"] = 0.0
+    if "Max" not in inv.columns:
+        inv["Max"] = pd.NA
+    inv["Available"] = pd.to_numeric(inv["Available"], errors="coerce")
+    inv["Max"] = pd.to_numeric(inv["Max"], errors="coerce")
+    inv_summary = (
+        inv.groupby("Part_Number", as_index=False)[["Available", "Max"]]
+        .first()
+        .rename(columns={"Part_Number": "item", "Available": "available", "Max": "max_flag"})
+    )
+
+    if ledger_src is None or ledger_src.empty:
+        inv_summary["min_regular"] = pd.NA
+        inv_summary["min_2099"] = pd.NA
+        return inv_summary.sort_values("item", kind="mergesort").to_dict(orient="records")
+
+    led = ledger_src.copy()
+    item_col = "Item_raw" if "Item_raw" in led.columns else ("Item" if "Item" in led.columns else None)
+    if item_col is None or "Date" not in led.columns or "Projected_NAV" not in led.columns:
+        inv_summary["min_regular"] = pd.NA
+        inv_summary["min_2099"] = pd.NA
+        return inv_summary.sort_values("item", kind="mergesort").to_dict(orient="records")
+
+    led["item"] = led[item_col].astype(str).str.strip()
+    led["Date"] = pd.to_datetime(led["Date"], errors="coerce").dt.normalize()
+    led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
+    led = led.loc[led["item"].ne("") & led["Date"].notna() & led["Projected_NAV"].notna()].copy()
+
+    cutoff = pd.Timestamp("2099-07-04")
+    led_regular = (
+        led.loc[led["Date"] < cutoff]
+        .groupby("item", as_index=False)["Projected_NAV"]
+        .min()
+        .rename(columns={"Projected_NAV": "min_regular"})
+    )
+    led_2099 = (
+        led.loc[led["Date"] <= cutoff]
+        .groupby("item", as_index=False)["Projected_NAV"]
+        .min()
+        .rename(columns={"Projected_NAV": "min_2099"})
+    )
+
+    merged = inv_summary.merge(led_regular, on="item", how="left").merge(led_2099, on="item", how="left")
+    records = merged.sort_values("item", kind="mergesort").to_dict(orient="records")
+    cleaned: list[dict[str, object]] = []
+    for rec in records:
+        out: dict[str, object] = {}
+        for key, val in rec.items():
+            out[key] = None if pd.isna(val) else val
+        max_flag = out.get("max_flag")
+        if max_flag == 0:
+            out["highlight"] = "red"
+        elif max_flag == 99:
+            out["highlight"] = "green"
+        else:
+            out["highlight"] = ""
+        cleaned.append(out)
+    return cleaned
+
 def _load_from_db(force: bool = False):
     global SO_INV, INVENTORY_STATUS, NAV, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
     global SO_PHASE1_BASE, PO_PHASE1_BASE, ITEM_SUGGEST_CACHE, PHASE1_CACHE
     global SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX
-    global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE
+    global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE, QUOTE_ITEM_SUGGEST_ROWS
     try:
         if (
             force
@@ -413,6 +485,7 @@ def _load_from_db(force: bool = False):
                     inventory["Part_Number"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].tolist()
                 )
             ITEM_SUGGEST_CACHE = sorted(set(suggest_items))
+            QUOTE_ITEM_SUGGEST_ROWS = _build_quote_item_summaries(inventory, ledger)
             PHASE1_CACHE = {}
             PDF_DB_SEARCH_CACHE = {}
             INDEX_VIEW_CACHE = {}
@@ -433,6 +506,7 @@ def _load_from_db(force: bool = False):
         WAITING_ITEMS_BY_QB = {}
         LEDGER_ITEM_INDEX = {}
         ITEM_SUGGEST_CACHE = []
+        QUOTE_ITEM_SUGGEST_ROWS = []
         PHASE1_CACHE = {}
         PDF_DB_SEARCH_CACHE = {}
         INDEX_VIEW_CACHE = {}
@@ -1413,6 +1487,23 @@ def api_item_suggest():
     except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+
+@app.route("/api/quotation_item_suggest")
+def api_quotation_item_suggest():
+    _ensure_loaded()
+    q = (request.args.get("q") or request.args.get("query") or "").strip()
+    if not q:
+        return jsonify({"ok": True, "items": []})
+    try:
+        rows = QUOTE_ITEM_SUGGEST_ROWS
+        ql = q.lower()
+        starts = [r for r in rows if str(r.get("item", "")).lower().startswith(ql)]
+        contains = [r for r in rows if ql in str(r.get("item", "")).lower() and r not in starts]
+        out = (starts + contains)[:20]
+        return jsonify({"ok": True, "items": out})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 @app.route("/quotation_lookup")
 def quotation_lookup():
     _ensure_loaded()
@@ -1421,19 +1512,13 @@ def quotation_lookup():
 
     item_input = (request.values.get("item") or "").strip()
     item_lookup = _resolve_ledger_item_key(item_input)
-    qty_raw = (request.values.get("qty") or "").strip()
-    try:
-        qty_val = int(float(qty_raw)) if qty_raw else 1
-        if qty_val <= 0:
-            qty_val = 1
-    except ValueError:
-        qty_val = 1
+    qty_val = 1
 
     ledger_columns: list[str] = []
     ledger_rows: list[dict] = []
     opening_qty = None
     earliest_atp = None
-    cache_key = (item_lookup, int(qty_val))
+    cache_key = (item_lookup, 1)
     cached = QUOTATION_VIEW_CACHE.get(cache_key)
     if cached is not None:
         ledger_columns = cached.get("ledger_columns", [])
@@ -1443,7 +1528,6 @@ def quotation_lookup():
         return render_template_string(
             QUOTE_TPL,
             item_val=item_input,
-            qty_val=qty_val,
             opening_qty=opening_qty,
             earliest_atp=earliest_atp,
             ledger_columns=ledger_columns,
@@ -1566,7 +1650,6 @@ def quotation_lookup():
     return render_template_string(
         QUOTE_TPL,
         item_val=item_lookup or item_input,
-        qty_val=qty_val,
         opening_qty=opening_qty,
         earliest_atp=earliest_atp,
         ledger_columns=ledger_columns,

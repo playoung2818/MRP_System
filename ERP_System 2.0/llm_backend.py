@@ -338,18 +338,18 @@ def answer_question(cache: DataCache, text_in: str) -> dict[str, Any]:
         out["trace"] = trace
         return out
 
+    req_qty = float(qty) if qty is not None else 1.0
     inv = tool_inventory_snapshot(cache, item)
-    atp = tool_atp_snapshot(cache, item)
-    trace += inv.trace + atp.trace
+    atp_date = tool_earliest_atp_date(cache, item, req_qty)
+    trace += inv.trace + atp_date.trace
     if not inv.ok:
         return {"ok": False, "answer": inv.error or "inventory lookup failed", "trace": trace}
-    if not atp.ok:
-        return {"ok": False, "answer": atp.error or "ATP lookup failed", "trace": trace}
+    if not atp_date.ok:
+        return {"ok": False, "answer": atp_date.error or "ATP date lookup failed", "trace": trace}
     inv_data = inv.data
-    atp_data = atp.data
     out["answer"] = (
         f"{inv_data['item']}: on hand {_format_number(inv_data['on_hand'])}, "
-        f"ATP {_format_number(atp_data['atp_qty'])} (as of {atp_data['as_of']})."
+        f"earliest ATP date for qty {_format_number(req_qty)} is {atp_date.data['date']}."
     )
     out["trace"] = trace
     return out

@@ -19,6 +19,39 @@ QUOTE_TPL = """
     .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); }
     .th-projected{ background:#dcfce7 !important; }
     .cell-projected-min{ background:#bbf7d0 !important; font-weight:700; }
+    .suggest-head, .suggest-row{
+      display:grid;
+      grid-template-columns:minmax(220px, 2.2fr) minmax(90px, .8fr) minmax(130px, 1fr) minmax(130px, 1fr);
+      gap:.75rem;
+      align-items:center;
+    }
+    .suggest-head{
+      padding:.5rem .75rem;
+      font-size:.72rem;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      color:var(--muted);
+      background:#f8fafc;
+      border:1px solid #dee2e6;
+      border-bottom:none;
+      border-radius:.5rem .5rem 0 0;
+    }
+    .suggest-row .col-num{ text-align:right; font-variant-numeric:tabular-nums; }
+    .list-group-item.suggest-red{
+      background:#fff1f2;
+      border-color:#fecdd3;
+    }
+    .list-group-item.suggest-red:hover{
+      background:#ffe4e6;
+    }
+    .list-group-item.suggest-green{
+      background:#f0fdf4;
+      border-color:#bbf7d0;
+    }
+    .list-group-item.suggest-green:hover{
+      background:#dcfce7;
+    }
+    .suggest-empty{ padding:.75rem; color:var(--muted); background:#fff; border:1px solid #dee2e6; border-radius:.5rem; }
   </style>
 </head>
 <body>
@@ -33,7 +66,7 @@ QUOTE_TPL = """
   </div>
 
   <form class="row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
-    <div class="col-12 col-md-6">
+    <div class="col-12 col-md-9">
       <label class="form-label" for="quote-item">Item (fuzzy search)</label>
       <div style="position:relative;">
         <input id="quote-item" autocomplete="off" class="form-control form-control-lg"
@@ -41,20 +74,16 @@ QUOTE_TPL = """
                name="item"
                placeholder="Type item name or partial code"
                value="{{ item_val or '' }}">
+        <div id="quote-suggest-head" class="suggest-head"
+             style="position:absolute; top:62px; left:0; right:0; z-index:1001; display:none;">
+          <div>Item</div>
+          <div class="text-end">Available</div>
+          <div class="text-end">ATP (Exclude Unassigned SO)</div>
+          <div class="text-end">ATP (All SO)</div>
+        </div>
         <div id="quote-suggest" class="list-group"
-             style="position:absolute; top:62px; left:0; right:0; z-index:1000; display:none; max-height:240px; overflow:auto;"></div>
+             style="position:absolute; top:96px; left:0; right:0; z-index:1000; display:none; max-height:280px; overflow:auto;"></div>
       </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <label class="form-label" for="quote-qty">Requested Qty</label>
-      <input id="quote-qty"
-             class="form-control form-control-lg"
-             style="height:60px;font-size:1.05rem"
-             type="number"
-             min="1"
-             step="1"
-             name="qty"
-             value="{{ qty_val or 1 }}">
     </div>
     <div class="col-6 col-md-auto">
       <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
@@ -70,10 +99,6 @@ QUOTE_TPL = """
       <div class="value">{{ item_val or '-' }}</div>
     </div>
     <div class="metric">
-      <div class="label">Requested Qty</div>
-      <div class="value">{{ qty_val or 1 }}</div>
-    </div>
-    <div class="metric">
       <div class="label">Opening (On Hand snapshot)</div>
       <div class="value">
         {% if opening_qty is not none %}
@@ -84,7 +109,7 @@ QUOTE_TPL = """
       </div>
     </div>
     <div class="metric">
-      <div class="label">Earliest ATP (Requested Qty)</div>
+      <div class="label">Earliest ATP Date (Qty 1)</div>
       <div class="value">
         {% if earliest_atp %}
           {{ earliest_atp }}
@@ -130,14 +155,31 @@ QUOTE_TPL = """
   (function () {
     var input = document.getElementById('quote-item');
     var list = document.getElementById('quote-suggest');
+    var head = document.getElementById('quote-suggest-head');
     var suggestTimer;
-    function hideList(){ list.style.display = 'none'; list.innerHTML=''; }
+    function esc(value){
+      if (value === null || value === undefined || value === '') return '---';
+      return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    }
+    function hideList(){
+      list.style.display = 'none';
+      list.innerHTML='';
+      if (head) head.style.display = 'none';
+    }
     function showList(items){
       if (!items || !items.length) { hideList(); return; }
       list.innerHTML = items.map(function (it){
-        return '<button type="button" class="list-group-item list-group-item-action">' +
-               it.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</button>';
+        var extraClass = it.highlight === 'red' ? ' suggest-red' : (it.highlight === 'green' ? ' suggest-green' : '');
+        return '<button type="button" class="list-group-item list-group-item-action' + extraClass + '">' +
+               '<div class="suggest-row">' +
+               '<div>' + esc(it.item) + '</div>' +
+               '<div class="col-num">' + esc(it.available) + '</div>' +
+               '<div class="col-num">' + esc(it.min_regular) + '</div>' +
+               '<div class="col-num">' + esc(it.min_2099) + '</div>' +
+               '</div>' +
+               '</button>';
       }).join('');
+      if (head) head.style.display = 'grid';
       list.style.display = 'block';
     }
     if (input && list){
@@ -146,7 +188,7 @@ QUOTE_TPL = """
         if (suggestTimer) clearTimeout(suggestTimer);
         if (!q){ hideList(); return; }
         suggestTimer = setTimeout(function(){
-          fetch('/api/item_suggest?q=' + encodeURIComponent(q))
+          fetch('/api/quotation_item_suggest?q=' + encodeURIComponent(q))
             .then(function(r){ return r.json(); })
             .then(function(j){ if (j && j.ok) showList(j.items); else hideList(); })
             .catch(function(){ hideList(); });
@@ -155,7 +197,8 @@ QUOTE_TPL = """
       list.addEventListener('click', function(e){
         var t = e.target.closest('.list-group-item');
         if (!t) return;
-        input.value = t.textContent.trim();
+        var row = t.querySelector('.suggest-row > div');
+        input.value = row ? row.textContent.trim() : t.textContent.trim();
         hideList();
       });
       document.addEventListener('click', function(e){
