@@ -9,7 +9,7 @@ BASE = ONEDRIVE / "Share NTA Warehouse" / "Daily Update"
 
 SALES_ORDER_FILE = BASE / "Open Sales Order 03_06_2026.CSV"
 WAREHOUSE_INV_FILE = BASE / "WH01S_03_06.CSV"
-SHIPPING_SCHEDULE_FILE = BASE / "NTA_Shipping schedule_20260305.xlsx"
+SHIPPING_SCHEDULE_FILE = BASE / "NTA_Shipping schedule_20260309.xlsx"
 POD_FILE = BASE / "POD_03_06.CSV"
 
 
@@ -28,3 +28,5 @@ TBL_Shipping = "NT Shipping Schedule"
 TBL_LEDGER = "ledger_analytics"
 TBL_ITEM_SUMMARY = "item_summary"
 TBL_ITEM_ATP = "item_atp"
+TBL_SO_ASSIGN_READY = "so_assignment_readiness"
+TBL_SO_ASSIGN_BLOCKERS = "so_assignment_blockers"

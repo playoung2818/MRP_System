@@ -52,7 +52,7 @@ Follow this workflow when changing parsing, normalization, or reconciliation beh
   - stale table data from pre-change ETL runs.
 - If ship date is `NULL`, verify whether ship date source is ledger or shipping table before concluding parse failure.
 
-## Supabase QA logging expectations
+## QA logging expectations
 
 - Keep report schema additive and stable where possible.
 - Include `filter_used` text in each run summary.
@@ -83,3 +83,7 @@ At the same time, a Supply ussage view is required. So i can know how many suppl
 The UI needs discussion
 
 Success defination: a workflow where i can assign supply to demand easily. a test that make sure every item in ledger would never have negative projected qty any time.
+
+
+## Ddefination of "Ready to be assigned"
+For a So that have not been assigned Lead Time (2099-07-04), if there's any date before 2099-07-04 can be assigned to this SO, without having negative "Projected_NAV" in the ledger for all the items in this So, then it can be defined as "Ready to be assigned"

@@ -17,6 +17,7 @@ from ui import (
     ITEM_TPL,
     INVENTORY_TPL,
     PRODUCTION_TPL,
+    SOLT_RR_TPL,
     PHASE1_TPL,
 )
 from quote_ui import QUOTE_TPL
@@ -32,7 +33,7 @@ os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434")
 os.environ.setdefault("OLLAMA_MODEL", "llama3.1")
 
 from erp_normalize import normalize_item
-from atp import build_atp_view, earliest_atp_strict
+from atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from db_config import get_engine, DATABASE_DSN
 from llm_backend import DataCache as LLMDataCache, answer_question as llm_answer_question
 
@@ -68,6 +69,7 @@ PDF_DB_SEARCH_CACHE: dict[tuple[str, int], list[dict]] = {}
 INDEX_VIEW_CACHE: dict[tuple[str, str], dict] = {}
 QUOTATION_VIEW_CACHE: dict[tuple[str, int], dict] = {}
 CHAT_LOG_FILE = REPO_ROOT / "Webpage" / "chatbox.log"
+READY_ASSIGN_CACHE: list[dict] | None = None
 
 # =========================
 # PDF settings/cache
@@ -439,7 +441,7 @@ def _load_from_db(force: bool = False):
     global SO_INV, INVENTORY_STATUS, NAV, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
     global SO_PHASE1_BASE, PO_PHASE1_BASE, ITEM_SUGGEST_CACHE, PHASE1_CACHE
     global SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX
-    global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE, QUOTE_ITEM_SUGGEST_ROWS
+    global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE, QUOTE_ITEM_SUGGEST_ROWS, READY_ASSIGN_CACHE
     try:
         if (
             force
@@ -491,6 +493,7 @@ def _load_from_db(force: bool = False):
             PDF_DB_SEARCH_CACHE = {}
             INDEX_VIEW_CACHE = {}
             QUOTATION_VIEW_CACHE = {}
+            READY_ASSIGN_CACHE = None
             _LAST_LOAD_ERR = None
             _LAST_LOADED_AT = datetime.now()
     except Exception as e:
@@ -512,6 +515,7 @@ def _load_from_db(force: bool = False):
         PDF_DB_SEARCH_CACHE = {}
         INDEX_VIEW_CACHE = {}
         QUOTATION_VIEW_CACHE = {}
+        READY_ASSIGN_CACHE = None
         _LAST_LOAD_ERR = f"DB load error: {e}"
 
 def _ensure_loaded():
@@ -553,6 +557,75 @@ def _append_chat_log(role: str, content: str, *, ok: bool | None = None, trace: 
     except Exception:
         # Logging must not break chat responses.
         pass
+
+
+def _ready_to_assign_rows() -> list[dict]:
+    global READY_ASSIGN_CACHE
+    if READY_ASSIGN_CACHE is not None:
+        return READY_ASSIGN_CACHE
+
+    if SO_INV is None or SO_INV.empty or ITEM_ATP is None or ITEM_ATP.empty:
+        READY_ASSIGN_CACHE = []
+        return READY_ASSIGN_CACHE
+
+    cutoff = pd.Timestamp("2099-07-04")
+    today = pd.Timestamp.today().normalize()
+
+    so = SO_INV.copy()
+    for c in ["QB Num", "Item", "Qty(-)", "Ship Date", "Name", "P. O. #", "Order Date", "Component_Status"]:
+        if c not in so.columns:
+            so[c] = pd.NA
+    so["Ship Date"] = pd.to_datetime(so["Ship Date"], errors="coerce")
+    so["Order Date"] = pd.to_datetime(so["Order Date"], errors="coerce")
+    so["QB Num"] = so["QB Num"].astype(str).str.strip()
+    so["Item"] = so["Item"].astype(str).str.strip()
+    so["Qty(-)"] = pd.to_numeric(so["Qty(-)"], errors="coerce").fillna(0.0)
+    pending = so.loc[so["Ship Date"].eq(cutoff) & so["QB Num"].ne("") & so["Item"].ne("")].copy()
+    if pending.empty:
+        READY_ASSIGN_CACHE = []
+        return READY_ASSIGN_CACHE
+
+    rows: list[dict] = []
+    for qb_num, grp in pending.groupby("QB Num", sort=True):
+        demands = (
+            grp.loc[grp["Qty(-)"] > 0, ["Item", "Qty(-)"]]
+            .groupby("Item", as_index=False)["Qty(-)"]
+            .sum()
+        )
+        if demands.empty:
+            continue
+        demand_map = {str(r["Item"]): float(r["Qty(-)"]) for _, r in demands.iterrows()}
+        ready_dt = earliest_atp_for_items_strict(ITEM_ATP, demand_map, from_date=today, allow_zero=True)
+        if ready_dt is None or ready_dt >= cutoff:
+            continue
+
+        first = grp.iloc[0]
+        waiting_items = sorted(
+            set(
+                grp.loc[grp["Component_Status"].isin(["Waiting", "Shortage"]), "Item"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .loc[lambda s: s.ne("")]
+                .tolist()
+            )
+        )
+        rows.append(
+            {
+                "qb_num": str(qb_num),
+                "customer": str(first.get("Name") or ""),
+                "po_num": str(first.get("P. O. #") or ""),
+                "order_date": first["Order Date"].strftime("%Y-%m-%d") if pd.notna(first.get("Order Date")) else "",
+                "current_ship_date": cutoff.strftime("%Y-%m-%d"),
+                "ready_date": ready_dt.strftime("%Y-%m-%d"),
+                "item_count": int(len(demand_map)),
+                "waiting_items": ", ".join(waiting_items),
+            }
+        )
+
+    rows.sort(key=lambda r: (r["ready_date"], r["qb_num"]))
+    READY_ASSIGN_CACHE = rows
+    return READY_ASSIGN_CACHE
 
 def lookup_on_po_by_item(item: str) -> int | None:
     df = SO_INV[SO_INV["Item"] == item]
@@ -1496,6 +1569,49 @@ def production_planning():
         PRODUCTION_TPL,
         loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
         date_groups=date_groups,
+    )
+
+
+@app.route("/solt_rr")
+def solt_rr():
+    _ensure_loaded()
+    if _LAST_LOAD_ERR:
+        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
+
+    if request.args.get("reload") == "1":
+        _load_from_db(force=True)
+
+    qb_num = (request.values.get("qb_num") or request.values.get("so") or "").strip().upper()
+    rows: list[dict] = []
+    columns: list[str] = []
+    try:
+        if qb_num:
+            sql = text(
+                'SELECT * FROM "public"."so_assignment_blockers" '
+                'WHERE "QB Num" = :qb ORDER BY "QB Num", "Item"'
+            )
+            params = {"qb": qb_num}
+        else:
+            sql = text(
+                'SELECT * FROM "public"."so_assignment_blockers" '
+                'ORDER BY "QB Num", "Item"'
+            )
+            params = {}
+        with engine.connect() as conn:
+            df = pd.read_sql_query(sql, conn, params=params)
+        if not df.empty:
+            columns = df.columns.tolist()
+            rows = df.fillna("").astype(str).to_dict(orient="records")
+    except Exception as exc:
+        return render_template_string(ERR_TPL, error=f"SOLT-RR query failed: {exc}"), 500
+
+    return render_template_string(
+        SOLT_RR_TPL,
+        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
+        qb_num=qb_num,
+        rows=rows,
+        columns=columns,
+        count=len(rows),
     )
 
 @app.route("/api/item_suggest")

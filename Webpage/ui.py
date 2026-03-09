@@ -185,6 +185,14 @@ INDEX_TPL = """
     <a class="btn btn-lg" href="/phase1">Open</a>
   </div>
 
+  <div class="inv-cta mt-3" style="background:#b45309;">
+    <div>
+      <div class="title">SOLT-RR</div>
+      <div class="sub">Search blocker items for a QB Num from public.so_assignment_blockers</div>
+    </div>
+    <a class="btn btn-lg" href="/solt_rr">Open</a>
+  </div>
+
   {% if customer_query is not none %}
   <div class="card-lite bg-white my-4 p-4">
     <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center mb-3">
@@ -929,6 +937,88 @@ INVENTORY_TPL = """
     </div>
   </div>
 
+</body>
+</html>
+"""
+
+SOLT_RR_TPL = """
+<!doctype html>
+<html>
+<head>
+  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <meta charset="utf-8">
+  <title>SOLT-RR</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root{ --ink:#0f172a; --muted:#6b7280; --bg:#f7fafc; --hdr:#f8fafc; }
+    html,body{ background:var(--bg); color:var(--ink); }
+    body{ padding:28px; }
+    .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); }
+    .table-responsive{ max-height:72vh; overflow:auto; }
+    .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); white-space:nowrap; }
+  </style>
+</head>
+<body>
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div>
+      <div class="h3 m-0">SOLT-RR</div>
+      <div class="text-muted small">Loaded {{ loaded_at }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
+      <a class="btn btn-sm btn-outline-primary" href="/solt_rr?reload=1">Reload</a>
+    </div>
+  </div>
+
+  <form class="row gy-3 gx-4 align-items-end justify-content-start mb-3" method="get">
+    <div class="col-12 col-md-6">
+      <label class="form-label" for="solt-qb">QB Num</label>
+      <input id="solt-qb" class="form-control form-control-lg"
+             style="height:60px;font-size:1.05rem"
+             name="qb_num"
+             placeholder="e.g. SO-20260169"
+             value="{{ qb_num or '' }}">
+    </div>
+    <div class="col-6 col-md-auto">
+      <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
+    </div>
+  </form>
+
+  <div class="card-lite bg-white p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center">
+      <div class="fw-bold">Rows: {{ count }}</div>
+      <div class="text-muted small">Source: public.so_assignment_blockers</div>
+    </div>
+  </div>
+
+  <div class="card-lite bg-white">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered table-hover align-middle">
+          <thead class="table-light text-uppercase small text-muted">
+            <tr>
+              {% for c in columns %}
+                <th>{{ c }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% if rows %}
+              {% for r in rows %}
+                <tr>
+                  {% for c in columns %}
+                    <td>{{ r[c] }}</td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="{{ columns|length or 1 }}" class="text-center text-muted">No blocker rows found for that QB Num.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
 """

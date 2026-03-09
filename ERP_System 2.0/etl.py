@@ -11,6 +11,8 @@ from config import (
     TBL_LEDGER,
     TBL_ITEM_SUMMARY,
     TBL_ITEM_ATP,
+    TBL_SO_ASSIGN_READY,
+    TBL_SO_ASSIGN_BLOCKERS,
 )
 from io_ops import (
     extract_inputs,
@@ -40,6 +42,7 @@ from ledger import (
     _order_events,
 )
 from atp import build_atp_view
+from assignment_readiness import build_assignment_readiness_reports
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -89,6 +92,7 @@ def main():
 
     # -------- ATP view (Available-to-Promise) --------
     atp_view = build_atp_view(ledger)
+    assign_ready_df, assign_blockers_df = build_assignment_readiness_reports(structured, ledger)
 
     # -------- Not-assigned SO export --------
     ERP_df = prepare_erp_view(structured)
@@ -167,13 +171,17 @@ def main():
     write_to_db(ledger,     schema=DB_SCHEMA, table=TBL_LEDGER)
     write_to_db(item_summary, schema=DB_SCHEMA, table=TBL_ITEM_SUMMARY)
     write_to_db(atp_view,   schema=DB_SCHEMA, table=TBL_ITEM_ATP)
+    write_to_db(assign_ready_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_READY)
+    write_to_db(assign_blockers_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_BLOCKERS)
 
     print(
         f"Loaded: {DB_SCHEMA}.{TBL_SALES_ORDER}={len(so_full)}; "
         f"{DB_SCHEMA}.{TBL_INVENTORY}={len(inv)}; "
         f"{DB_SCHEMA}.{TBL_STRUCTURED}={len(structured)}; "
         f"{DB_SCHEMA}.{TBL_POD}={len(pod)}; "
-        f"{DB_SCHEMA}.{TBL_Shipping}={len(ship)}"
+        f"{DB_SCHEMA}.{TBL_Shipping}={len(ship)}; "
+        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_READY}={len(assign_ready_df)}; "
+        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_BLOCKERS}={len(assign_blockers_df)}"
     )
 
     # -------- Push to Google Sheets --------
