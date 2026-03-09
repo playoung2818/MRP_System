@@ -3,12 +3,13 @@ from __future__ import annotations
 import pandas as pd
 
 from atp import earliest_atp_strict
+from core import _norm_key
+from erp_normalize import normalize_item
 
 
-def _item_mask(df: pd.DataFrame, item: str) -> pd.Series:
-    if "Item_raw" in df.columns:
-        return df["Item_raw"].astype(str) == str(item)
-    return df["Item"].astype(str) == str(item)
+def _normalize_item_key(item: str) -> str:
+    series = pd.Series([item], dtype="string").map(normalize_item)
+    return str(_norm_key(series).iloc[0])
 
 
 def _build_adjusted_item_atp(
@@ -26,7 +27,10 @@ def _build_adjusted_item_atp(
     if led.empty or "Delta" not in led.columns or "Date" not in led.columns:
         return pd.DataFrame(columns=["Item", "Date", "Projected_NAV", "FutureMin_NAV"])
 
-    mask_item = _item_mask(led, item)
+    normalized_item = _normalize_item_key(item)
+    if "Item" not in led.columns:
+        return pd.DataFrame(columns=["Item", "Date", "Projected_NAV", "FutureMin_NAV"])
+    mask_item = _norm_key(led["Item"]).astype(str) == normalized_item
     item_df = led.loc[mask_item].copy()
     if item_df.empty:
         return pd.DataFrame(columns=["Item", "Date", "Projected_NAV", "FutureMin_NAV"])
@@ -65,7 +69,7 @@ def _build_adjusted_item_atp(
             current_min = min(current_min, float(value))
         future_min[idx] = current_min
 
-    item_name = str(adjusted["Item_raw"].iloc[0] if "Item_raw" in adjusted.columns else adjusted["Item"].iloc[0])
+    item_name = str(adjusted["Item"].iloc[0])
     return pd.DataFrame(
         {
             "Item": item_name,
@@ -104,15 +108,68 @@ def _earliest_assignment_date_before_cutoff(
             current_min = min(current_min, float(value))
         future_min[idx] = current_min
     scoped["FutureMin_NAV"] = future_min
-    return earliest_atp_strict(scoped[["Item", "Date", "Projected_NAV", "FutureMin_NAV"]], item, qty, from_date=from_date, allow_zero=True)
+    return earliest_atp_strict(
+        scoped[["Item", "Date", "Projected_NAV", "FutureMin_NAV"]],
+        _normalize_item_key(item),
+        qty,
+        from_date=from_date,
+        allow_zero=True,
+    )
 
 
-def build_assignment_readiness_reports(
+def _earliest_assignment_date_for_mode(
+    ledger: pd.DataFrame,
+    *,
+    qb_num: str,
+    item: str,
+    qty: float,
+    from_date: pd.Timestamp,
+    cutoff: pd.Timestamp,
+    include_cutoff_in_check: bool,
+) -> pd.Timestamp | None:
+    adj_atp = _build_adjusted_item_atp(ledger, qb_num=qb_num, item=item, from_date=from_date)
+    if adj_atp.empty:
+        return None
+
+    date_series = pd.to_datetime(adj_atp["Date"], errors="coerce")
+    if include_cutoff_in_check:
+        scoped = adj_atp.loc[date_series <= cutoff].copy()
+    else:
+        scoped = adj_atp.loc[date_series < cutoff].copy()
+    if scoped.empty:
+        return None
+
+    scoped["Date"] = pd.to_datetime(scoped["Date"], errors="coerce")
+    scoped["Projected_NAV"] = pd.to_numeric(scoped["Projected_NAV"], errors="coerce")
+    projected = scoped["Projected_NAV"].tolist()
+    future_min: list[float] = [0.0] * len(projected)
+    current_min = float("inf")
+    for idx in range(len(projected) - 1, -1, -1):
+        value = projected[idx]
+        if pd.notna(value):
+            current_min = min(current_min, float(value))
+        future_min[idx] = current_min
+    scoped["FutureMin_NAV"] = future_min
+
+    candidates = scoped.loc[scoped["Date"] < cutoff].copy()
+    if candidates.empty:
+        return None
+    return earliest_atp_strict(
+        candidates[["Item", "Date", "Projected_NAV", "FutureMin_NAV"]],
+        _normalize_item_key(item),
+        qty,
+        from_date=from_date,
+        allow_zero=True,
+    )
+
+
+def _build_assignment_readiness_for_mode(
     structured: pd.DataFrame,
     ledger: pd.DataFrame,
     *,
     from_date: pd.Timestamp | None = None,
     cutoff_date: str = "2099-07-04",
+    mode: str = "loose",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     summary_cols = [
         "QB Num",
@@ -144,6 +201,8 @@ def build_assignment_readiness_reports(
 
     cutoff = pd.Timestamp(cutoff_date).normalize()
     start_date = pd.Timestamp.today().normalize() if from_date is None else pd.to_datetime(from_date).normalize()
+    mode_norm = str(mode).strip().lower()
+    include_cutoff_in_check = mode_norm == "strict"
 
     so = structured.copy()
     for c in ["QB Num", "Name", "P. O. #", "Order Date", "Ship Date", "Item", "Qty(-)", "Component_Status"]:
@@ -181,13 +240,14 @@ def build_assignment_readiness_reports(
 
         item_dates: dict[str, pd.Timestamp] = {}
         for item, qty in demand_map.items():
-            dt = _earliest_assignment_date_before_cutoff(
+            dt = _earliest_assignment_date_for_mode(
                 ledger,
                 qb_num=str(qb_num),
                 item=item,
                 qty=qty,
                 from_date=start_date,
                 cutoff=cutoff,
+                include_cutoff_in_check=include_cutoff_in_check,
             )
             if dt is not None:
                 item_dates[item] = dt
@@ -207,7 +267,11 @@ def build_assignment_readiness_reports(
                         "Item": item,
                         "Required Qty": qty,
                         "Earliest Feasible Date": None,
-                        "Block Reason": "No feasible ATP date after removing this SO's placeholder demand",
+                        "Block Reason": (
+                            "No feasible ATP date after removing this SO's placeholder demand"
+                            if not include_cutoff_in_check
+                            else "No feasible ATP date before placeholder date under strict check"
+                        ),
                     }
                 )
             elif dt > cutoff:
@@ -270,3 +334,131 @@ def build_assignment_readiness_reports(
         ["QB Num", "Item"], kind="mergesort"
     )
     return summary_df.reset_index(drop=True), blocker_df.reset_index(drop=True)
+
+
+def build_assignment_readiness_reports(
+    structured: pd.DataFrame,
+    ledger: pd.DataFrame,
+    *,
+    from_date: pd.Timestamp | None = None,
+    cutoff_date: str = "2099-07-04",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return _build_assignment_readiness_for_mode(
+        structured,
+        ledger,
+        from_date=from_date,
+        cutoff_date=cutoff_date,
+        mode="loose",
+    )
+
+
+def build_assignment_run_tables(
+    structured: pd.DataFrame,
+    ledger: pd.DataFrame,
+    *,
+    from_date: pd.Timestamp | None = None,
+    cutoff_date: str = "2099-07-04",
+    run_ts: pd.Timestamp | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    run_ts = pd.Timestamp.now() if run_ts is None else pd.to_datetime(run_ts)
+    run_id = run_ts.strftime("run_%Y%m%d_%H%M%S")
+    modes = ["strict", "loose"]
+
+    run_rows: list[pd.DataFrame] = []
+    blocker_rows: list[pd.DataFrame] = []
+    per_mode: dict[str, pd.DataFrame] = {}
+
+    for mode in modes:
+        summary_df, blocker_df = _build_assignment_readiness_for_mode(
+            structured,
+            ledger,
+            from_date=from_date,
+            cutoff_date=cutoff_date,
+            mode=mode,
+        )
+        per_mode[mode] = summary_df.copy()
+
+        run_df = summary_df.rename(
+            columns={
+                "Ready to be assigned": "is_ready",
+                "Earliest Ready Date": "earliest_ready_date",
+                "Blocking Item Count": "blocking_item_count",
+                "Blocking Items": "blocking_items",
+                "Waiting / Shortage Items": "waiting_shortage_items",
+            }
+        ).copy()
+        run_df.insert(0, "run_id", run_id)
+        run_df.insert(1, "run_ts", run_ts)
+        run_df.insert(2, "mode", mode)
+        run_df["decision_status"] = run_df["is_ready"].map({True: "ready", False: "blocked"}).fillna("blocked")
+        run_df["note"] = ""
+        run_rows.append(
+            run_df[
+                [
+                    "run_id", "run_ts", "mode", "QB Num", "Name", "P. O. #", "Order Date",
+                    "Current Ship Date", "Item Count", "is_ready", "earliest_ready_date",
+                    "blocking_item_count", "blocking_items", "waiting_shortage_items",
+                    "decision_status", "note",
+                ]
+            ]
+        )
+
+        blk_df = blocker_df.copy()
+        if blk_df.empty:
+            blk_df = pd.DataFrame(
+                columns=[
+                    "run_id", "run_ts", "mode", "QB Num", "Name", "P. O. #", "Order Date",
+                    "Current Ship Date", "Item", "Required Qty", "Earliest Feasible Date", "Block Reason",
+                ]
+            )
+        else:
+            blk_df.insert(0, "run_id", run_id)
+            blk_df.insert(1, "run_ts", run_ts)
+            blk_df.insert(2, "mode", mode)
+        blocker_rows.append(blk_df)
+
+    strict_df = per_mode["strict"].copy()
+    loose_df = per_mode["loose"].copy()
+    strict_cols = strict_df.rename(
+        columns={
+            "Ready to be assigned": "strict_ready",
+            "Earliest Ready Date": "strict_date",
+        }
+    )[["QB Num", "strict_ready", "strict_date"]]
+    loose_cols = loose_df.rename(
+        columns={
+            "Ready to be assigned": "loose_ready",
+            "Earliest Ready Date": "loose_date",
+        }
+    )[["QB Num", "loose_ready", "loose_date"]]
+    diff_df = strict_cols.merge(loose_cols, on="QB Num", how="outer")
+    diff_df.insert(0, "run_id", run_id)
+    diff_df["diff_type"] = "same_blocked"
+    diff_df.loc[diff_df["strict_ready"].fillna(False) & diff_df["loose_ready"].fillna(False), "diff_type"] = "same_ready"
+    diff_df.loc[~diff_df["strict_ready"].fillna(False) & diff_df["loose_ready"].fillna(False), "diff_type"] = "loose_only_ready"
+    same_ready_mask = diff_df["strict_ready"].fillna(False) & diff_df["loose_ready"].fillna(False)
+    strict_date = pd.to_datetime(diff_df["strict_date"], errors="coerce")
+    loose_date = pd.to_datetime(diff_df["loose_date"], errors="coerce")
+    diff_df.loc[same_ready_mask & strict_date.ne(loose_date), "diff_type"] = "date_changed"
+    diff_df["admin_decision"] = ""
+    diff_df["admin_note"] = ""
+    diff_df = diff_df[
+        [
+            "run_id", "QB Num", "strict_ready", "strict_date", "loose_ready", "loose_date",
+            "diff_type", "admin_decision", "admin_note",
+        ]
+    ].sort_values(["diff_type", "QB Num"], kind="mergesort").reset_index(drop=True)
+
+    constraints_df = pd.DataFrame(
+        columns=[
+            "id", "is_active", "qb_num", "item", "constraint_type", "constraint_value",
+            "priority_weight", "start_date", "end_date", "note", "source", "updated_by", "updated_at",
+        ]
+    )
+
+    return (
+        constraints_df,
+        pd.concat(run_rows, ignore_index=True).reset_index(drop=True),
+        pd.concat(blocker_rows, ignore_index=True).reset_index(drop=True),
+        diff_df,
+    )

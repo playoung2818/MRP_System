@@ -13,6 +13,10 @@ from config import (
     TBL_ITEM_ATP,
     TBL_SO_ASSIGN_READY,
     TBL_SO_ASSIGN_BLOCKERS,
+    TBL_SO_ASSIGN_CONSTRAINTS,
+    TBL_SO_ASSIGN_RUNS,
+    TBL_SO_ASSIGN_RUN_BLOCKERS,
+    TBL_SO_ASSIGN_RUN_DIFF,
 )
 from io_ops import (
     extract_inputs,
@@ -42,7 +46,7 @@ from ledger import (
     _order_events,
 )
 from atp import build_atp_view
-from assignment_readiness import build_assignment_readiness_reports
+from assignment_readiness import build_assignment_readiness_reports, build_assignment_run_tables
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -93,6 +97,7 @@ def main():
     # -------- ATP view (Available-to-Promise) --------
     atp_view = build_atp_view(ledger)
     assign_ready_df, assign_blockers_df = build_assignment_readiness_reports(structured, ledger)
+    assign_constraints_df, assign_runs_df, assign_run_blockers_df, assign_run_diff_df = build_assignment_run_tables(structured, ledger)
 
     # -------- Not-assigned SO export --------
     ERP_df = prepare_erp_view(structured)
@@ -173,6 +178,10 @@ def main():
     write_to_db(atp_view,   schema=DB_SCHEMA, table=TBL_ITEM_ATP)
     write_to_db(assign_ready_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_READY)
     write_to_db(assign_blockers_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_BLOCKERS)
+    write_to_db(assign_constraints_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_CONSTRAINTS)
+    write_to_db(assign_runs_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_RUNS)
+    write_to_db(assign_run_blockers_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_RUN_BLOCKERS)
+    write_to_db(assign_run_diff_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_RUN_DIFF)
 
     print(
         f"Loaded: {DB_SCHEMA}.{TBL_SALES_ORDER}={len(so_full)}; "
@@ -181,7 +190,10 @@ def main():
         f"{DB_SCHEMA}.{TBL_POD}={len(pod)}; "
         f"{DB_SCHEMA}.{TBL_Shipping}={len(ship)}; "
         f"{DB_SCHEMA}.{TBL_SO_ASSIGN_READY}={len(assign_ready_df)}; "
-        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_BLOCKERS}={len(assign_blockers_df)}"
+        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_BLOCKERS}={len(assign_blockers_df)}; "
+        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUNS}={len(assign_runs_df)}; "
+        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUN_BLOCKERS}={len(assign_run_blockers_df)}; "
+        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUN_DIFF}={len(assign_run_diff_df)}"
     )
 
     # -------- Push to Google Sheets --------

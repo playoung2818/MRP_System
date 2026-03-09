@@ -71,7 +71,7 @@ Follow this workflow when changing parsing, normalization, or reconciliation beh
 - Do not assume mapping fixes old DB rows; re-run ETL or explain staleness explicitly.
 
 
-## Thoughts
+## Business Logic
 [IN] -- `Open_Purchase_Orders`, `NT Shipping Schedule`
 [OUT] -- `Open_Sales_Order` (SO)
 
@@ -86,4 +86,16 @@ Success defination: a workflow where i can assign supply to demand easily. a tes
 
 
 ## Ddefination of "Ready to be assigned"
-For a So that have not been assigned Lead Time (2099-07-04), if there's any date before 2099-07-04 can be assigned to this SO, without having negative "Projected_NAV" in the ledger for all the items in this So, then it can be defined as "Ready to be assigned"
+For a So that have not been assigned Lead Time (2099-07-04), if there's any date before 2099-07-04 can be assigned to this SO, without having negative "Projected_NAV" in the ledger (w or w/o including date == 2099-07-04) for all the items in this So, then it can be defined as "Ready to be assigned"
+
+## Lead Time Assign Model
+First run the model to assign lead time to unassigned SOs with restict constrain: Assign date before 2099-07-04, without having negative "Projected_NAV" in the ledger (including date == 2099-07-04) for all the items in this SO
+Then run the model to assign lead time to unassigned SOs with more lose constrain: Assign date before 2099-07-04, without having negative "Projected_NAV" in the ledger (before date == 2099-07-04) for all the items in this SO
+Then run a diff of these two runs, let Admin(Me) to decide whether diff SOs should be assigned Lead Time.
+I would write constrains/note in a file, so every time run this model, read this file first. For the content of the constrains/note, for example, link SO-20260353 to POD-260255 and this SO/POD is pre-installed. Another example is like saying, SO-20260353 is rush order, fulfill this first. 
+
+Discussion Topic:
+1. Compare using script to run this model VS. using LLM api to run this model. (Choose script)
+2. About constrains/note, compare using markdown VS.  using excel   Or if there's any other solutions please recommend. (Choose Markdown, Only used by myself)
+3. Compare using LLM VS. Prescriptive Analysis [Linear Programming (LP),Integer Programming (IP),Dynamic Programming, Markov Decision Processes, Simulation / Monte Carlo, Reinforcement Learning] for this project as the infrusture (Choose Prescriptive Analysis)
+
