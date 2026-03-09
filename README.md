@@ -59,3 +59,18 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 
 ## Projected Inventory Shortages
 <img width="1691" height="567" alt="image" src="https://github.com/user-attachments/assets/995b4df0-06fe-4c86-86a8-ba2ff2670364" />
+
+### Logic
+- find the rows for this item
+- drop rows where:
+  - `QB Num == target SO`
+  - `Kind == OUT`
+- sort remaining ledger rows by date
+- rebuild running inventory from:
+  - `opening + cumulative delta`
+- build `FutureMin_NAV` from rebuilt `Projected_NAV`:
+  - scan backward from the last row to the first row
+  - at each row, store the minimum `Projected_NAV` from that row forward
+- test earliest available date:
+  - find the earliest date where `FutureMin_NAV >= required qty`
+  - if true, inserting this SO on that date will not make future inventory negative

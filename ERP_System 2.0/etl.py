@@ -15,8 +15,6 @@ from config import (
     TBL_SO_ASSIGN_BLOCKERS,
     TBL_SO_ASSIGN_CONSTRAINTS,
     TBL_SO_ASSIGN_RUNS,
-    TBL_SO_ASSIGN_RUN_BLOCKERS,
-    TBL_SO_ASSIGN_RUN_DIFF,
 )
 from io_ops import (
     extract_inputs,
@@ -97,7 +95,7 @@ def main():
     # -------- ATP view (Available-to-Promise) --------
     atp_view = build_atp_view(ledger)
     assign_ready_df, assign_blockers_df = build_assignment_readiness_reports(structured, ledger)
-    assign_constraints_df, assign_runs_df, assign_run_blockers_df, assign_run_diff_df = build_assignment_run_tables(structured, ledger)
+    assign_constraints_df, assign_runs_df = build_assignment_run_tables(structured, ledger)
 
     # -------- Not-assigned SO export --------
     ERP_df = prepare_erp_view(structured)
@@ -180,8 +178,6 @@ def main():
     write_to_db(assign_blockers_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_BLOCKERS)
     write_to_db(assign_constraints_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_CONSTRAINTS)
     write_to_db(assign_runs_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_RUNS)
-    write_to_db(assign_run_blockers_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_RUN_BLOCKERS)
-    write_to_db(assign_run_diff_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_RUN_DIFF)
 
     print(
         f"Loaded: {DB_SCHEMA}.{TBL_SALES_ORDER}={len(so_full)}; "
@@ -191,9 +187,7 @@ def main():
         f"{DB_SCHEMA}.{TBL_Shipping}={len(ship)}; "
         f"{DB_SCHEMA}.{TBL_SO_ASSIGN_READY}={len(assign_ready_df)}; "
         f"{DB_SCHEMA}.{TBL_SO_ASSIGN_BLOCKERS}={len(assign_blockers_df)}; "
-        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUNS}={len(assign_runs_df)}; "
-        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUN_BLOCKERS}={len(assign_run_blockers_df)}; "
-        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUN_DIFF}={len(assign_run_diff_df)}"
+        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUNS}={len(assign_runs_df)}"
     )
 
     # -------- Push to Google Sheets --------

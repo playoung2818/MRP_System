@@ -80,7 +80,6 @@ Generate `ledger_analytics` as core pillar as this MRP system
 For each item in wo_structured table, it has status column, for Status == 'Waiting' or 'Shortage', I need build a reference table where i can assign POD to that item.
 At the same time, a Supply ussage view is required. So i can know how many supply by item by pod i can assign. After assign POD to that item, the qty of pod is locked to that SO that item. 
 
-The UI needs discussion
 
 Success defination: a workflow where i can assign supply to demand easily. a test that make sure every item in ledger would never have negative projected qty any time.
 
@@ -99,3 +98,31 @@ Discussion Topic:
 2. About constrains/note, compare using markdown VS.  using excel   Or if there's any other solutions please recommend. (Choose Markdown, Only used by myself)
 3. Compare using LLM VS. Prescriptive Analysis [Linear Programming (LP),Integer Programming (IP),Dynamic Programming, Markov Decision Processes, Simulation / Monte Carlo, Reinforcement Learning] for this project as the infrusture (Choose Prescriptive Analysis)
 
+### Logic
+- find the rows for this item
+- drop rows where:
+  - `QB Num == target SO`
+  - `Kind == OUT`
+- sort remaining ledger rows by date
+- rebuild running inventory from:
+  - `opening + cumulative delta`
+- build `FutureMin_NAV` from rebuilt `Projected_NAV`:
+  - scan backward from the last row to the first row
+  - at each row, store the minimum `Projected_NAV` from that row forward
+- test earliest available date:
+  - find the earliest date where `FutureMin_NAV >= required qty`
+  - if true, inserting this SO on that date will not make future inventory negative
+
+
+Core:
+```python
+projected = scoped["Projected_NAV"].tolist()
+future_min: list[float] = [0.0] * len(projected)
+current_min = float("inf")
+for idx in range(len(projected) - 1, -1, -1):
+    value = projected[idx]
+    if pd.notna(value):
+        current_min = min(current_min, float(value))
+    future_min[idx] = current_min
+scoped["FutureMin_NAV"] = future_min
+```

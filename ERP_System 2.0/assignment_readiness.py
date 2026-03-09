@@ -359,14 +359,14 @@ def build_assignment_run_tables(
     from_date: pd.Timestamp | None = None,
     cutoff_date: str = "2099-07-04",
     run_ts: pd.Timestamp | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     run_ts = pd.Timestamp.now() if run_ts is None else pd.to_datetime(run_ts)
     run_id = run_ts.strftime("run_%Y%m%d_%H%M%S")
     modes = ["strict", "loose"]
 
     run_rows: list[pd.DataFrame] = []
-    blocker_rows: list[pd.DataFrame] = []
     per_mode: dict[str, pd.DataFrame] = {}
+    blocker_by_mode: dict[str, pd.DataFrame] = {}
 
     for mode in modes:
         summary_df, blocker_df = _build_assignment_readiness_for_mode(
@@ -377,6 +377,7 @@ def build_assignment_run_tables(
             mode=mode,
         )
         per_mode[mode] = summary_df.copy()
+        blocker_by_mode[mode] = blocker_df.copy()
 
         run_df = summary_df.rename(
             columns={
@@ -391,6 +392,11 @@ def build_assignment_run_tables(
         run_df.insert(1, "run_ts", run_ts)
         run_df.insert(2, "mode", mode)
         run_df["decision_status"] = run_df["is_ready"].map({True: "ready", False: "blocked"}).fillna("blocked")
+        reason_map = (
+            blocker_df.groupby("QB Num")["Block Reason"].agg(lambda s: "; ".join(sorted(set(s.astype(str)))))
+            if not blocker_df.empty else pd.Series(dtype="object")
+        )
+        run_df["blocking_reasons"] = run_df["QB Num"].map(reason_map).fillna("")
         run_df["note"] = ""
         run_rows.append(
             run_df[
@@ -398,56 +404,71 @@ def build_assignment_run_tables(
                     "run_id", "run_ts", "mode", "QB Num", "Name", "P. O. #", "Order Date",
                     "Current Ship Date", "Item Count", "is_ready", "earliest_ready_date",
                     "blocking_item_count", "blocking_items", "waiting_shortage_items",
-                    "decision_status", "note",
+                    "blocking_reasons", "decision_status", "note",
                 ]
             ]
         )
 
-        blk_df = blocker_df.copy()
-        if blk_df.empty:
-            blk_df = pd.DataFrame(
-                columns=[
-                    "run_id", "run_ts", "mode", "QB Num", "Name", "P. O. #", "Order Date",
-                    "Current Ship Date", "Item", "Required Qty", "Earliest Feasible Date", "Block Reason",
-                ]
-            )
-        else:
-            blk_df.insert(0, "run_id", run_id)
-            blk_df.insert(1, "run_ts", run_ts)
-            blk_df.insert(2, "mode", mode)
-        blocker_rows.append(blk_df)
+    strict_df = run_rows[0].copy()
+    loose_df = run_rows[1].copy()
+    strict_cmp = strict_df[
+        ["QB Num", "is_ready", "earliest_ready_date", "blocking_items", "blocking_reasons"]
+    ].rename(
+        columns={
+            "is_ready": "strict_ready",
+            "earliest_ready_date": "strict_date",
+            "blocking_items": "strict_blocking_items",
+            "blocking_reasons": "strict_blocking_reasons",
+        }
+    )
+    loose_cmp = loose_df[
+        ["QB Num", "is_ready", "earliest_ready_date", "blocking_items", "blocking_reasons"]
+    ].rename(
+        columns={
+            "is_ready": "loose_ready",
+            "earliest_ready_date": "loose_date",
+            "blocking_items": "loose_blocking_items",
+            "blocking_reasons": "loose_blocking_reasons",
+        }
+    )
+    comparison = strict_cmp.merge(loose_cmp, on="QB Num", how="outer")
+    comparison["diff_type"] = "same_blocked"
+    comparison.loc[comparison["strict_ready"].fillna(False) & comparison["loose_ready"].fillna(False), "diff_type"] = "same_ready"
+    comparison.loc[~comparison["strict_ready"].fillna(False) & comparison["loose_ready"].fillna(False), "diff_type"] = "loose_only_ready"
+    strict_date = pd.to_datetime(comparison["strict_date"], errors="coerce")
+    loose_date = pd.to_datetime(comparison["loose_date"], errors="coerce")
+    same_ready_mask = comparison["strict_ready"].fillna(False) & comparison["loose_ready"].fillna(False)
+    comparison.loc[same_ready_mask & strict_date.ne(loose_date), "diff_type"] = "date_changed"
+    comparison["diff_items"] = ""
+    for idx, row in comparison.iterrows():
+        strict_items = {s.strip() for s in str(row.get("strict_blocking_items") or "").split(",") if s.strip()}
+        loose_items = {s.strip() for s in str(row.get("loose_blocking_items") or "").split(",") if s.strip()}
+        comparison.at[idx, "diff_items"] = ", ".join(sorted(strict_items.symmetric_difference(loose_items)))
 
-    strict_df = per_mode["strict"].copy()
-    loose_df = per_mode["loose"].copy()
-    strict_cols = strict_df.rename(
-        columns={
-            "Ready to be assigned": "strict_ready",
-            "Earliest Ready Date": "strict_date",
-        }
-    )[["QB Num", "strict_ready", "strict_date"]]
-    loose_cols = loose_df.rename(
-        columns={
-            "Ready to be assigned": "loose_ready",
-            "Earliest Ready Date": "loose_date",
-        }
-    )[["QB Num", "loose_ready", "loose_date"]]
-    diff_df = strict_cols.merge(loose_cols, on="QB Num", how="outer")
-    diff_df.insert(0, "run_id", run_id)
-    diff_df["diff_type"] = "same_blocked"
-    diff_df.loc[diff_df["strict_ready"].fillna(False) & diff_df["loose_ready"].fillna(False), "diff_type"] = "same_ready"
-    diff_df.loc[~diff_df["strict_ready"].fillna(False) & diff_df["loose_ready"].fillna(False), "diff_type"] = "loose_only_ready"
-    same_ready_mask = diff_df["strict_ready"].fillna(False) & diff_df["loose_ready"].fillna(False)
-    strict_date = pd.to_datetime(diff_df["strict_date"], errors="coerce")
-    loose_date = pd.to_datetime(diff_df["loose_date"], errors="coerce")
-    diff_df.loc[same_ready_mask & strict_date.ne(loose_date), "diff_type"] = "date_changed"
-    diff_df["admin_decision"] = ""
-    diff_df["admin_note"] = ""
-    diff_df = diff_df[
+    runs_df = pd.concat(run_rows, ignore_index=True).reset_index(drop=True)
+    runs_df = runs_df.merge(comparison, on="QB Num", how="left")
+    runs_df["comparison_mode"] = runs_df["mode"].map({"strict": "loose", "loose": "strict"})
+    runs_df["comparison_is_ready"] = runs_df["loose_ready"].where(runs_df["mode"].eq("strict"), runs_df["strict_ready"])
+    runs_df["comparison_ready_date"] = runs_df["loose_date"].where(runs_df["mode"].eq("strict"), runs_df["strict_date"])
+    runs_df["comparison_blocking_items"] = runs_df["loose_blocking_items"].where(
+        runs_df["mode"].eq("strict"), runs_df["strict_blocking_items"]
+    )
+    runs_df["comparison_blocking_reasons"] = runs_df["loose_blocking_reasons"].where(
+        runs_df["mode"].eq("strict"), runs_df["strict_blocking_reasons"]
+    )
+    runs_df["admin_decision"] = ""
+    runs_df["admin_note"] = ""
+    runs_df = runs_df[
         [
-            "run_id", "QB Num", "strict_ready", "strict_date", "loose_ready", "loose_date",
-            "diff_type", "admin_decision", "admin_note",
+            "run_id", "run_ts", "mode", "QB Num", "Name", "P. O. #", "Order Date",
+            "Current Ship Date", "Item Count", "is_ready", "earliest_ready_date",
+            "blocking_item_count", "blocking_items", "blocking_reasons",
+            "waiting_shortage_items", "decision_status", "comparison_mode",
+            "comparison_is_ready", "comparison_ready_date", "comparison_blocking_items",
+            "comparison_blocking_reasons", "diff_type", "diff_items",
+            "admin_decision", "admin_note", "note",
         ]
-    ].sort_values(["diff_type", "QB Num"], kind="mergesort").reset_index(drop=True)
+    ].sort_values(["mode", "QB Num"], kind="mergesort").reset_index(drop=True)
 
     constraints_df = pd.DataFrame(
         columns=[
@@ -456,9 +477,4 @@ def build_assignment_run_tables(
         ]
     )
 
-    return (
-        constraints_df,
-        pd.concat(run_rows, ignore_index=True).reset_index(drop=True),
-        pd.concat(blocker_rows, ignore_index=True).reset_index(drop=True),
-        diff_df,
-    )
+    return constraints_df, runs_df
