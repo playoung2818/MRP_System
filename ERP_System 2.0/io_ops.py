@@ -158,6 +158,15 @@ def fetch_pdf_orders_df_from_supabase() -> pd.DataFrame:
     return pd.DataFrame(all_rows, columns=["WO", "Product Number", "Consigned"])
 
 # ---------- Load (DB) ----------
+def read_table_if_exists(schema: str, table: str) -> pd.DataFrame:
+    eng = engine()
+    query = f'SELECT * FROM "{schema}"."{table}"'
+    try:
+        return pd.read_sql(query, eng)
+    except Exception:
+        return pd.DataFrame()
+
+
 def write_to_db(df: pd.DataFrame, schema: str, table: str):
     if df is None:
         return

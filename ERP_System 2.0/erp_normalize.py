@@ -15,7 +15,7 @@ ITEM_MAPPINGS: dict[str, str] = {
     "Cblkit-FP-NRU-230V-AWP_NRU-240S": "Cblkit-FP-NRU-230V-AWP_NRU-240S-AWP",
     "E-mPCIe-BTWifi-WT-6218_Mod_40CM": "Extnd-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM_kits",
     "E-mPCIe-GPS-M800_Mod_40CM": "Extnd-mPCIeHS_GPS-M800_Mod_Cbl-40CM_kits",
-    "E-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM": "Extnd-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM_kits"
+    "E-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM": "Extnd-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM_kits",
     "M.2 Key B_LTE_Telit FN990A40_15cm": "M.2 Key B_LTE_Telit FN990A40_15",
     "M.2 KEY B_LTE_TELIT FN990A40_15CM": "M.2 Key B_LTE_Telit FN990A40_15",
     "FPnl-3Ant-NRU-160-AWP series": "FPnl-3Ant-of NRU-160-AWP series",
@@ -80,6 +80,13 @@ PATTERN_MAPPINGS = [
             re.IGNORECASE,
         ),
         "GC-Jetson-NX16G-Orin-Nvidia",
+    ),
+    (
+        re.compile(
+            r"^GC[-_ ]?ORINNX8G[-_ ]?(?:JETPACK|JP)\s*[\d\.]*(?:[_ -].*)?$",
+            re.IGNORECASE,
+        ),
+        "GC-JETSON-NX8G-ORIN-NVIDIA",
     ),
 ]
 

@@ -13,12 +13,15 @@ from config import (
     TBL_ITEM_ATP,
     TBL_SO_ASSIGN_READY,
     TBL_SO_ASSIGN_BLOCKERS,
-    TBL_SO_ASSIGN_CONSTRAINTS,
+    TBL_SO_REFERENCE_MAIN,
+    TBL_SO_REFERENCE_STAGE,
+    TBL_SO_REFERENCE_DIFF,
     TBL_SO_ASSIGN_RUNS,
 )
 from io_ops import (
     extract_inputs,
     write_to_db,
+    read_table_if_exists,
     write_final_sales_order_to_gsheet,
     merge_open_sales_order_to_allocation_reference_gsheet,
     save_not_assigned_so,
@@ -44,7 +47,11 @@ from ledger import (
     _order_events,
 )
 from atp import build_atp_view
-from assignment_readiness import build_assignment_readiness_reports, build_assignment_run_tables
+from assignment_readiness import (
+    build_assignment_readiness_reports,
+    build_assignment_run_tables,
+    build_so_reference_tables,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -95,7 +102,13 @@ def main():
     # -------- ATP view (Available-to-Promise) --------
     atp_view = build_atp_view(ledger)
     assign_ready_df, assign_blockers_df = build_assignment_readiness_reports(structured, ledger)
-    assign_constraints_df, assign_runs_df = build_assignment_run_tables(structured, ledger)
+    current_so_reference_main = read_table_if_exists(DB_SCHEMA, TBL_SO_REFERENCE_MAIN)
+    so_reference_stage_df, so_reference_diff_df, so_reference_main_df = build_so_reference_tables(
+        structured,
+        ledger,
+        current_main=current_so_reference_main,
+    )
+    assign_runs_df = build_assignment_run_tables(structured, ledger)
 
     # -------- Not-assigned SO export --------
     ERP_df = prepare_erp_view(structured)
@@ -176,7 +189,9 @@ def main():
     write_to_db(atp_view,   schema=DB_SCHEMA, table=TBL_ITEM_ATP)
     write_to_db(assign_ready_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_READY)
     write_to_db(assign_blockers_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_BLOCKERS)
-    write_to_db(assign_constraints_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_CONSTRAINTS)
+    write_to_db(so_reference_main_df, schema=DB_SCHEMA, table=TBL_SO_REFERENCE_MAIN)
+    write_to_db(so_reference_stage_df, schema=DB_SCHEMA, table=TBL_SO_REFERENCE_STAGE)
+    write_to_db(so_reference_diff_df, schema=DB_SCHEMA, table=TBL_SO_REFERENCE_DIFF)
     write_to_db(assign_runs_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_RUNS)
 
     print(
@@ -187,7 +202,10 @@ def main():
         f"{DB_SCHEMA}.{TBL_Shipping}={len(ship)}; "
         f"{DB_SCHEMA}.{TBL_SO_ASSIGN_READY}={len(assign_ready_df)}; "
         f"{DB_SCHEMA}.{TBL_SO_ASSIGN_BLOCKERS}={len(assign_blockers_df)}; "
-        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUNS}={len(assign_runs_df)}"
+        f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUNS}={len(assign_runs_df)}; "
+        f"{DB_SCHEMA}.{TBL_SO_REFERENCE_MAIN}={len(so_reference_main_df)}; "
+        f"{DB_SCHEMA}.{TBL_SO_REFERENCE_STAGE}={len(so_reference_stage_df)}; "
+        f"{DB_SCHEMA}.{TBL_SO_REFERENCE_DIFF}={len(so_reference_diff_df)}"
     )
 
     # -------- Push to Google Sheets --------

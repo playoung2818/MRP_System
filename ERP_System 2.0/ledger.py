@@ -13,7 +13,11 @@ QTYX_RE = re.compile(r"^\s*(\d+)\s*x\s*(.+)\s*$", re.IGNORECASE)  # "2x SSD-1TB"
 def clean_space(s: str) -> str:
     if not isinstance(s, str):
         return ""
-    return s.replace("\u00A0", " ").replace("\u3000", " ").strip()
+    cleaned = s.replace("_x000D_", " ")
+    cleaned = cleaned.replace("\r", " ").replace("\n", " ")
+    cleaned = cleaned.replace("\u00A0", " ").replace("\u3000", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
 
 def parse_description(desc: str) -> tuple[str, list[str]]:
     s = clean_space(desc)
@@ -458,3 +462,4 @@ def earliest_atp_by_projected_nav(
     if candidates.empty:
         return None
     return candidates.min()
+
