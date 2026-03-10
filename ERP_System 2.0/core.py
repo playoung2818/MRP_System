@@ -33,7 +33,7 @@ def build_wip_lookup(so_full: pd.DataFrame, word_files_df: pd.DataFrame) -> pd.D
     sales["WO_Number"] = sales["QB Num"].astype(str).apply(normalize_wo_number)
     sales["QB Num"] = sales["WO_Number"]
     sales = sales.merge(picked_flags, on="WO_Number", how="left")
-    sales["Picked_Flag"] = sales["Picked_Flag"].fillna(False).astype("boolean")
+    sales["Picked_Flag"] = sales["Picked_Flag"].astype("boolean").fillna(False)
     sales["Picked"] = np.where(sales["Picked_Flag"], "Picked", "No")
     partial_col = sales["partial"] if "partial" in sales.columns else False
     partial_col = pd.Series(partial_col, index=sales.index).fillna(False)

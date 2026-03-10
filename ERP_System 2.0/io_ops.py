@@ -15,11 +15,47 @@ except ImportError:
 from core import normalize_wo_number
 from db_config import get_engine
 
-from config import SALES_ORDER_FILE, WAREHOUSE_INV_FILE, SHIPPING_SCHEDULE_FILE, POD_FILE
+from config import (
+    GOOGLE_SHEETS_CRED_PATH,
+    POD_FILE,
+    SALES_ORDER_FILE,
+    SHIPPING_SCHEDULE_FILE,
+    WAREHOUSE_INV_FILE,
+)
 
 # ---------- DB engine ----------
 def engine():
     return get_engine()
+
+
+def _google_cred_candidates(explicit_path: str | None = None) -> list[str]:
+    candidates: list[str] = []
+
+    def _add(path_value: str | os.PathLike[str] | None) -> None:
+        if not path_value:
+            return
+        path_str = str(path_value).strip().strip('"').strip("'")
+        if path_str and path_str not in candidates:
+            candidates.append(path_str)
+
+    _add(explicit_path)
+    _add(GOOGLE_SHEETS_CRED_PATH)
+    _add(os.getenv("GOOGLE_SHEETS_CRED_PATH"))
+
+    return candidates
+
+
+def _resolve_google_cred_path(explicit_path: str | None = None) -> str:
+    candidates = _google_cred_candidates(explicit_path)
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    searched = "\n".join(f"  - {path}" for path in candidates) or "  - <none>"
+    raise FileNotFoundError(
+        "Google Sheets credential file was not found. Set GOOGLE_SHEETS_CRED_PATH "
+        "in .env to a valid service-account JSON file.\n"
+        f"Searched:\n{searched}"
+    )
 
 def _copy_via_powershell(src: str, dst: str) -> None:
     safe_src = src.replace("'", "''")
@@ -177,7 +213,7 @@ def write_to_db(df: pd.DataFrame, schema: str, table: str):
 def write_final_sales_order_to_gsheet(df: pd.DataFrame, *,
     spreadsheet_name: str = "PDF_WO",
     worksheet_name: str = "Open Sales Order",
-    cred_path: str = r"C:\Users\Admin\OneDrive - neousys-tech\Desktop\Python\pdfwo-466115-734096e1cef8.json",
+    cred_path: str | None = None,
     consigned_wos: set[str] | None = None,
 ):
     if gspread is None or set_with_dataframe is None or ServiceAccountCredentials is None:
@@ -186,14 +222,15 @@ def write_final_sales_order_to_gsheet(df: pd.DataFrame, *,
             "pip install gspread gspread-dataframe oauth2client"
         )
     scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
-    cred_path_use = cred_path
+    resolved_cred_path = _resolve_google_cred_path(cred_path)
+    cred_path_use = resolved_cred_path
     temp_cred_path = None
     try:
         temp_cred_path = os.path.join(tempfile.gettempdir(), f"gsheet_cred_{uuid.uuid4().hex}.json")
-        _copy_via_powershell(cred_path, temp_cred_path)
+        _copy_via_powershell(resolved_cred_path, temp_cred_path)
         cred_path_use = temp_cred_path
     except Exception:
-        cred_path_use = cred_path
+        cred_path_use = resolved_cred_path
     try:
         creds = ServiceAccountCredentials.from_json_keyfile_name(cred_path_use, scope)
         client = gspread.authorize(creds)
@@ -239,7 +276,7 @@ def merge_open_sales_order_to_allocation_reference_gsheet(
     spreadsheet_name: str = "PDF_WO",
     worksheet_name: str = "allocation_reference",
     diff_worksheet_name: str = "allocation_reference_diff",
-    cred_path: str = r"C:\Users\Admin\OneDrive - neousys-tech\Desktop\Python\pdfwo-466115-734096e1cef8.json",
+    cred_path: str | None = None,
 ) -> dict:
     """
     Merge current Open Sales Order rows into allocation_reference sheet.
@@ -287,14 +324,15 @@ def merge_open_sales_order_to_allocation_reference_gsheet(
         return x
 
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    cred_path_use = cred_path
+    resolved_cred_path = _resolve_google_cred_path(cred_path)
+    cred_path_use = resolved_cred_path
     temp_cred_path = None
     try:
         temp_cred_path = os.path.join(tempfile.gettempdir(), f"gsheet_cred_{uuid.uuid4().hex}.json")
-        _copy_via_powershell(cred_path, temp_cred_path)
+        _copy_via_powershell(resolved_cred_path, temp_cred_path)
         cred_path_use = temp_cred_path
     except Exception:
-        cred_path_use = cred_path
+        cred_path_use = resolved_cred_path
 
     try:
         creds = ServiceAccountCredentials.from_json_keyfile_name(cred_path_use, scope)
