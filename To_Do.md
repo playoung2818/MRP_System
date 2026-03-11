@@ -1,40 +1,39 @@
 # To Do
 
-## React + API Training Rollout
+## Skill.md Module Candidates
 
-- [ ] Phase 1: Read-only UI (1 week)
-  - [ ] Expose `Demand Queue`, `Supply Pool`, and `Coverage` views in read-only mode.
-  - [ ] Confirm users can filter and inspect item/SO/POD records.
-  - [ ] Goal: users understand fields and workflow without editing risk.
+### Best candidates
 
-- [ ] Phase 2: Sandbox allocation (1 week)
-  - [ ] Enable allocation flow in test environment only.
-  - [ ] Practice `stage -> validate -> commit` with sample data.
-  - [ ] Run 3 scripted scenarios:
-    - [ ] Normal fill
-    - [ ] Partial fill
-    - [ ] Conflict/stale data
+1. `erp-ledger-maintainer`
+   Covers parser and reconciliation work already centered in `ERP_System 2.0/SKILL.md`, `ERP_System 2.0/core.py`, `ERP_System 2.0/ledger.py`, and the DB reconciliation tests in `ERP_System 2.0/tests`.
+   This should stay as the maintenance and debugging skill for POD, shipping, normalization, and ledger mismatches.
 
-- [ ] Phase 3: Controlled production (1-2 weeks)
-  - [ ] Enable production access for a small user group.
-  - [ ] Limit to selected item groups/SOs.
-  - [ ] Review `allocation_history` and `qa_locking_validation` daily.
+2. `assignment-readiness`
+   Based on `ERP_System 2.0/assignment_readiness.py`.
+   This is a separate business workflow: strict vs loose assignment mode, cutoff date `2099-07-04`, blockers, reference tables, diff tables, and manual carry-forward fields.
 
-- [ ] Phase 4: Full adoption
-  - [ ] Make React+API allocation the primary workflow.
-  - [ ] Keep Excel as reporting/export only (not source of truth).
+3. `atp-analysis`
+   Based on `ERP_System 2.0/atp.py` and the ATP parts of `ERP_System 2.0/ledger.py`.
+   Good for workflows that answer whether an item or SO can be promised on a given date without future negative NAV.
 
-## Training Deliverables
+4. `etl-runbook`
+   Based on `ERP_System 2.0/etl.py`.
+   This should describe the full pipeline: extract inputs, transform source files, build structured ERP view, expand shipping preinstalls, build ledger, build ATP, build assignment tables, write DB, and push Google Sheets and exports.
 
-- [ ] 30-minute walkthrough
-  - [ ] Screen layout
-  - [ ] Core allocation/locking rules
+5. `data-io-integrations`
+   Based on `ERP_System 2.0/io_ops.py`, `ERP_System 2.0/config.py`, and `ERP_System 2.0/db_config.py`.
+   This should cover file locations, OneDrive inputs, Supabase or Postgres or DuckDB access, Google Sheets writes, and credential resolution.
 
-- [ ] 30-minute hands-on lab
-  - [ ] Assign PODs to 5 shortage lines
-  - [ ] Resolve one validation error
+6. `llm-erp-query`
+   Based on `ERP_System 2.0/llm_backend.py` and `ERP_System 2.0/llm_cli.py`.
+   This is a standalone skill for natural-language ERP questions, cache loading, tool selection, ATP date lookup, and SO waiting-item lookup.
 
-- [ ] 1-page cheat sheet
-  - [ ] Column definitions
-  - [ ] Commit/validation rules
-  - [ ] Common errors and fixes
+7. `mentor-practice`
+   Based on `ERP_System 2.0/practice/README.md`, `ERP_System 2.0/practice/student_tasks.py`, and `ERP_System 2.0/practice/mentor_cli.py`.
+   This is optional, but it can be its own training skill for onboarding new contributors to the ERP logic.
+
+### Recommended split
+
+- Keep the current `SKILL.md` focused on parser and ledger reconciliation only.
+- Move ATP and assignment-readiness into separate skills.
+- Put config, table names, and test commands into `references/` files instead of expanding the main skill body.
