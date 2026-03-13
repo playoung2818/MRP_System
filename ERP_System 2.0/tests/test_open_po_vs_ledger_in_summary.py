@@ -19,6 +19,7 @@ from core import _norm_key  # noqa: E402
 EPS = 1e-9
 SCHEMA = "public"
 REPORT_TABLE = "qa_open_po_vs_ledger_in_report"
+INCLUDE_VENDOR = "Neousys Technology Incorp."
 
 
 def _short(df: pd.DataFrame, n: int = 30) -> str:
@@ -152,9 +153,7 @@ def test_open_po_vs_ledger_in_item_qty_summary() -> None:
         .rename(columns={"ship_date": "ship_date_list"})
     )
 
-    pod_filtered = pod_all.loc[
-        ~pod_all["vendor_name"].isin(["CoastIPC, Inc.", "Industrial PC, Inc."])
-    ].copy()
+    pod_filtered = pod_all.loc[pod_all["vendor_name"].eq(INCLUDE_VENDOR)].copy()
 
     pod_all_list = (
         pod_filtered.loc[pod_filtered["pod_no"].ne(""), ["item_key", "pod_no", "qty"]]
@@ -189,7 +188,7 @@ def test_open_po_vs_ledger_in_item_qty_summary() -> None:
         """,
         eng,
     )
-    filter_used = "Kind='IN' (Open PO excludes CoastIPC/Industrial PC only)"
+    filter_used = "Kind='IN' (Open PO includes only Name='Neousys Technology Incorp.')"
 
     led["item_key"] = _norm_key(led["item"])
     led["qty"] = pd.to_numeric(led["qty"], errors="coerce").fillna(0.0)

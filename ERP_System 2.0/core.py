@@ -145,7 +145,7 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     """
     Clean POD export for loading into the structured pipeline.
     Steps:
-      - drop finance/qty columns we do not need
+      - preserve source POD qty/receipt/amount columns needed downstream
       - rename to unified column names (Order Date, QB Num, Qty(+))
       - derive Item from the first-column section blocks:
         header item -> detail lines -> Total <item>
@@ -153,7 +153,7 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
       - trim QB Num text and normalize item numbers
     """
     pod = df_pod.copy()
-    pod = pod.drop(columns=['Amount', 'Open Balance', "Rcv'd", "Qty"], errors="ignore")
+    pod = pod.drop(columns=["Open Balance"], errors="ignore")
     first_col = pod.columns[0] if len(pod.columns) > 0 else None
     if "Num" in pod.columns and "POD#" not in pod.columns:
         pod["POD#"] = pod["Num"]
@@ -211,6 +211,9 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
         pod.loc[mask, 'Ship Date'] = pod.loc[mask, 'Deliv Date']
     pod["Item"] = pod["Item"].astype(str).str.strip()
     pod["Item"] = pod["Item"].map(normalize_item)
+    for c in ["Qty(+)", "Qty", "Rcv'd", "Amount"]:
+        if c in pod.columns:
+            pod[c] = pd.to_numeric(pod[c], errors="coerce")
     df_pod = pd.DataFrame(pod)
     return df_pod
 
@@ -254,7 +257,10 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
     Ship["Item"] = Ship["Item"].astype(str).str.strip()
     Ship["Description"] = Ship["Description"].astype(str)
 
+    ship_date_raw = Ship["Ship Date"].astype("string").str.strip()
+    tbc_mask = ship_date_raw.str.upper().eq("TBC")
     Ship["Ship Date"] = pd.to_datetime(Ship["Ship Date"], errors="coerce")
+    Ship.loc[tbc_mask, "Ship Date"] = pd.Timestamp("2099-07-04")
 
     # Qty(+) numeric from Confirmed Qty only.
     # Missing/non-numeric confirmed values are treated as 0 (no fallback to Qty).
