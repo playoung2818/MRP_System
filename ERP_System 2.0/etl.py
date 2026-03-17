@@ -13,9 +13,7 @@ from config import (
     TBL_ITEM_ATP,
     TBL_SO_ASSIGN_READY,
     TBL_SO_ASSIGN_BLOCKERS,
-    TBL_SO_REFERENCE_MAIN,
-    TBL_SO_REFERENCE_STAGE,
-    TBL_SO_REFERENCE_DIFF,
+    TBL_POD_ALLOCATION,
     TBL_SO_ASSIGN_RUNS,
 )
 from io_ops import (
@@ -34,6 +32,7 @@ from core import (
     transform_inventory,
     transform_pod,
     transform_shipping,
+    enrich_pod_with_shipping_audit,
     build_wip_lookup,
     build_structured_df,
     prepare_erp_view,
@@ -50,8 +49,8 @@ from atp import build_atp_view
 from assignment_readiness import (
     build_assignment_readiness_reports,
     build_assignment_run_tables,
-    build_so_reference_tables,
 )
+from pod_allocation import build_pod_allocation_table
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -78,6 +77,7 @@ def main():
     inv     = transform_inventory(inv_raw, wip_lookup)      # warehouse snapshot (today)
     pod     = transform_pod(pod_raw)
     ship    = transform_shipping(ship_raw)
+    pod     = enrich_pod_with_shipping_audit(pod, ship)
 
     # -------- Structured (ERP view base) --------
     structured, final_sales_order = build_structured_df(
@@ -102,11 +102,11 @@ def main():
     # -------- ATP view (Available-to-Promise) --------
     atp_view = build_atp_view(ledger)
     assign_ready_df, assign_blockers_df = build_assignment_readiness_reports(structured, ledger)
-    current_so_reference_main = read_table_if_exists(DB_SCHEMA, TBL_SO_REFERENCE_MAIN)
-    so_reference_stage_df, so_reference_diff_df, so_reference_main_df = build_so_reference_tables(
+    current_pod_allocation = read_table_if_exists(DB_SCHEMA, TBL_POD_ALLOCATION)
+    pod_allocation_df = build_pod_allocation_table(
         structured,
-        ledger,
-        current_main=current_so_reference_main,
+        pod,
+        current_allocation=current_pod_allocation,
     )
     assign_runs_df = build_assignment_run_tables(structured, ledger)
 
@@ -189,9 +189,7 @@ def main():
     write_to_db(atp_view,   schema=DB_SCHEMA, table=TBL_ITEM_ATP)
     write_to_db(assign_ready_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_READY)
     write_to_db(assign_blockers_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_BLOCKERS)
-    write_to_db(so_reference_main_df, schema=DB_SCHEMA, table=TBL_SO_REFERENCE_MAIN)
-    write_to_db(so_reference_stage_df, schema=DB_SCHEMA, table=TBL_SO_REFERENCE_STAGE)
-    write_to_db(so_reference_diff_df, schema=DB_SCHEMA, table=TBL_SO_REFERENCE_DIFF)
+    write_to_db(pod_allocation_df, schema=DB_SCHEMA, table=TBL_POD_ALLOCATION)
     write_to_db(assign_runs_df, schema=DB_SCHEMA, table=TBL_SO_ASSIGN_RUNS)
 
     print(
@@ -202,10 +200,8 @@ def main():
         f"{DB_SCHEMA}.{TBL_Shipping}={len(ship)}; "
         f"{DB_SCHEMA}.{TBL_SO_ASSIGN_READY}={len(assign_ready_df)}; "
         f"{DB_SCHEMA}.{TBL_SO_ASSIGN_BLOCKERS}={len(assign_blockers_df)}; "
+        f"{DB_SCHEMA}.{TBL_POD_ALLOCATION}={len(pod_allocation_df)}; "
         f"{DB_SCHEMA}.{TBL_SO_ASSIGN_RUNS}={len(assign_runs_df)}; "
-        f"{DB_SCHEMA}.{TBL_SO_REFERENCE_MAIN}={len(so_reference_main_df)}; "
-        f"{DB_SCHEMA}.{TBL_SO_REFERENCE_STAGE}={len(so_reference_stage_df)}; "
-        f"{DB_SCHEMA}.{TBL_SO_REFERENCE_DIFF}={len(so_reference_diff_df)}"
     )
 
     # -------- Push to Google Sheets --------

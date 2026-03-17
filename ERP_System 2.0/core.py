@@ -218,6 +218,184 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     return df_pod
 
 
+def enrich_pod_with_shipping_audit(df_pod: pd.DataFrame, df_shipping: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge shipping-schedule audit fields into Open_Purchase_Orders by POD number.
+
+    The vendor shipping schedule is the authoritative supply-date signal, so when a
+    shipping row exists for the same POD number we carry those fields onto the POD
+    table and prefer the shipping schedule ship date as the POD ship date.
+    """
+    pod = df_pod.copy()
+    if pod.empty:
+        for col in [
+            "POD Ship Date Raw",
+            "Shipping Schedule Ship Date",
+            "Shipping Schedule Qty(+)",
+            "Shipping Schedule Order Qty",
+            "Shipping Schedule Item",
+            "Shipping Schedule Reference",
+        ]:
+            if col not in pod.columns:
+                pod[col] = pd.NA
+        return pod
+
+    pod["POD#"] = pod.get("POD#", pod.get("QB Num", pd.Series("", index=pod.index))).fillna("").astype(str).str.strip()
+    pod["Ship Date"] = pd.to_datetime(pod.get("Ship Date", pd.NaT), errors="coerce")
+    pod["POD Ship Date Raw"] = pod["Ship Date"].dt.strftime("%Y-%m-%d").fillna("")
+
+    if df_shipping is None or df_shipping.empty:
+        for col in [
+            "Shipping Schedule Ship Date",
+            "Shipping Schedule Qty(+)",
+            "Shipping Schedule Order Qty",
+            "Shipping Schedule Item",
+            "Shipping Schedule Reference",
+        ]:
+            if col not in pod.columns:
+                pod[col] = pd.NA
+        pod["Shipping Schedule Ship Date"] = ""
+        pod["Shipping Schedule Qty(+)"] = 0.0
+        pod["Shipping Schedule Order Qty"] = 0.0
+        pod["Shipping Schedule Item"] = ""
+        pod["Shipping Schedule Reference"] = ""
+        return pod
+
+    ship = df_shipping.copy()
+    for col in ["QB Num", "Ship Date", "Qty(+)", "Order Qty", "Item", "Reference"]:
+        if col not in ship.columns:
+            ship[col] = pd.NA
+
+    ship["QB Num"] = ship["QB Num"].fillna("").astype(str).str.strip()
+    ship["Ship Date"] = pd.to_datetime(ship["Ship Date"], errors="coerce")
+    ship["Qty(+)"] = pd.to_numeric(ship["Qty(+)"], errors="coerce").fillna(0.0)
+    ship["Order Qty"] = pd.to_numeric(ship["Order Qty"], errors="coerce").fillna(0.0)
+    ship["Item"] = ship["Item"].fillna("").astype(str).str.strip()
+    ship["Reference"] = ship["Reference"].fillna("").astype(str).str.strip()
+    ship = ship.loc[ship["QB Num"].ne("")].copy()
+
+    if ship.empty:
+        pod["Shipping Schedule Ship Date"] = ""
+        pod["Shipping Schedule Qty(+)"] = 0.0
+        pod["Shipping Schedule Order Qty"] = 0.0
+        pod["Shipping Schedule Item"] = ""
+        pod["Shipping Schedule Reference"] = ""
+        return pod
+
+    def _join_unique(series: pd.Series) -> str:
+        vals = [str(v).strip() for v in series if pd.notna(v) and str(v).strip()]
+        return ", ".join(dict.fromkeys(vals))
+
+    ship_agg = (
+        ship.groupby("QB Num", as_index=False)
+        .agg(
+            shipping_ship_date=("Ship Date", "min"),
+            shipping_qty=("Qty(+)", "sum"),
+            shipping_order_qty=("Order Qty", "sum"),
+            shipping_item=("Item", _join_unique),
+            shipping_reference=("Reference", _join_unique),
+        )
+        .rename(columns={"QB Num": "POD#"})
+    )
+    ship_agg["Shipping Schedule Ship Date"] = ship_agg["shipping_ship_date"].dt.strftime("%Y-%m-%d").fillna("")
+    ship_agg.rename(
+        columns={
+            "shipping_qty": "Shipping Schedule Qty(+)",
+            "shipping_order_qty": "Shipping Schedule Order Qty",
+            "shipping_item": "Shipping Schedule Item",
+            "shipping_reference": "Shipping Schedule Reference",
+        },
+        inplace=True,
+    )
+
+    existing_audit = (
+        pod[
+            [
+                c
+                for c in [
+                    "POD#",
+                    "Shipping Schedule Ship Date",
+                    "Shipping Schedule Qty(+)",
+                    "Shipping Schedule Order Qty",
+                    "Shipping Schedule Item",
+                    "Shipping Schedule Reference",
+                ]
+                if c in pod.columns
+            ]
+        ].copy()
+        if any(
+            c in pod.columns
+            for c in [
+                "Shipping Schedule Ship Date",
+                "Shipping Schedule Qty(+)",
+                "Shipping Schedule Order Qty",
+                "Shipping Schedule Item",
+                "Shipping Schedule Reference",
+            ]
+        )
+        else pd.DataFrame(columns=["POD#"])
+    )
+    pod = pod.drop(
+        columns=[
+            c
+            for c in [
+                "Shipping Schedule Ship Date",
+                "Shipping Schedule Qty(+)",
+                "Shipping Schedule Order Qty",
+                "Shipping Schedule Item",
+                "Shipping Schedule Reference",
+            ]
+            if c in pod.columns
+        ],
+        errors="ignore",
+    )
+
+    pod = pod.merge(
+        ship_agg[
+            [
+                "POD#",
+                "shipping_ship_date",
+                "Shipping Schedule Ship Date",
+                "Shipping Schedule Qty(+)",
+                "Shipping Schedule Order Qty",
+                "Shipping Schedule Item",
+                "Shipping Schedule Reference",
+            ]
+        ],
+        on="POD#",
+        how="left",
+    )
+    if not existing_audit.empty and "POD#" in existing_audit.columns:
+        existing_audit = existing_audit.drop_duplicates(subset=["POD#"], keep="last")
+        pod = pod.merge(existing_audit, on="POD#", how="left", suffixes=("", "_old"))
+        for col in [
+            "Shipping Schedule Ship Date",
+            "Shipping Schedule Qty(+)",
+            "Shipping Schedule Order Qty",
+            "Shipping Schedule Item",
+            "Shipping Schedule Reference",
+        ]:
+            old_col = f"{col}_old"
+            if old_col not in pod.columns:
+                continue
+            if col in {"Shipping Schedule Qty(+)", "Shipping Schedule Order Qty"}:
+                pod[col] = pd.to_numeric(pod[col], errors="coerce").fillna(
+                    pd.to_numeric(pod[old_col], errors="coerce")
+                )
+            else:
+                pod[col] = pod[col].fillna(pod[old_col])
+            pod.drop(columns=[old_col], inplace=True)
+    pod["Ship Date"] = pod["shipping_ship_date"].combine_first(pod["Ship Date"])
+    pod["shipping_ship_date"] = pd.to_datetime(pod["shipping_ship_date"], errors="coerce")
+    pod["Shipping Schedule Ship Date"] = pod["Shipping Schedule Ship Date"].fillna("")
+    pod["Shipping Schedule Qty(+)"] = pd.to_numeric(pod["Shipping Schedule Qty(+)"], errors="coerce").fillna(0.0)
+    pod["Shipping Schedule Order Qty"] = pd.to_numeric(pod["Shipping Schedule Order Qty"], errors="coerce").fillna(0.0)
+    pod["Shipping Schedule Item"] = pod["Shipping Schedule Item"].fillna("")
+    pod["Shipping Schedule Reference"] = pod["Shipping Schedule Reference"].fillna("")
+    pod.drop(columns=["shipping_ship_date"], inplace=True)
+    return pod
+
+
 def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
     def _norm_shipto(val: str) -> str:
         """Uppercase + strip punctuation/spaces so 'Inc.'/'Inc' variants match."""
@@ -236,7 +414,7 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["SO NO.", "QB Num", "Item", "Description", "Ship Date", "Qty(+)", "Pre/Bare"])
 
     # --- make sure the columns exist (create empty ones if missing) ---
-    need = ['SO NO.', 'Customer PO No.', 'Model Name', 'Ship Date', 'Confirmed Qty', 'Description']
+    need = ['SO NO.', 'Customer PO No.', 'Model Name', 'Ship Date', 'Order Qty', 'Confirmed Qty', 'Description', 'Reference']
     for c in need:
         if c not in df.columns:
             df[c] = np.nan
@@ -262,9 +440,13 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
     Ship["Ship Date"] = pd.to_datetime(Ship["Ship Date"], errors="coerce")
     Ship.loc[tbc_mask, "Ship Date"] = pd.Timestamp("2099-07-04")
 
-    # Qty(+) numeric from Confirmed Qty only.
-    # Missing/non-numeric confirmed values are treated as 0 (no fallback to Qty).
-    Ship["Qty(+)"] = pd.to_numeric(Ship["Qty(+)"], errors="coerce").fillna(0).astype(int)
+    # Qty(+) defaults to Confirmed Qty. For TBC rows with zero confirmed qty,
+    # fall back to Order Qty so unconfirmed future supply still lands in the ledger.
+    Ship["Qty(+)"] = pd.to_numeric(Ship["Qty(+)"], errors="coerce").fillna(0)
+    Ship["Order Qty"] = pd.to_numeric(Ship["Order Qty"], errors="coerce").fillna(0)
+    fallback_mask = tbc_mask & Ship["Qty(+)"].eq(0)
+    Ship.loc[fallback_mask, "Qty(+)"] = Ship.loc[fallback_mask, "Order Qty"]
+    Ship["Qty(+)"] = Ship["Qty(+)"].astype(int)
 
     # --- Pre/Bare logic ---
     model_excluded_from_pre_expand = {
