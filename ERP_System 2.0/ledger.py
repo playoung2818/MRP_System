@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import CategoricalDtype
 from core import _norm_cols, _norm_key
-from erp_normalize import normalize_item
+from erp_normalize import POD_SITE, normalize_item
 
 ## 1) SAP (shipping) → expand pre-installed components
 INCL_SPLIT = re.compile(r"\bincluding\b", re.IGNORECASE)
@@ -211,6 +211,16 @@ def build_events(
         pod_events = pod_events.reindex(columns=cols)
 
     events = pd.concat([inbound, pod_events, outbound], ignore_index=True, sort=False)
+    excluded_pods = {str(k).strip() for k in POD_SITE.keys() if str(k).strip()}
+    if excluded_pods:
+        event_pod_no = events["QB Num"].fillna("").astype(str).str.strip()
+        blank_mask = event_pod_no.eq("")
+        event_pod_no = event_pod_no.mask(
+            blank_mask,
+            events["P. O. #"].fillna("").astype(str).str.strip(),
+        )
+        inbound_mask = events["Kind"].astype(str).eq("IN")
+        events = events.loc[~(inbound_mask & event_pod_no.isin(excluded_pods))].copy()
     return _order_events(events)
 
 def build_ledger_from_events(

@@ -18,7 +18,6 @@ from ui import (
     INVENTORY_TPL,
     PRODUCTION_TPL,
     SOLT_RR_TPL,
-    PHASE1_TPL,
 )
 from quote_ui import QUOTE_TPL
 
@@ -57,11 +56,8 @@ ITEM_ATP: pd.DataFrame | None = None
 _LAST_LOAD_ERR: str | None = None
 _LAST_LOADED_AT: datetime | None = None
 LLM_CACHE: LLMDataCache | None = None
-SO_PHASE1_BASE: pd.DataFrame | None = None
-PO_PHASE1_BASE: pd.DataFrame | None = None
 ITEM_SUGGEST_CACHE: list[str] = []
 QUOTE_ITEM_SUGGEST_ROWS: list[dict[str, object]] = []
-PHASE1_CACHE: dict[tuple[str, str, str, str, int], dict[str, list[dict]]] = {}
 SO_LOOKUP_BASE: pd.DataFrame | None = None
 WAITING_ITEMS_BY_QB: dict[str, str] = {}
 LEDGER_ITEM_INDEX: dict[str, pd.DataFrame] = {}
@@ -301,36 +297,6 @@ def _load_pdf_map(force: bool = False):
     else:
         PDF_MAP = {}
 
-def _build_phase1_bases(so_src: pd.DataFrame, po_src: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Pre-normalize heavy Phase1 source frames once per DB reload."""
-    so = so_src.copy()
-    po = po_src.copy()
-
-    for c in ["QB Num", "Item", "Name", "Component_Status", "Ship Date", "Qty(-)", "Assigned Q'ty"]:
-        if c not in so.columns:
-            so[c] = pd.NA
-    so["QB Num"] = so["QB Num"].astype(str).str.strip()
-    so["Item"] = so["Item"].astype(str).str.strip()
-    so["Name"] = so["Name"].astype(str).str.strip()
-    so["Component_Status"] = so["Component_Status"].astype(str).str.strip()
-    so["Qty(-)"] = pd.to_numeric(so["Qty(-)"], errors="coerce").fillna(0.0)
-    so["Assigned Q'ty"] = pd.to_numeric(so["Assigned Q'ty"], errors="coerce").fillna(0.0)
-    so["Ship Date"] = pd.to_datetime(so["Ship Date"], errors="coerce")
-    so = so.loc[so["Component_Status"].isin(["Waiting", "Shortage"])].copy()
-
-    for c in ["POD#", "Item", "Qty(+)", "Name", "Ship Date", "Deliv Date"]:
-        if c not in po.columns:
-            po[c] = pd.NA
-    po["POD#"] = po["POD#"].astype(str).str.strip()
-    po["Item"] = po["Item"].astype(str).str.strip()
-    po["Name"] = po["Name"].astype(str).str.strip()
-    po["Qty(+)"] = pd.to_numeric(po["Qty(+)"], errors="coerce").fillna(0.0)
-    po["Ship Date"] = pd.to_datetime(po["Ship Date"], errors="coerce")
-    po["Deliv Date"] = pd.to_datetime(po["Deliv Date"], errors="coerce")
-    po["eta_date"] = po["Ship Date"].fillna(po["Deliv Date"]).dt.strftime("%Y-%m-%d").fillna("")
-    po = po.loc[(po["Qty(+)"] > 0) & po["POD#"].ne("")].copy()
-    return so, po
-
 def _build_runtime_indexes(
     so_src: pd.DataFrame, ledger_src: pd.DataFrame
 ) -> tuple[pd.DataFrame, dict[str, str], dict[str, pd.DataFrame]]:
@@ -439,7 +405,7 @@ def _build_quote_item_summaries(
 
 def _load_from_db(force: bool = False):
     global SO_INV, INVENTORY_STATUS, NAV, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
-    global SO_PHASE1_BASE, PO_PHASE1_BASE, ITEM_SUGGEST_CACHE, PHASE1_CACHE
+    global ITEM_SUGGEST_CACHE
     global SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX
     global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE, QUOTE_ITEM_SUGGEST_ROWS, READY_ASSIGN_CACHE
     try:
@@ -476,7 +442,6 @@ def _load_from_db(force: bool = False):
             FINAL_SO = _build_final_sales_order_from_db()
             LEDGER = ledger
             ITEM_ATP = item_atp
-            SO_PHASE1_BASE, PO_PHASE1_BASE = _build_phase1_bases(so, open_po)
             SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX = _build_runtime_indexes(so, ledger)
             suggest_items: list[str] = []
             if "Item" in so.columns:
@@ -489,7 +454,6 @@ def _load_from_db(force: bool = False):
                 )
             ITEM_SUGGEST_CACHE = sorted(set(suggest_items))
             QUOTE_ITEM_SUGGEST_ROWS = _build_quote_item_summaries(inventory, ledger)
-            PHASE1_CACHE = {}
             PDF_DB_SEARCH_CACHE = {}
             INDEX_VIEW_CACHE = {}
             QUOTATION_VIEW_CACHE = {}
@@ -504,14 +468,11 @@ def _load_from_db(force: bool = False):
         FINAL_SO = None
         LEDGER = None
         ITEM_ATP = None
-        SO_PHASE1_BASE = None
-        PO_PHASE1_BASE = None
         SO_LOOKUP_BASE = None
         WAITING_ITEMS_BY_QB = {}
         LEDGER_ITEM_INDEX = {}
         ITEM_SUGGEST_CACHE = []
         QUOTE_ITEM_SUGGEST_ROWS = []
-        PHASE1_CACHE = {}
         PDF_DB_SEARCH_CACHE = {}
         INDEX_VIEW_CACHE = {}
         QUOTATION_VIEW_CACHE = {}
@@ -911,86 +872,6 @@ def _open_po_table_for_item(item: str) -> tuple[list[str], list[dict]]:
     result = result.fillna("").astype(str)
     return list(result.columns), result.to_dict(orient="records")
 
-
-def _phase1_board_data(
-    *,
-    item_filter: str = "",
-    so_filter: str = "",
-    customer_filter: str = "",
-    status_filter: str = "",
-    limit: int = 300,
-) -> dict[str, list[dict]]:
-    if SO_PHASE1_BASE is None or PO_PHASE1_BASE is None:
-        return {"demand_rows": [], "supply_rows": [], "coverage_rows": []}
-    key = (item_filter, so_filter, customer_filter, status_filter, int(limit))
-    cached = PHASE1_CACHE.get(key)
-    if cached is not None:
-        return cached
-
-    demand = SO_PHASE1_BASE
-
-    if status_filter in {"Waiting", "Shortage"}:
-        demand = demand.loc[demand["Component_Status"].eq(status_filter)]
-    if item_filter:
-        demand = demand.loc[demand["Item"].str.contains(item_filter, case=False, na=False)]
-    if so_filter:
-        demand = demand.loc[demand["QB Num"].str.contains(so_filter, case=False, na=False)]
-    if customer_filter:
-        demand = demand.loc[demand["Name"].str.contains(customer_filter, case=False, na=False)]
-
-    demand_g = (
-        demand.groupby(["QB Num", "Name", "Item", "Component_Status", "Ship Date"], dropna=False, as_index=False)
-        .agg(demand_qty=("Qty(-)", "sum"), assigned_qty=("Assigned Q'ty", "max"))
-    )
-    demand_g["gap_qty"] = (demand_g["demand_qty"] - demand_g["assigned_qty"]).clip(lower=0.0)
-    demand_g["need_date"] = demand_g["Ship Date"].dt.strftime("%Y-%m-%d").fillna("")
-    demand_g.rename(
-        columns={"QB Num": "qb_num", "Name": "customer", "Item": "item", "Component_Status": "status"},
-        inplace=True,
-    )
-    demand_g = demand_g.sort_values(["need_date", "status", "qb_num", "item"], kind="mergesort")
-
-    supply = PO_PHASE1_BASE
-    if item_filter:
-        supply = supply.loc[supply["Item"].str.contains(item_filter, case=False, na=False)]
-    if demand_g.empty:
-        allowed_items: set[str] = set()
-    else:
-        allowed_items = set(demand_g["item"].dropna().astype(str).tolist())
-    if so_filter:
-        supply = supply.loc[supply["Item"].isin(allowed_items)].copy()
-
-    supply_g = (
-        supply.groupby(["POD#", "Item", "eta_date", "Name"], dropna=False, as_index=False)["Qty(+)"]
-        .sum()
-        .rename(columns={"POD#": "pod_no", "Item": "item", "Name": "vendor", "Qty(+)": "remaining_qty"})
-    )
-    supply_g = supply_g.sort_values(["eta_date", "pod_no", "item"], kind="mergesort")
-
-    demand_item = demand_g.groupby("item", as_index=False)["demand_qty"].sum() if not demand_g.empty else pd.DataFrame(columns=["item", "demand_qty"])
-    supply_item = supply_g.groupby("item", as_index=False)["remaining_qty"].sum() if not supply_g.empty else pd.DataFrame(columns=["item", "remaining_qty"])
-
-    coverage = demand_item.merge(supply_item, on="item", how="outer")
-    coverage["demand_qty"] = pd.to_numeric(coverage["demand_qty"], errors="coerce").fillna(0.0)
-    coverage["supply_qty"] = pd.to_numeric(coverage["remaining_qty"], errors="coerce").fillna(0.0)
-    coverage.drop(columns=["remaining_qty"], inplace=True, errors="ignore")
-    coverage["gap_qty"] = coverage["supply_qty"] - coverage["demand_qty"]
-    coverage["coverage_pct"] = np.where(
-        coverage["demand_qty"] > 0,
-        (coverage["supply_qty"] / coverage["demand_qty"]) * 100.0,
-        np.where(coverage["supply_qty"] > 0, 999.0, 0.0),
-    )
-    coverage = coverage.sort_values(["gap_qty", "item"], ascending=[True, True], kind="mergesort")
-
-    demand_rows = demand_g.head(limit).to_dict(orient="records")
-    supply_rows = supply_g.head(limit).to_dict(orient="records")
-    coverage_rows = coverage.head(limit).to_dict(orient="records")
-    out = {"demand_rows": demand_rows, "supply_rows": supply_rows, "coverage_rows": coverage_rows}
-    # Keep cache bounded to avoid unbounded memory from ad-hoc filters.
-    if len(PHASE1_CACHE) >= 128:
-        PHASE1_CACHE.clear()
-    PHASE1_CACHE[key] = out
-    return out
 
 # initial load
 _load_from_db(force=True)
@@ -1800,34 +1681,6 @@ def quotation_lookup():
         loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
     )
 
-
-@app.route("/phase1")
-def phase1_board():
-    _ensure_loaded()
-    if _LAST_LOAD_ERR:
-        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
-    return render_template_string(
-        PHASE1_TPL,
-        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
-    )
-
-
-@app.route("/api/phase1/board")
-def api_phase1_board():
-    _ensure_loaded()
-    if _LAST_LOAD_ERR:
-        return jsonify({"ok": False, "error": _LAST_LOAD_ERR}), 503
-    try:
-        payload = _phase1_board_data(
-            item_filter=(request.args.get("item") or "").strip(),
-            so_filter=(request.args.get("so") or "").strip(),
-            customer_filter=(request.args.get("customer") or "").strip(),
-            status_filter=(request.args.get("status") or "").strip(),
-            limit=max(50, min(1000, int(request.args.get("limit") or 300))),
-        )
-        return jsonify({"ok": True, **payload})
-    except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
 
 if __name__ == "__main__":
     # Flask dev server

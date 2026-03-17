@@ -91,6 +91,127 @@ PATTERN_MAPPINGS = [
     ),
 ]
 
+POD_SITE: dict[str, str] = {
+    "POD-251229": "WH02D-NTA",
+    "POD-251518": "WH01X-NTA",
+    "POD-251590": "Drop Ship",
+    "POD-251593": "Drop Ship",
+    "POD-251594": "Drop Ship",
+    "POD-251705": "Drop Ship",
+    "POD-251728": "Drop Ship",
+    "POD-251759": "Drop Ship",
+    "POD-260006": "Drop Ship",
+    "POD-260015": "Drop Ship",
+    "POD-260016": "Drop Ship",
+    "POD-260017": "Drop Ship",
+    "POD-260031": "Drop Ship",
+    "POD-260046": "Drop Ship",
+    "POD-260087": "Drop Ship",
+    "POD-260096": "WH01X-NTA",
+    "POD-260106": "Drop Ship",
+    "POD-260107": "Drop Ship",
+    "POD-260108": "Drop Ship",
+    "POD-260109": "Drop Ship",
+    "POD-260119": "WH01X-NTA",
+    "POD-260120": "WH01X-NTA",
+    "POD-260121": "WH01X-NTA",
+    "POD-260137": "Drop Ship",
+    "POD-260144": "Drop Ship",
+    "POD-260145": "Drop Ship",
+    "POD-260158": "Drop Ship",
+    "POD-260161": "Drop Ship",
+    "POD-260162": "Drop Ship",
+    "POD-260163": "Drop Ship",
+    "POD-260171": "Drop Ship",
+    "POD-260182": "WH01X-NTA",
+    "POD-260202": "Drop Ship",
+    "POD-260208": "Drop Ship",
+    "POD-260237": "WH10Parts- NTA",
+    "POD-260250": "Drop Ship",
+    "POD-260261": "WH01X-NTA",
+    "POD-260267": "Drop Ship",
+    "POD-260268": "Drop Ship",
+    "POD-260269": "WH01X-NTA",
+    "POD-260273": "Drop Ship",
+    "POD-260275": "Drop Ship",
+    "POD-260276": "Drop Ship",
+    "POD-260282": "WH01DK-NTA",
+    "POD-260284": "Drop Ship",
+    "POD-260285": "WH01X-NTA",
+    "POD-260286": "WH01X-NTA",
+    "POD-260287": "WH01X-NTA",
+    "POD-260288": "WH01X-NTA",
+    "POD-260289": "WH01X-NTA",
+    "POD-260290": "WH01X-NTA",
+    "POD-260291": "WH01X-NTA",
+    "POD-260313": "Drop Ship",
+    "POD-260314": "Drop Ship",
+    "POD-260315": "Drop Ship",
+    "POD-260316": "Drop Ship",
+    "POD-260317": "Drop Ship",
+    "POD-260318": "Drop Ship",
+    "POD-260322": "WH01X-NTA",
+    "POD-260325": "WH01X-NTA",
+    "POD-260326": "WH01X-NTA",
+    "POD-260328": "Drop Ship",
+    "POD-260329": "Drop Ship",
+    "POD-260342": "Drop Ship",
+    "POD-260346": "Drop Ship",
+    "POD-260350": "Drop Ship",
+    "POD-260351": "Drop Ship",
+    "POD-260352": "Drop Ship",
+    "POD-260353": "Drop Ship",
+    "POD-260359": "Drop Ship",
+    "POD-260360": "Drop Ship",
+    "POD-260361": "Drop Ship",
+    "POD-260362": "Drop Ship",
+    "POD-260371": "Drop Ship",
+    "POD-260379": "Drop Ship",
+}
+
+
+def detect_pod_site(df_pod: pd.DataFrame, *, include_site: str = "WH01S-NTA") -> dict[str, str]:
+    """
+    Return POD -> Inventory Site mappings for POD rows whose Inventory Site differs
+    from the included/default site.
+
+    Expected POD export columns:
+    - Inventory Site
+    - POD# or Num/QB Num
+    """
+    if df_pod is None or df_pod.empty or "Inventory Site" not in df_pod.columns:
+        return {}
+
+    pod = df_pod.copy()
+    if "POD#" not in pod.columns:
+        if "Num" in pod.columns:
+            pod["POD#"] = pod["Num"]
+        elif "QB Num" in pod.columns:
+            pod["POD#"] = pod["QB Num"]
+        else:
+            return {}
+
+    pod["POD#"] = pod["POD#"].fillna("").astype(str).str.split("(", expand=True)[0].str.strip()
+    pod["Inventory Site"] = pod["Inventory Site"].fillna("").astype(str).str.strip()
+
+    pod = pod.loc[
+        pod["POD#"].ne("")
+        & pod["Inventory Site"].ne("")
+        & pod["Inventory Site"].ne(include_site)
+    , ["POD#", "Inventory Site"]].drop_duplicates(subset=["POD#"], keep="last")
+
+    return dict(zip(pod["POD#"], pod["Inventory Site"]))
+
+
+def format_pod_site_entries(site_map: dict[str, str]) -> str:
+    """
+    Format POD site mappings as dictionary lines matching POD_SITE style.
+    """
+    if not site_map:
+        return ""
+    lines = [f'    "{pod_no}": "{site}",' for pod_no, site in sorted(site_map.items())]
+    return "\n".join(lines)
+
 
 def normalize_item(value: Any) -> Any:
     """
@@ -128,4 +249,12 @@ def normalize_series(series: pd.Series) -> pd.Series:
     return series.apply(normalize_item)
 
 
-__all__ = ["normalize_item", "normalize_series", "ITEM_MAPPINGS", "PATTERN_MAPPINGS"]
+__all__ = [
+    "normalize_item",
+    "normalize_series",
+    "ITEM_MAPPINGS",
+    "PATTERN_MAPPINGS",
+    "POD_SITE",
+    "detect_pod_site",
+    "format_pod_site_entries",
+]
