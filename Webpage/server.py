@@ -263,6 +263,8 @@ def _pdf_db_get_by_id(pdf_id: int) -> dict | None:
             return dict(row) if row else None
     except Exception:
         return None
+
+
 def _validate_paths(paths: list[str]):
     for p in paths:
         if not os.path.exists(p):

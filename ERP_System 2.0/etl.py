@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 import pandas as pd
 
 from config import (
@@ -21,7 +22,6 @@ from io_ops import (
     write_to_db,
     read_table_if_exists,
     write_final_sales_order_to_gsheet,
-    merge_open_sales_order_to_allocation_reference_gsheet,
     save_not_assigned_so,
     fetch_word_files_df,
     fetch_pdf_orders_df_from_supabase,
@@ -51,6 +51,7 @@ from assignment_readiness import (
     build_assignment_run_tables,
 )
 from pod_allocation import build_pod_allocation_table
+from pod_allocation_review import review_pod_allocation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -103,10 +104,15 @@ def main():
     atp_view = build_atp_view(ledger)
     assign_ready_df, assign_blockers_df = build_assignment_readiness_reports(structured, ledger)
     current_pod_allocation = read_table_if_exists(DB_SCHEMA, TBL_POD_ALLOCATION)
-    pod_allocation_df = build_pod_allocation_table(
+    pod_allocation_snapshot_df = build_pod_allocation_table(
         structured,
         pod,
-        current_allocation=current_pod_allocation,
+    )
+    review_artifacts_dir = Path(__file__).resolve().parents[1] / "data" / "review"
+    pod_allocation_df = review_pod_allocation(
+        current_pod_allocation,
+        pod_allocation_snapshot_df,
+        artifacts_dir=review_artifacts_dir,
     )
     assign_runs_df = build_assignment_run_tables(structured, ledger)
 
@@ -218,12 +224,6 @@ def main():
             )
         except Exception as e:
             logging.warning("Skipping Open Sales Order export: %s", e)
-        try:
-            merge_open_sales_order_to_allocation_reference_gsheet(
-                so_for_sheet
-            )
-        except Exception as e:
-            logging.warning("Skipping allocation_reference export: %s", e)
 
 
 if __name__ == "__main__":

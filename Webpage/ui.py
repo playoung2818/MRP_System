@@ -649,6 +649,7 @@ INVENTORY_TPL = """
 </html>
 """
 
+
 SOLT_RR_TPL = """
 <!doctype html>
 <html>
