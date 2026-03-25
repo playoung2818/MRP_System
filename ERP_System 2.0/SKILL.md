@@ -45,6 +45,7 @@ Follow this workflow when changing parsing, normalization, or reconciliation beh
 ## Reconciliation expectations
 
 - For `open_po_qty` checks, always state active filters used in the test.
+- Do not use `Ship Date` / estimated date from `Open_Purchase_Orders` as a default matching key when comparing POD source rows to `ledger_analytics`. Treat it as planning metadata, not a reliable identity field, unless the task explicitly requires date-based analysis.
 - If `open_po_qty` is zero unexpectedly, verify:
   - item key split/alias mismatch,
   - vendor exclusion filter,

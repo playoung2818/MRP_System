@@ -325,12 +325,13 @@ def _build_runtime_indexes(
 
     ledger_index: dict[str, pd.DataFrame] = {}
     if ledger_src is not None and not ledger_src.empty:
-        item_col = "Item_raw" if "Item_raw" in ledger_src.columns else ("Item" if "Item" in ledger_src.columns else None)
+        item_col = "Item" if "Item" in ledger_src.columns else ("Item_raw" if "Item_raw" in ledger_src.columns else None)
         if item_col is not None:
             work = ledger_src.copy()
-            work[item_col] = work[item_col].astype(str)
-            for item_key, grp in work.groupby(item_col, sort=False):
-                ledger_index[str(item_key)] = grp.copy()
+            work[item_col] = work[item_col].astype(str).str.strip()
+            work["__item_lookup__"] = work[item_col].str.upper()
+            for item_key, grp in work.groupby("__item_lookup__", sort=False):
+                ledger_index[str(item_key)] = grp.drop(columns=["__item_lookup__"]).copy()
 
     return so, waiting_map, ledger_index
 
@@ -363,7 +364,7 @@ def _build_quote_item_summaries(
         return inv_summary.sort_values("item", kind="mergesort").to_dict(orient="records")
 
     led = ledger_src.copy()
-    item_col = "Item_raw" if "Item_raw" in led.columns else ("Item" if "Item" in led.columns else None)
+    item_col = "Item" if "Item" in led.columns else ("Item_raw" if "Item_raw" in led.columns else None)
     if item_col is None or "Date" not in led.columns or "Projected_NAV" not in led.columns:
         inv_summary["min_regular"] = pd.NA
         inv_summary["min_2099"] = pd.NA
@@ -639,14 +640,13 @@ def _aggregate_metric(series: pd.Series) -> int | float | None:
 
 
 def _resolve_ledger_item_key(item: str) -> str:
-    raw = str(item or "").strip()
+    raw = str(item or "").strip().upper()
     if not raw:
         return ""
     if raw in LEDGER_ITEM_INDEX:
         return raw
-    lowered = raw.lower()
     for key in LEDGER_ITEM_INDEX.keys():
-        if str(key).lower() == lowered:
+        if str(key).upper() == raw:
             return str(key)
     return raw
 
@@ -1566,8 +1566,8 @@ def quotation_lookup():
             df_item = LEDGER_ITEM_INDEX[item_lookup].copy()
         else:
             df = LEDGER
-            item_col = "Item_raw" if "Item_raw" in df.columns else "Item"
-            df_item = df.loc[df[item_col].astype(str).str.lower() == item_lookup.lower()].copy()
+            item_col = "Item" if "Item" in df.columns else "Item_raw"
+            df_item = df.loc[df[item_col].astype(str).str.strip().str.upper() == item_lookup].copy()
         if not df_item.empty:
             # Opening snapshot:
             # 1) Prefer explicit OPEN rows; 2) if none, fall back to any Opening values.

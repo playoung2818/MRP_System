@@ -16,6 +16,7 @@ ITEM_MAPPINGS: dict[str, str] = {
     "E-mPCIe-BTWifi-WT-6218_Mod_40CM": "Extnd-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM_kits",
     "E-mPCIe-GPS-M800_Mod_40CM": "Extnd-mPCIeHS_GPS-M800_Mod_Cbl-40CM_kits",
     "E-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM": "Extnd-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM_kits",
+    "E-mPCIeHS_GPS-M800_Mod_Cbl-40CM": "Extnd-mPCIeHS_GPS-M800_Mod_Cbl-40CM_kits",
     "M.2 Key B_LTE_Telit FN990A40_15cm": "M.2 Key B_LTE_Telit FN990A40_15",
     "M.2 KEY B_LTE_TELIT FN990A40_15CM": "M.2 Key B_LTE_Telit FN990A40_15",
     "FPnl-3Ant-NRU-160-AWP series": "FPnl-3Ant-of NRU-160-AWP series",
@@ -35,6 +36,7 @@ ITEM_MAPPINGS: dict[str, str] = {
     "M.280-SSD-512GB-PCIe44-TLC5WT-T": "M.280-SSD-512GB-PCIe44-TLC5WT-TD",
     "PA-280W-CW6P-2P-1": "PA-280W-CW6P-2P",
     "GC-J-A64GB-O-Industrial-Nvidia": "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
+    "GC-AGXOrin Ind. 64G-JP 6.0_NRU-230/240S": "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
     "AccsyBx-FPnl_3Ant-Cbl-NRU-170-PPC series": "AccsyBx-FPnl_3Ant-Cbl-NRU170PPC"
 }
 
@@ -49,7 +51,7 @@ PATTERN_MAPPINGS = [
     ),
     (
         re.compile(
-            r"^GC[-_ ]?AGXORIN\s*IND\.?\s*64G[-_ ]?(?:JETPACK|JP)\s*[\d\.]*(?:[_ -].*)?$",
+            r"^GC[-_ ]?JETSON[-_ ]?AGX64GB[-_ ]?ORIN[-_ ]?INDUSTRIAL[-_ ]?NVIDIA(?:[-_ ]?(?:JET\s*PACK|JET\s*PAC\s*K|JP)\s*[-_ ]*[\d\.]+)?(?:[_ -].*)?$",
             re.IGNORECASE,
         ),
         "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
