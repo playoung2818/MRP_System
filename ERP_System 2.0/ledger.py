@@ -9,6 +9,14 @@ from erp_normalize import POD_SITE, normalize_item
 ## 1) SAP (shipping) → expand pre-installed components
 INCL_SPLIT = re.compile(r"\bincluding\b", re.IGNORECASE)
 QTYX_RE = re.compile(r"^\s*(\d+)\s*x\s*(.+)\s*$", re.IGNORECASE)  # "2x SSD-1TB"
+NUVO_716_VARIANT_SPLITS: dict[str, tuple[str, str]] = {
+    "NUVO-7160GC-POE": ("Nuvo-716xGC-PoE", "CSM-7160GC"),
+    "NUVO-7162GC-POE": ("Nuvo-716xGC-PoE", "CSM-7162GC"),
+    "NUVO-7166GC-POE": ("Nuvo-716xGC-PoE", "CSM-7166GC"),
+    "NUVO-7160GC": ("Nuvo-716xGC", "CSM-7160GC"),
+    "NUVO-7162GC": ("Nuvo-716xGC", "CSM-7162GC"),
+    "NUVO-7166GC": ("Nuvo-716xGC", "CSM-7166GC"),
+}
 
 def clean_space(s: str) -> str:
     if not isinstance(s, str):
@@ -36,10 +44,68 @@ def parse_component_token(token: str) -> tuple[str, float]:
         return item, qty
     return clean_space(token), 1.0
 
+
+def split_nuvo_716_variant_item(item: str) -> list[str] | None:
+    normalized = clean_space(item).upper()
+    split_items = NUVO_716_VARIANT_SPLITS.get(normalized)
+    if not split_items:
+        return None
+    return list(split_items)
+
+
+def _split_special_shipping_variants(nav: pd.DataFrame) -> pd.DataFrame:
+    if nav.empty or "Item" not in nav.columns:
+        return nav.copy()
+
+    special_mask = nav["Item"].astype(str).map(lambda value: split_nuvo_716_variant_item(value) is not None)
+    special_rows = nav.loc[special_mask].copy()
+    other_rows = nav.loc[~special_mask].copy()
+
+    if special_rows.empty:
+        return nav.copy()
+
+    split_parts = []
+    for _, row in special_rows.iterrows():
+        parent_item = clean_space(str(row.get("Item", "")))
+        component_items = split_nuvo_716_variant_item(parent_item) or []
+        base_qty = float(row.get("Qty(+)", 0) or 0)
+        component_rows = []
+        for item in component_items:
+            out = row.copy()
+            out["Parent_Item"] = parent_item
+            out["Item"] = item
+            out["Qty_per_parent"] = 1.0
+            out["Qty(+)"] = base_qty
+            out["IsParent"] = False
+            component_rows.append(out)
+        if component_rows:
+            split_parts.append(pd.DataFrame(component_rows))
+
+    split_df = pd.concat(split_parts, ignore_index=True) if split_parts else special_rows.iloc[0:0].copy()
+
+    needed_cols = list(nav.columns)
+    for col in ["Parent_Item", "Qty_per_parent", "IsParent"]:
+        if col not in needed_cols:
+            needed_cols.append(col)
+    split_df = split_df.reindex(columns=needed_cols, fill_value=pd.NA)
+    other_rows = other_rows.reindex(columns=needed_cols, fill_value=pd.NA)
+
+    frames = [df for df in (split_df, other_rows) if not df.empty]
+    if not frames:
+        return nav.iloc[0:0].copy()
+    if len(frames) == 1:
+        return frames[0].copy()
+    return pd.concat(frames, ignore_index=True)
+
 def expand_preinstalled_row(row: pd.Series) -> pd.DataFrame:
     parent, tokens = parse_description(row.get("Description", ""))
     base_qty = float(row.get("Qty(+)", 0) or 0)
     parent_item = parent or clean_space(str(row.get("Item", "")))
+
+    variant_split = split_nuvo_716_variant_item(parent_item)
+    if variant_split:
+        tokens = variant_split
+        parent_item = clean_space(str(row.get("Item", "")))
 
     comp_rows = []
     for tok in tokens:
@@ -88,6 +154,7 @@ def expand_nav_preinstalled(NAV: pd.DataFrame) -> pd.DataFrame:
     nav_other.loc[:, "IsParent"]       = True
 
     expanded_all = pd.concat([expanded_pre, nav_other], ignore_index=True)
+    expanded_all = _split_special_shipping_variants(expanded_all)
 
     expanded_all["Qty(+)"]         = pd.to_numeric(expanded_all["Qty(+)"], errors="coerce").fillna(0.0)
     expanded_all["Qty_per_parent"] = pd.to_numeric(expanded_all["Qty_per_parent"], errors="coerce").fillna(1.0)
