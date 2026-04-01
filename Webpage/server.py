@@ -66,6 +66,7 @@ INDEX_VIEW_CACHE: dict[tuple[str, str], dict] = {}
 QUOTATION_VIEW_CACHE: dict[tuple[str, int], dict] = {}
 CHAT_LOG_FILE = REPO_ROOT / "Webpage" / "chatbox.log"
 READY_ASSIGN_CACHE: list[dict] | None = None
+RECENT_HOME_SEARCHES: list[dict[str, str]] = []
 
 # =========================
 # PDF settings/cache
@@ -591,6 +592,124 @@ def _ready_to_assign_rows() -> list[dict]:
     READY_ASSIGN_CACHE = rows
     return READY_ASSIGN_CACHE
 
+
+def _push_recent_home_search(*, so_input: str = "", customer_input: str = "") -> None:
+    global RECENT_HOME_SEARCHES
+
+    so_value = str(so_input or "").strip()
+    customer_value = str(customer_input or "").strip()
+    if not so_value and not customer_value:
+        return
+
+    if so_value:
+        entry = {"kind": "SO", "label": so_value, "href": f"/?so={so_value}"}
+    else:
+        entry = {"kind": "Customer", "label": customer_value, "href": f"/?customer={customer_value}"}
+
+    dedup_key = (entry["kind"], entry["label"].strip().upper())
+    RECENT_HOME_SEARCHES = [
+        item for item in RECENT_HOME_SEARCHES
+        if (item.get("kind", ""), str(item.get("label", "")).strip().upper()) != dedup_key
+    ]
+    RECENT_HOME_SEARCHES.insert(0, entry)
+    RECENT_HOME_SEARCHES = RECENT_HOME_SEARCHES[:5]
+
+
+def _dashboard_lt_unassigned_count() -> int:
+    if SO_INV is None or SO_INV.empty or "Ship Date" not in SO_INV.columns or "QB Num" not in SO_INV.columns:
+        return 0
+    so = SO_INV.copy()
+    so["Ship Date"] = pd.to_datetime(so["Ship Date"], errors="coerce")
+    so["QB Num"] = so["QB Num"].astype(str).str.strip()
+    cutoff = pd.Timestamp("2099-07-04")
+    return int(so.loc[so["Ship Date"].eq(cutoff) & so["QB Num"].ne(""), "QB Num"].nunique())
+
+
+def _dashboard_top_shortage_items(limit: int = 5) -> list[dict[str, object]]:
+    if SO_INV is None or SO_INV.empty or "Item" not in SO_INV.columns or "QB Num" not in SO_INV.columns:
+        return []
+
+    so = SO_INV.copy()
+    for col in ("Component_Status", "Qty(-)", "On Hand"):
+        if col not in so.columns:
+            so[col] = 0 if col != "Component_Status" else ""
+
+    so["Item"] = so["Item"].astype(str).str.strip()
+    so["QB Num"] = so["QB Num"].astype(str).str.strip()
+    so["Qty(-)"] = pd.to_numeric(so["Qty(-)"], errors="coerce").fillna(0.0)
+    so["On Hand"] = pd.to_numeric(so["On Hand"], errors="coerce").fillna(0.0)
+
+    shortage = so.loc[
+        so["Component_Status"].isin(["Waiting", "Shortage"])
+        & so["Item"].ne("")
+        & so["QB Num"].ne("")
+    ].copy()
+    if shortage.empty:
+        return []
+
+    grouped = (
+        shortage.groupby("Item", as_index=False)
+        .agg(
+            blocked_so_count=("QB Num", "nunique"),
+            open_so_qty=("Qty(-)", "sum"),
+            on_hand=("On Hand", "max"),
+        )
+        .sort_values(["blocked_so_count", "open_so_qty", "Item"], ascending=[False, False, True])
+        .head(limit)
+    )
+
+    out: list[dict[str, object]] = []
+    for _, row in grouped.iterrows():
+        out.append(
+            {
+                "item": str(row["Item"]),
+                "blocked_so_count": int(row["blocked_so_count"]),
+                "open_so_qty": _coerce_total(row["open_so_qty"]) or 0,
+                "on_hand": _coerce_total(row["on_hand"]) or 0,
+            }
+        )
+    return out
+
+
+def _dashboard_alerts() -> list[str]:
+    alerts: list[str] = []
+
+    ready_rows = _ready_to_assign_rows()
+    if ready_rows:
+        alerts.append(f"{len(ready_rows)} SOs can be assigned before 2099-07-04.")
+
+    if OPEN_PO is not None and not OPEN_PO.empty:
+        pod = OPEN_PO.copy()
+        pod_no_col = "POD#" if "POD#" in pod.columns else ("QB Num" if "QB Num" in pod.columns else None)
+        ship_col = "Ship Date" if "Ship Date" in pod.columns else None
+        if pod_no_col and ship_col:
+            pod[pod_no_col] = pod[pod_no_col].fillna("").astype(str).str.strip()
+            pod[ship_col] = pd.to_datetime(pod[ship_col], errors="coerce")
+            missing_ship_count = pod.loc[pod[pod_no_col].ne("") & pod[ship_col].isna(), pod_no_col].nunique()
+            if missing_ship_count:
+                alerts.append(f"{int(missing_ship_count)} PODs are missing ship dates.")
+
+    if LEDGER is not None and not LEDGER.empty and {"Date", "Projected_NAV", "Item"}.issubset(LEDGER.columns):
+        led = LEDGER.copy()
+        led["Date"] = pd.to_datetime(led["Date"], errors="coerce")
+        led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
+        cutoff = pd.Timestamp("2099-07-04")
+        neg_item_count = (
+            led.loc[led["Date"].notna() & led["Date"].lt(cutoff) & led["Projected_NAV"].lt(0), "Item"]
+            .dropna().astype(str).str.strip().loc[lambda s: s.ne("")].nunique()
+        )
+        if neg_item_count:
+            alerts.append(f"{int(neg_item_count)} items go negative before 2099-07-04.")
+
+    if _LAST_LOADED_AT is not None:
+        age_minutes = max(0, int((datetime.now() - _LAST_LOADED_AT).total_seconds() // 60))
+        if age_minutes >= 60:
+            alerts.append(f"Homepage data is {age_minutes} minutes old.")
+
+    if not alerts:
+        alerts.append("No active system alerts.")
+    return alerts[:4]
+
 def lookup_on_po_by_item(item: str) -> int | None:
     df = SO_INV[SO_INV["Item"] == item]
     if "On PO" not in df.columns:
@@ -890,6 +1009,11 @@ def index():
     if _LAST_LOAD_ERR:
         return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
 
+    lt_unassigned_count = _dashboard_lt_unassigned_count()
+    top_shortage_items = _dashboard_top_shortage_items(limit=5)
+    alerts = _dashboard_alerts()
+    recent_searches = list(RECENT_HOME_SEARCHES)
+
     # ---- read inputs (work with GET or POST) ----
     so_input = (request.values.get("so") or "").strip()
     customer_input = (request.values.get("customer") or "").strip()
@@ -906,6 +1030,10 @@ def index():
             count=cached["count"],
             loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "—",
             order_summary=cached["order_summary"],
+            lt_unassigned_count=lt_unassigned_count,
+            top_shortage_items=top_shortage_items,
+            recent_searches=recent_searches,
+            alerts=alerts,
             headers=cached["table_headers"],
             header_labels=TABLE_HEADER_LABELS,
             numeric_cols=[
@@ -1055,6 +1183,10 @@ def index():
                     })
                 customer_options.sort(key=lambda x: x.get("qb_num", ""))
 
+    if so_input or customer_input:
+        _push_recent_home_search(so_input=so_input, customer_input=customer_input)
+        recent_searches = list(RECENT_HOME_SEARCHES)
+
     cache_payload = {
         "rows": rows,
         "count": count,
@@ -1077,6 +1209,10 @@ def index():
         count=count,
         loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "—",
         order_summary=order_summary,
+        lt_unassigned_count=lt_unassigned_count,
+        top_shortage_items=top_shortage_items,
+        recent_searches=recent_searches,
+        alerts=alerts,
         headers=table_headers,
         header_labels=TABLE_HEADER_LABELS,
         numeric_cols=[
@@ -1362,13 +1498,35 @@ def inventory_count():
     on_hand: int | float | None = None
     on_hand_wip: int | float | None = None
 
+    inv_filtered = INVENTORY_STATUS.copy() if INVENTORY_STATUS is not None else pd.DataFrame()
+    if item_input and not inv_filtered.empty and "Part_Number" in inv_filtered.columns:
+        part = inv_filtered["Part_Number"].astype(str).str.strip()
+        item_norm = normalize_item(item_input)
+        item_norm_upper = str(item_norm).strip().upper()
+        item_upper = item_input.strip().upper()
+        inv_filtered = inv_filtered.loc[
+            part.str.upper().eq(item_upper) | part.str.upper().eq(item_norm_upper)
+        ].copy()
+    elif item_input:
+        inv_filtered = pd.DataFrame()
+
+    if not inv_filtered.empty:
+        on_hand = _aggregate_metric(inv_filtered.get("On Hand", pd.Series(dtype=float)))
+        on_hand_wip = _aggregate_metric(inv_filtered.get("On Hand - WIP", pd.Series(dtype=float)))
+        if on_hand_wip is None:
+            on_hand_wip = on_hand
+
     filtered_df = SO_INV.copy()
     if item_input:
-        filtered_df = filtered_df[filtered_df["Item"].astype(str) == item_input]
+        item_norm = normalize_item(item_input)
+        item_upper = item_input.strip().upper()
+        item_norm_upper = str(item_norm).strip().upper()
+        so_items = filtered_df["Item"].astype(str).str.strip().str.upper()
+        filtered_df = filtered_df.loc[so_items.eq(item_upper) | so_items.eq(item_norm_upper)]
     if so_num:
         filtered_df = filtered_df[filtered_df["QB Num"].astype(str).str.upper() == so_num]
 
-    if not filtered_df.empty:
+    if on_hand is None and not filtered_df.empty:
         on_hand, on_hand_wip = _compute_on_hand_metrics(filtered_df)
 
     # Build the "On Sales Order" table depending on provided filters

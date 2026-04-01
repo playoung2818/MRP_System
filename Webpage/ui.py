@@ -34,7 +34,7 @@ INDEX_TPL = """
 <head>
   <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
   <meta charset="utf-8">
-  <title>LT Check — DB</title>
+  <title>LT Check - Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     :root{
@@ -44,8 +44,39 @@ INDEX_TPL = """
       --wait-bg:#fff3cd; --wait-fg:#664d03;
       --hdr:#f8fafc;
     }
-    html,body{ background:var(--bg); color:var(--ink); }
-    body{ padding:28px; }
+    html,body{ background:var(--bg); color:var(--ink); min-height:100%; }
+    body{ margin:0; }
+    .shell{ display:grid; grid-template-columns:260px minmax(0,1fr); min-height:100vh; }
+    .sidebar{
+      background:linear-gradient(180deg,#0b1220 0%,#10192d 100%);
+      color:#dbe7ff; padding:28px 20px; display:flex; flex-direction:column; gap:26px;
+      box-shadow:inset -1px 0 0 rgba(148,163,184,.12);
+    }
+    .brand-title{ font-size:1.45rem; font-weight:800; letter-spacing:.02em; color:#fff; }
+    .brand-sub{ font-size:.88rem; color:#94a3b8; }
+    .nav-group{ display:flex; flex-direction:column; gap:8px; }
+    .nav-label{ font-size:.72rem; text-transform:uppercase; letter-spacing:.12em; color:#7f8ba3; font-weight:700; }
+    .nav-link{
+      display:flex; align-items:center; gap:10px; border-radius:14px; padding:11px 13px;
+      color:#dbe7ff; text-decoration:none; font-weight:600; transition:.18s ease;
+    }
+    .nav-link:hover{ background:rgba(255,255,255,.06); color:#fff; }
+    .nav-link.active{ background:rgba(13,110,253,.18); color:#fff; box-shadow:0 0 0 1px rgba(13,110,253,.2) inset; }
+    .nav-dot{ width:8px; height:8px; border-radius:50%; background:currentColor; opacity:.7; }
+    .sidebar-note{
+      margin-top:auto; padding:14px; border:1px solid rgba(148,163,184,.14); border-radius:16px;
+      color:#9fb0d0; background:rgba(255,255,255,.03); font-size:.88rem;
+    }
+    .main{ padding:28px; }
+    .topbar{ display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px; }
+    .eyebrow{ font-size:.78rem; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); font-weight:700; }
+    .hero-title{ font-size:2rem; font-weight:800; letter-spacing:-.03em; margin:.2rem 0; }
+    .hero-sub{ color:var(--muted); }
+    .topbar-actions{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
+    .loaded-badge{
+      border:1px solid #dbe4f0; background:#fff; border-radius:999px; padding:.55rem .9rem;
+      color:var(--muted); font-size:.88rem;
+    }
     .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); }
     .muted{ color:var(--muted); }
     .nowrap{ white-space:nowrap; }
@@ -80,11 +111,35 @@ INDEX_TPL = """
     .detail-panel h6{ text-transform:uppercase; font-size:.85rem; letter-spacing:.08em; font-weight:600; }
     .detail-panel .subcard{ border:1px solid #e2e8f0; border-radius:12px; padding:1rem; background:#f8fafc; height:100%; }
     .detail-panel .subcard.active{ border-color:#0d6efd; box-shadow:0 0 0 3px rgba(13,110,253,.15); }
-    /* Inventory Count CTA card */
-    .inv-cta{ border-radius:16px; background:#0d6efd; color:#fff; padding:1.25rem 1.5rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; }
-    .inv-cta .title{ font-weight:700; letter-spacing:.02em; }
-    .inv-cta .sub{ opacity:.9 }
-    .inv-cta .btn{ background:#fff; color:#0d6efd; font-weight:700; border:none }
+    .search-card{ padding:20px; margin-bottom:24px; }
+    .search-title{ font-size:1rem; font-weight:700; margin-bottom:.2rem; }
+    .search-sub{ color:var(--muted); font-size:.92rem; margin-bottom:1rem; }
+    .search-input{
+      height:58px; border-radius:16px; font-size:1.02rem; border:1px solid #dbe4f0;
+      background:#fbfdff;
+    }
+    .section-title{ font-size:1rem; font-weight:700; margin-bottom:12px; }
+    .metric-card{ padding:22px; margin-bottom:24px; position:relative; overflow:hidden; }
+    .metric-card::after{
+      content:""; position:absolute; inset:auto -40px -40px auto; width:140px; height:140px;
+      background:radial-gradient(circle, rgba(13,110,253,.12), rgba(13,110,253,0));
+    }
+    .metric-value{ font-size:2.5rem; line-height:1; font-weight:800; letter-spacing:-.05em; }
+    .metric-label{ margin-top:.55rem; font-size:.95rem; font-weight:700; }
+    .metric-note{ margin-top:.35rem; color:var(--muted); font-size:.9rem; }
+    .panel-card{ padding:20px; }
+    .dash-table thead th{ position:static; background:transparent; color:var(--muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #dbe4f0; }
+    .dash-table tbody td{ border-color:#eef2f7; }
+    .dash-table tbody tr:hover{ background:#f8fbff; }
+    .panel-list{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; }
+    .panel-list li{
+      border:1px solid #eef2f7; border-radius:14px; padding:12px 14px; background:#fbfdff;
+      display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
+    }
+    .panel-list a{ color:var(--ink); text-decoration:none; font-weight:600; }
+    .panel-list a:hover{ color:#0d6efd; }
+    .panel-kicker{ color:var(--muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; }
+    .page-section{ margin-top:24px; }
     .detail-panel{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); background:#fff; padding:1.5rem; display:none; }
     .detail-panel h6{ text-transform:uppercase; font-size:.85rem; letter-spacing:.08em; font-weight:600; }
     .detail-panel .subcard{ border:1px solid #e2e8f0; border-radius:12px; padding:1rem; background:#f8fafc; height:100%; }
@@ -124,66 +179,149 @@ INDEX_TPL = """
       .chat-toggle{ right:10px; bottom:10px; }
       .chatbox{ right:10px; bottom:64px; width:calc(100vw - 20px); }
     }
+    @media (max-width:991.98px){
+      .shell{ grid-template-columns:1fr; }
+      .sidebar{ padding:18px 16px; }
+      .main{ padding:18px 16px 88px; }
+      .topbar{ flex-direction:column; }
+    }
   </style>
 </head>
 <body>
-  <div class="page-title">LT Check</div>
-  <div class="page-sub">Loaded {{ loaded_at }}</div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div>
+        <div class="brand-title">LT Check</div>
+        <div class="brand-sub">Planning and shortage control</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Workspace</div>
+        <a class="nav-link active" href="/"><span class="nav-dot"></span><span>Home</span></a>
+        <a class="nav-link" href="/quotation_lookup"><span class="nav-dot"></span><span>Quotations</span></a>
+        <a class="nav-link" href="/inventory_count"><span class="nav-dot"></span><span>Inventory Count</span></a>
+        <a class="nav-link" href="/production_planning"><span class="nav-dot"></span><span>Planning</span></a>
+        <a class="nav-link" href="/solt_rr"><span class="nav-dot"></span><span>SOLT-RR</span></a>
+      </div>
+      <div class="sidebar-note">
+        Use the homepage for quick search, shortage triage, and operational alerts. The sidebar is the permanent module navigation.
+      </div>
+    </aside>
 
-  <form class="row gy-3 gx-4 align-items-end justify-content-center mb-5" method="get">
-    <div class="col-12 col-md-4 form-section">
-      <label for="search-so">By SO</label>
-      <input id="search-so" class="form-control form-control-lg" style="height:60px;font-size:1.05rem"
-             name="so" placeholder="SO-20251368 or 20251368" value="{{ so_num or '' }}">
-    </div>
-    <div class="col-12 col-md-4 form-section">
-      <label for="search-customer">By Customer</label>
-      <input id="search-customer" class="form-control form-control-lg" style="height:60px;font-size:1.05rem"
-             name="customer" placeholder="Customer name" value="{{ customer_val or '' }}">
-    </div>
-    <div class="col-6 col-md-auto text-center">
-      <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
-    </div>
-    <div class="col-6 col-md-auto text-center">
-      <a class="btn btn-outline-secondary w-100" style="height:52px;font-size:1rem;font-weight:600" href="/?reload=1">Reload</a>
-    </div>
-    <div class="col-12 d-flex justify-content-between align-items-center">
-      <div class="text-muted small">Tip: Search by a specific SO/QB number or enter a customer name to list their SOs.</div>
-      <div class="d-flex gap-2"></div>
-    </div>
-  </form>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div class="eyebrow">Dashboard</div>
+          <div class="hero-title">Howdy</div>
+          <div class="hero-sub">Sales please use Quotation function to get help with Invenotry quto.</div>
+        </div>
+        <div class="topbar-actions">
+          <div class="loaded-badge">Loaded {{ loaded_at }}</div>
+          <a class="btn btn-outline-secondary" href="/">Home</a>
+          <a class="btn btn-outline-secondary" href="/?reload=1">Reload</a>
+        </div>
+      </div>
 
-  <div class="inv-cta mt-3" style="background:#dc2626;">
-    <div>
-      <div class="title">Quotation Lookup</div>
-      <div class="sub">Ledger + earliest ATP date by item</div>
-    </div>
-    <a class="btn btn-lg" href="/quotation_lookup">Open</a>
-  </div>
+      {% if not so_num and not customer_val %}
+        <div class="card-lite search-card">
+          <div class="search-title">Search</div>
+          <div class="search-sub">Find a sales order or list a customer's SOs. Search accepts `SO-20251368`, `20251368`, or a customer name.</div>
+          <form class="row g-3 align-items-end" method="get">
+            <div class="col-12 col-xl-5">
+              <label class="form-label text-uppercase small text-muted fw-semibold" for="search-so">By SO</label>
+              <input id="search-so" class="form-control search-input" name="so" placeholder="SO-20251368 or 20251368" value="{{ so_num or '' }}">
+            </div>
+            <div class="col-12 col-xl-5">
+              <label class="form-label text-uppercase small text-muted fw-semibold" for="search-customer">By Customer</label>
+              <input id="search-customer" class="form-control search-input" name="customer" placeholder="Customer name" value="{{ customer_val or '' }}">
+            </div>
+            <div class="col-6 col-xl-1 d-grid">
+              <button class="btn btn-primary" style="height:58px;font-weight:700;">Go</button>
+            </div>
+            <div class="col-6 col-xl-1 d-grid">
+              <a class="btn btn-outline-secondary" style="height:58px;font-weight:700;" href="/">Clear</a>
+            </div>
+          </form>
+        </div>
 
-  <div class="inv-cta mt-2">
-    <div>
-      <div class="title">Inventory Count</div>
-      <div class="sub">A separate module for quick item stock snapshots</div>
-    </div>
-    <a class="btn btn-lg" href="/inventory_count">Open</a>
-  </div>
+        <div class="row g-4">
+          <div class="col-12 col-xl-4">
+            <div class="card-lite metric-card">
+              <div class="eyebrow">Open Work</div>
+              <div class="metric-value">{{ lt_unassigned_count or 0 }}</div>
+              <div class="metric-label">SO Not Assigned LT</div>
+              <div class="metric-note">Unique sales orders still using the `2099-07-04` placeholder lead time.</div>
+            </div>
+          </div>
+          <div class="col-12 col-xl-8">
+            <div class="card-lite panel-card h-100">
+              <div class="section-title">Top 5 Shortage Items</div>
+              <div class="table-responsive">
+                <table class="table table-sm align-middle dash-table mb-0">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th class="text-end">Blocked SOs</th>
+                      <th class="text-end">Open SO Qty</th>
+                      <th class="text-end">On Hand</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% if top_shortage_items %}
+                      {% for item in top_shortage_items %}
+                        <tr>
+                          <td class="fw-semibold">{{ item.item }}</td>
+                          <td class="text-end">{{ item.blocked_so_count }}</td>
+                          <td class="text-end">{{ item.open_so_qty }}</td>
+                          <td class="text-end">{{ item.on_hand }}</td>
+                        </tr>
+                      {% endfor %}
+                    {% else %}
+                      <tr><td colspan="4" class="text-center text-muted py-4">No shortage items found.</td></tr>
+                    {% endif %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
 
-  <div class="inv-cta mt-3" style="background:#059669;">
-    <div>
-      <div class="title">Production Planning</div>
-      <div class="sub">Calendar-style view of final sales orders by Lead Time</div>
-    </div>
-    <a class="btn btn-lg" href="/production_planning">Open</a>
-  </div>
-
-  <div class="inv-cta mt-3" style="background:#b45309;">
-    <div>
-      <div class="title">SOLT-RR</div>
-      <div class="sub">Search blocker items for a QB Num from public.so_assignment_blockers</div>
-    </div>
-    <a class="btn btn-lg" href="/solt_rr">Open</a>
-  </div>
+        <div class="row g-4 page-section">
+          <div class="col-12 col-xl-6">
+            <div class="card-lite panel-card h-100">
+              <div class="section-title">Recent Searches</div>
+              <ul class="panel-list">
+                {% if recent_searches %}
+                  {% for item in recent_searches %}
+                    <li>
+                      <div>
+                        <div class="panel-kicker">{{ item.kind }}</div>
+                        <a href="{{ item.href }}">{{ item.label }}</a>
+                      </div>
+                    </li>
+                  {% endfor %}
+                {% else %}
+                  <li class="text-muted">No recent searches yet.</li>
+                {% endif %}
+              </ul>
+            </div>
+          </div>
+          <div class="col-12 col-xl-6">
+            <div class="card-lite panel-card h-100">
+              <div class="section-title">Alerts</div>
+              <ul class="panel-list">
+                {% for item in alerts %}
+                  <li>
+                    <div>
+                      <div class="panel-kicker">System</div>
+                      <div class="fw-semibold">{{ item }}</div>
+                    </div>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      {% endif %}
 
   {% if customer_query is not none %}
   <div class="card-lite bg-white my-4 p-4">
@@ -299,6 +437,8 @@ INDEX_TPL = """
   {% elif so_num %}
   <div class="alert alert-warning mt-3">No rows found for "{{ so_num }}".</div>
   {% endif %}
+    </main>
+  </div>
 
   <button id="erp-chat-toggle" class="chat-toggle" type="button">Chat</button>
   <div id="erp-chatbox" class="chatbox" aria-hidden="true">

@@ -1,4 +1,4 @@
-# name: erp-ledger-maintainer
+# Name: erp-ledger-maintainer
 description: Maintain and validate MRP ETL and ledger workflows. Use when tasks involve parsing or normalization changes in Open_Purchase_Orders, NT Shipping Schedule, and ledger_analytics; reconciling item/qty mismatches; updating Supabase QA report tests; and verifying parser changes with before-vs-after diffs.
 
 
