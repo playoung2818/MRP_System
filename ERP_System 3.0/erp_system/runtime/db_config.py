@@ -30,9 +30,7 @@ def _load_env_file_fallback(env_path: str, *, override: bool = False) -> None:
 
 
 try:
-    # Optional: load variables from a local .env file if python-dotenv
-    # is installed. This keeps secrets out of the code while still being
-    # convenient for local development.
+
     from dotenv import load_dotenv  # type: ignore
 
     # Load from current working dir first.
@@ -52,15 +50,6 @@ except Exception:
     _load_env_file_fallback(str(Path(__file__).resolve().parent / ".env"), override=True)
 
 
-# Read the database DSN from environment so credentials
-# are not hard-coded in the repository.
-#
-# Example .env line:
-#   DATABASE_DSN=postgresql+psycopg://user:password@host:6543/postgres?sslmode=require
-#
-# DuckDB examples:
-#   DATABASE_DSN=duckdb:///C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb
-#   DUCKDB_PATH=C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb
 DATABASE_DSN: str | None = os.getenv("DATABASE_DSN")
 DUCKDB_PATH: str | None = os.getenv("DUCKDB_PATH")
 
