@@ -5,6 +5,7 @@ import pandas as pd
 from atp import earliest_atp_strict
 from core import _norm_key
 from erp_normalize import normalize_item
+from erp_system.contracts import TABLE_CONTRACTS, ensure_contract_columns
 
 
 def _normalize_item_key(item: str) -> str:
@@ -204,10 +205,11 @@ def _build_assignment_readiness_for_mode(
     mode_norm = str(mode).strip().lower()
     include_cutoff_in_check = mode_norm == "strict"
 
-    so = structured.copy()
-    for c in ["QB Num", "Name", "P. O. #", "Order Date", "Ship Date", "Item", "Qty(-)", "Component_Status"]:
-        if c not in so.columns:
-            so[c] = pd.NA
+    so = ensure_contract_columns(
+        structured,
+        TABLE_CONTRACTS["wo_structured"],
+        extra_columns=("Name", "P. O. #", "Order Date", "Component_Status"),
+    )
 
     so["QB Num"] = so["QB Num"].astype(str).str.strip()
     so["Name"] = so["Name"].astype(str).str.strip()

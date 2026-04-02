@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from erp_system.contracts import TABLE_CONTRACTS, ensure_contract_columns
+
 
 ALLOCATION_COLUMNS = [
     "Ship Date",
@@ -86,10 +88,11 @@ def build_pod_allocation_table(
     if structured is None or structured.empty:
         return _empty_pod_allocation()
 
-    src = structured.copy()
-    for col in ["Ship Date", "Name", "QB Num", "Item", "Qty(-)"]:
-        if col not in src.columns:
-            src[col] = pd.NA
+    src = ensure_contract_columns(
+        structured,
+        TABLE_CONTRACTS["wo_structured"],
+        extra_columns=("Name",),
+    )
 
     src["Ship Date"] = pd.to_datetime(src["Ship Date"], errors="coerce").dt.strftime("%Y-%m-%d").fillna("")
     src["Name"] = src["Name"].fillna("").astype(str).str.strip()

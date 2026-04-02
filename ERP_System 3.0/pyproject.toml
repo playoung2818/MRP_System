@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "erp-system"
+version = "3.0.0"
+description = "ERP/MRP backend package for ETL, ledger, ATP, and query workflows."
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["erp_system*"]
