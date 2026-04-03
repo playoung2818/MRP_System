@@ -39,6 +39,7 @@ ITEM_MAPPINGS: dict[str, str] = {
     "GC-J-A64GB-O-Industrial-Nvidia": "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
     "GC-AGXOrin Ind. 64G-JP 6.0_NRU-230/240S": "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
     "AccsyBx-FPnl_3Ant-Cbl-NRU-170-PPC series": "AccsyBx-FPnl_3Ant-Cbl-NRU170PPC",
+    "Nuvo-9208VTC-4M12(EA)", "Nuvo-9208VTC-4M12"
 }
 
 # Pattern-based canonical mappings (e.g., JetPack/JP variants).
