@@ -12,8 +12,9 @@ from erp_system.ingest.io_ops import (
 )
 from erp_system.ingest.sources import (
     extract_inputs,
-    fetch_pdf_orders_df_from_supabase,
+    fetch_pdf_orders_df_from_DB,
     fetch_word_files_df,
+    validate_input_tables,
 )
 from erp_system.ledger.atp import build_atp_view
 from erp_system.ledger.events import _order_events, build_events, expand_nav_preinstalled
@@ -28,6 +29,12 @@ from erp_system.runtime.config import (
     TBL_SALES_ORDER,
     TBL_Shipping,
     TBL_STRUCTURED,
+)
+from erp_system.runtime.policies import (
+    GOOGLE_SHEET_SPREADSHEET,
+    GOOGLE_SHEET_WORKSHEET,
+    NOT_ASSIGNED_SO_EXPORT_PATH,
+    WORD_FILE_API_URLS,
 )
 from erp_system.transform.inventory import add_onhand_minus_wip, build_wip_lookup, transform_inventory
 from erp_system.transform.pod import enrich_pod_with_shipping_audit, transform_pod
@@ -57,18 +64,9 @@ def _validate_outputs(
 
 def main() -> None:
     so_raw, inv_raw, ship_raw, pod_raw = extract_inputs()
-    word_files_df = fetch_word_files_df(
-        [
-            "http://127.0.0.1:5001/api/word-files",
-            "http://localhost:5001/api/word-files",
-            "http://192.168.60.133:5001/api/word-files",
-        ]
-    )
-    pdf_orders_df = fetch_pdf_orders_df_from_supabase()
-    consigned_wos: set[str] = set()
-    if "Consigned" in pdf_orders_df.columns and "WO" in pdf_orders_df.columns:
-        consigned_mask = pdf_orders_df["Consigned"].astype(str).str.strip().str.lower().isin(["true", "1", "yes", "y"])
-        consigned_wos = set(pdf_orders_df.loc[consigned_mask, "WO"].astype(str).str.strip())
+    validate_input_tables(ship_raw, pod_raw)
+    word_files_df = fetch_word_files_df(WORD_FILE_API_URLS)
+    pdf_orders_df = fetch_pdf_orders_df_from_DB()
 
     so_full = transform_sales_order(so_raw)
     wip_lookup = build_wip_lookup(so_full, word_files_df)
@@ -95,7 +93,7 @@ def main() -> None:
 
     summary = save_not_assigned_so(
         not_assigned_so.copy(),
-        output_path=r"C:\Users\Admin\OneDrive - neousys-tech\Desktop\Python\ERP_System\Not_assigned_SO.xlsx",
+        output_path=NOT_ASSIGNED_SO_EXPORT_PATH,
         band_by_col="QB Num",
         shortage_col="Component_Status",
         shortage_value="Shortage",
@@ -129,15 +127,14 @@ def main() -> None:
         try:
             write_final_sales_order_to_gsheet(
                 so_for_sheet,
-                spreadsheet_name="PDF_WO",
-                worksheet_name="Open Sales Order",
-                consigned_wos=consigned_wos,
+                spreadsheet_name=GOOGLE_SHEET_SPREADSHEET,
+                worksheet_name=GOOGLE_SHEET_WORKSHEET,
             )
         except Exception as exc:
             logging.warning("Skipping Open Sales Order export: %s", exc)
 
 
 if __name__ == "__main__":
-    logging.info("Running ETL pipeline...")
+    logging.info("MRP pipeline online. Beginning data ingestion....")
     main()
     logging.info("Done.")

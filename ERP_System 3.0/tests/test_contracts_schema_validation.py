@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from erp_system.contracts import TABLE_CONTRACTS, ensure_contract_columns, validate_output_table
+from erp_system.ingest.sources import validate_input_tables
 
 
 def test_validate_inventory_status_contract_accepts_expected_columns() -> None:
@@ -67,3 +68,15 @@ def test_ensure_contract_columns_adds_missing_structured_fields_for_consumers() 
     for col in ("QB Num", "Item", "Qty(-)", "Ship Date", "Name", "Component_Status"):
         assert col in out.columns
     assert pd.isna(out.loc[0, "Qty(-)"])
+
+
+def test_validate_input_tables_requires_shipping_model_name_and_pod_inventory_site() -> None:
+    shipping_df = pd.DataFrame({"Ship Date": ["2026-04-06"]})
+    pod_df = pd.DataFrame({"QB Num": ["POD-1"]})
+
+    with pytest.raises(ValueError) as exc_info:
+        validate_input_tables(shipping_df, pod_df)
+
+    msg = str(exc_info.value)
+    assert "Model Name" in msg
+    assert "Inventory Site" in msg
