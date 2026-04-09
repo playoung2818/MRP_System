@@ -120,9 +120,11 @@ def main() -> None:
         f"{DB_SCHEMA}.{TBL_ITEM_ATP}={len(atp_view)}; "
     )
 
+
+    ## Write SO sheet to Google sheet
     if not final_sales_order.empty:
         so_for_sheet = final_sales_order.assign(
-            **{"Lead Time": pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date}
+            Lead_Time = pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date
         )
         try:
             write_final_sales_order_to_gsheet(

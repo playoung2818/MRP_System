@@ -7,7 +7,6 @@ Run commands:
 ```powershell
 python -m erp_system.cli.etl
 python -m erp_system.cli.llm_cli
-python -m erp_system.cli.update_pod_site
 ```
 
 Notes:
