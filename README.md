@@ -7,7 +7,7 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 ## Highlights
 - ETL: normalize and join Inventory Status, Open Sales Orders, POD, shipping schedule, Word pick logs, and PDF WO references.
 - Metrics: compute WIP (QB Num list) and WIP quantities, On Hand - WIP, structured ERP views, event/ledger timelines, ATP, and Not-assigned SO exports.
-- Delivery: publish to Postgres/Supabase and Google Sheets for visualization and downstream reporting.
+- Delivery: publish to Postgres and Google Sheets for visualization and downstream reporting.
 
 ## Data inputs
 - Inventory Status (warehouse snapshot)

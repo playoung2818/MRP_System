@@ -337,6 +337,30 @@ def save_not_assigned_so(
     Returns a summary dict.
     """
 
+    export_columns = [
+        "Order Date",
+        "Name",
+        "QB Num",
+        "Item",
+        "Qty(-)",
+        "Available",
+        "Available + On PO",
+        "Sales/Week",
+        "Recommended Restock Qty",
+        "Assigned Q'ty",
+        "On Hand",
+        "On Sales Order",
+        "On PO",
+        "Component_Status",
+        "P. O. #",
+        "Ship Date",
+    ]
+    export_df = df[[col for col in export_columns if col in df.columns]].copy()
+    date_columns = ["Order Date", "Ship Date"]
+    for col in date_columns:
+        if col in export_df.columns:
+            export_df[col] = pd.to_datetime(export_df[col], errors="coerce").dt.floor("D")
+
     # ---------- defaults ----------
     if column_widths is None:
         column_widths = {
@@ -384,7 +408,7 @@ def save_not_assigned_so(
         if first_sheet_name in wb.sheetnames:
             del wb[first_sheet_name]
         ws = wb.create_sheet(title=first_sheet_name, index=0)
-        for row in dataframe_to_rows(df, index=False, header=True):
+        for row in dataframe_to_rows(export_df, index=False, header=True):
             ws.append(row)
         if pod_watchlist_df is not None:
             if pod_watchlist_sheet in wb.sheetnames:
@@ -397,7 +421,7 @@ def save_not_assigned_so(
         if not os.path.exists(output_path):
             with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
                 # create a placeholder first sheet (name will be replaced)
-                df.to_excel(writer, sheet_name="Sheet1", index=False)
+                export_df.to_excel(writer, sheet_name="Sheet1", index=False)
 
         # ---------- find current first sheet name ----------
         _wb = load_workbook(output_path)
@@ -406,7 +430,7 @@ def save_not_assigned_so(
 
         # ---------- write df to first sheet (replace) ----------
         with pd.ExcelWriter(output_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-            df.to_excel(writer, sheet_name=first_sheet_name, index=False)
+            export_df.to_excel(writer, sheet_name=first_sheet_name, index=False)
             if pod_watchlist_df is not None:
                 pod_watchlist_df.to_excel(writer, sheet_name=pod_watchlist_sheet, index=False)
 
@@ -503,6 +527,14 @@ def save_not_assigned_so(
             for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=idx, max_col=idx):
                 for cell in row:
                     cell.alignment = center_align
+
+    for name in date_columns:
+        if name in col_map:
+            idx = col_map[name]
+            for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=idx, max_col=idx):
+                for cell in row:
+                    if cell.value not in (None, ""):
+                        cell.number_format = "yyyy-mm-dd"
 
     # ---------- rename sheet to today's date ----------
     today_str = datetime.today().strftime("%Y-%m-%d")
