@@ -1130,6 +1130,10 @@ PRODUCTION_TPL = """
     .order-line:nth-child(odd){ background:#f9fafb; }
     .order-line:nth-child(even){ background:#eef2ff; }
     .order-main{ font-weight:600; }
+    .order-meta{ font-size:.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    .status-pill{ display:inline-block; padding:.15rem .5rem; border-radius:999px; font-weight:700; }
+    .status-picked{ background:#dcfce7; color:#166534; }
+    .status-na{ background:#fef3c7; color:#92400e; }
     .order-sub{ font-size:.85rem; color:var(--muted); }
     .order-link{ text-decoration:none; color:#0d6efd; font-size:.85rem; }
     .order-link:hover{ text-decoration:underline; }
@@ -1162,6 +1166,12 @@ PRODUCTION_TPL = """
                   <div class="order-line">
                     <div class="me-2">
                       <div class="order-main">{{ o.qb_num }}</div>
+                      <div class="order-meta">
+                        WO Status:
+                        <span class="status-pill {% if (o.wo_status or 'NA') == 'Picked' %}status-picked{% else %}status-na{% endif %}">
+                          {{ o.wo_status or 'NA' }}
+                        </span>
+                      </div>
                       <div class="order-sub">
                         {{ o.customer or '-' }}{% if o.line %} • {{ o.line }}{% endif %}
                       </div>

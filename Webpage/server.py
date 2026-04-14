@@ -874,6 +874,24 @@ def _find_pdf_url_for_so(so_num: str, po_num: str | None = None) -> str | None:
         return f"/pdf/{(pdf_info['file_name'][:-4])}"
     return None
 
+
+def _wo_status_by_qb_num() -> dict[str, str]:
+    if SO_INV is None or SO_INV.empty or "QB Num" not in SO_INV.columns or "Picked" not in SO_INV.columns:
+        return {}
+
+    so = SO_INV[["QB Num", "Picked"]].copy()
+    so["QB Num"] = so["QB Num"].fillna("").astype(str).str.strip()
+    so["Picked"] = so["Picked"].fillna("").astype(str).str.strip()
+    so = so.loc[so["QB Num"].ne("")].copy()
+    if so.empty:
+        return {}
+
+    def _status_for_group(series: pd.Series) -> str:
+        values = {str(v).strip().lower() for v in series if str(v).strip()}
+        return "Picked" if ("picked" in values or "partial" in values) else "NA"
+
+    return so.groupby("QB Num")["Picked"].agg(_status_for_group).to_dict()
+
 def _so_table_for_item(item: str) -> tuple[list[str], list[dict], dict[str, int | float | None]]:
     need_cols = ["Name", "QB Num", "Item", "Qty(-)", "On Hand - WIP", "Ship Date", "Picked"]
     g = SO_INV[SO_INV["Item"] == item].copy()
@@ -1575,6 +1593,7 @@ def production_planning():
 
     df["lead_date_str"] = df["Lead Time"].dt.strftime("%Y-%m-%d")
 
+    wo_status_map = _wo_status_by_qb_num()
     date_groups: list[dict] = []
     for date_str, date_group in df.sort_values(["Lead Time", "QB Num"]).groupby(
         "lead_date_str", sort=True
@@ -1598,6 +1617,7 @@ def production_planning():
                     "qb_num": str(qb_num),
                     "customer": customer,
                     "line": line,
+                    "wo_status": wo_status_map.get(str(qb_num).strip(), "NA"),
                     "pdf_url": pdf_url,
                 }
             )
