@@ -30,7 +30,8 @@ def _build_adjusted_item_atp(
 
     normalized_item = _normalize_item_key(item)
     if "Item" not in led.columns:
-        return pd.DataFrame(columns=["Item", "Date", "Projected_NAV", "FutureMin_NAV"])
+        raise ValueError("Required column 'Item' is missing from led")
+
     mask_item = _norm_key(led["Item"]).astype(str) == normalized_item
     item_df = led.loc[mask_item].copy()
     if item_df.empty:
