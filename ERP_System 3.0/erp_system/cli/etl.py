@@ -17,6 +17,7 @@ from erp_system.ingest.sources import (
     validate_input_tables,
 )
 from erp_system.ledger.atp import build_atp_view
+from erp_system.ledger.assignment_readiness import build_assignment_run_tables
 from erp_system.ledger.events import _order_events, build_events, expand_nav_preinstalled
 from erp_system.ledger.ledger import build_ledger_from_events
 from erp_system.runtime.config import (
@@ -27,6 +28,7 @@ from erp_system.runtime.config import (
     TBL_LEDGER,
     TBL_POD,
     TBL_SALES_ORDER,
+    TBL_SO_ASSIGNMENT_RUNS,
     TBL_Shipping,
     TBL_STRUCTURED,
 )
@@ -88,6 +90,7 @@ def main() -> None:
     inv, structured, pod, ship, ledger = _validate_outputs(inv, structured, pod, ship, ledger)
 
     atp_view = build_atp_view(ledger)
+    assignment_runs = build_assignment_run_tables(structured, ledger)
     erp_df = prepare_erp_view(structured)
     not_assigned_so = erp_df.loc[~erp_df["AssignedFlag"]].copy()
 
@@ -109,6 +112,7 @@ def main() -> None:
     write_to_db(ledger, schema=DB_SCHEMA, table=TBL_LEDGER)
     write_to_db(item_summary, schema=DB_SCHEMA, table=TBL_ITEM_SUMMARY)
     write_to_db(atp_view, schema=DB_SCHEMA, table=TBL_ITEM_ATP)
+    write_to_db(assignment_runs, schema=DB_SCHEMA, table=TBL_SO_ASSIGNMENT_RUNS)
 
     print(
         f"Loaded: {DB_SCHEMA}.{TBL_SALES_ORDER}={len(so_full)}; "
@@ -118,6 +122,7 @@ def main() -> None:
         f"{DB_SCHEMA}.{TBL_Shipping}={len(ship)}; "
         f"{DB_SCHEMA}.{TBL_LEDGER}={len(ledger)}; "
         f"{DB_SCHEMA}.{TBL_ITEM_ATP}={len(atp_view)}; "
+        f"{DB_SCHEMA}.{TBL_SO_ASSIGNMENT_RUNS}={len(assignment_runs)}; "
     )
 
 
