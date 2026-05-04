@@ -9,6 +9,7 @@ from erp_normalize import POD_SITE, normalize_item
 ## 1) SAP (shipping) → expand pre-installed components
 INCL_SPLIT = re.compile(r"\bincluding\b", re.IGNORECASE)
 QTYX_RE = re.compile(r"^\s*(\d+)\s*x\s*(.+)\s*$", re.IGNORECASE)  # "2x SSD-1TB"
+ITEM_AND_SPLIT = re.compile(r"\s+\band\b\s+(?=(?:[A-Z0-9]+[.-]){1,}[A-Z0-9])", re.IGNORECASE)
 NUVO_716_VARIANT_SPLITS: dict[str, tuple[str, str]] = {
     "NUVO-7160GC-POE": ("Nuvo-716xGC-PoE", "CSM-7160GC"),
     "NUVO-7162GC-POE": ("Nuvo-716xGC-PoE", "CSM-7162GC"),
@@ -33,7 +34,9 @@ def parse_description(desc: str) -> tuple[str, list[str]]:
     parent = clean_space(parts[0].split(",")[0])
     comps = []
     if len(parts) > 1:
-        comps = [clean_space(x) for x in parts[1].split(",") if clean_space(x)]
+        comma_tokens = [clean_space(x) for x in parts[1].split(",") if clean_space(x)]
+        for token in comma_tokens:
+            comps.extend(clean_space(x) for x in ITEM_AND_SPLIT.split(token) if clean_space(x))
     return parent, comps
 
 def parse_component_token(token: str) -> tuple[str, float]:

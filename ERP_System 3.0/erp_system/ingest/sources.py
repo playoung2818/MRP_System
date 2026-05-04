@@ -14,7 +14,7 @@ from ._helpers import read_excel_safe
 
 def extract_inputs():
     df_sales_order = pd.read_csv(str(SALES_ORDER_FILE), encoding="ISO-8859-1", engine="python")
-    inventory_df = pd.read_csv(str(WAREHOUSE_INV_FILE))
+    inventory_df = pd.read_csv(str(WAREHOUSE_INV_FILE), encoding="cp1252")
     df_shipping_schedule = read_excel_safe(SHIPPING_SCHEDULE_FILE)
     df_pod = pd.read_csv(str(POD_FILE), encoding="ISO-8859-1", engine="python")
     return df_sales_order, inventory_df, df_shipping_schedule, df_pod

@@ -9,7 +9,7 @@ from erp_system.runtime.policies import EXCLUDED_POD_SOURCE_NAMES
 def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     pod = df_pod.copy()
     pod = pod.drop(columns=["Open Balance"], errors="ignore")
-    first_col = pod.columns[0] if len(pod.columns) > 0 else None
+    first_col = pod.columns[0] if len(pod.columns) > 0 else None ## make sure first column is the Part Name Column
     if "Num" in pod.columns and "POD#" not in pod.columns:
         pod["POD#"] = pod["Num"]
     pod.rename(columns={"Date": "Order Date", "Num": "QB Num", "Backordered": "Qty(+)"}, inplace=True)

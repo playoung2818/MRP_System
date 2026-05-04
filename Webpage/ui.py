@@ -1137,6 +1137,22 @@ PRODUCTION_TPL = """
     .order-sub{ font-size:.85rem; color:var(--muted); }
     .order-link{ text-decoration:none; color:#0d6efd; font-size:.85rem; }
     .order-link:hover{ text-decoration:underline; }
+    .capacity-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:1rem; }
+    .capacity-card{ border:1px solid #e5e7eb; border-radius:8px; background:#fff; padding:1rem; }
+    .capacity-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; }
+    .capacity-week{ font-weight:700; }
+    .capacity-metric{ font-weight:700; font-size:1.05rem; }
+    .capacity-sub{ color:var(--muted); font-size:.82rem; }
+    .capacity-track{ height:16px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
+    .capacity-fill{ height:100%; border-radius:999px; }
+    .capacity-ok{ background:#16a34a; }
+    .capacity-tight{ background:#f59e0b; }
+    .capacity-over{ background:#dc2626; }
+    .large-so{ display:flex; justify-content:space-between; gap:.75rem; padding:.45rem 0; border-top:1px solid #eef2f7; }
+    .large-so:first-child{ border-top:0; }
+    .large-so-main{ font-weight:700; }
+    .large-so-meta{ color:var(--muted); font-size:.82rem; }
+    .review-pill{ display:inline-block; padding:.12rem .45rem; border-radius:999px; background:#fee2e2; color:#991b1b; font-weight:700; font-size:.75rem; }
   </style>
 </head>
 <body>
@@ -1150,6 +1166,59 @@ PRODUCTION_TPL = """
       <a class="btn btn-sm btn-outline-primary" href="/production_planning?reload=1">Reload</a>
     </div>
   </div>
+
+  {% if capacity_weeks %}
+    <div class="mb-4">
+      <div class="d-flex justify-content-between align-items-end mb-2">
+        <div>
+          <div class="h5 m-0">Weekly Labor Capacity</div>
+          <div class="text-muted small">Estimated from first SO item family: Nuvo 1 hr/unit, POC 0.5, NRU 2, SEMIL 1. Capacity is 80 hrs/week.</div>
+        </div>
+      </div>
+      <div class="capacity-grid">
+        {% for week in capacity_weeks %}
+          <div class="capacity-card">
+            <div class="capacity-head mb-2">
+              <div>
+                <div class="capacity-week">{{ week.week_start }} to {{ week.week_end }}</div>
+                <div class="capacity-sub">{{ week.so_count }} SO(s){% if week.unknown_count %} | <span class="review-pill">{{ week.unknown_count }} review</span>{% endif %}</div>
+              </div>
+              <div class="text-end">
+                <div class="capacity-metric">{{ week.used_hours_str }} / {{ week.capacity_hours_str }} hrs</div>
+                <div class="capacity-sub">
+                  {% if week.remaining_hours < 0 %}
+                    Over by {{ (0 - week.remaining_hours)|round(1) }} hrs
+                  {% else %}
+                    {{ week.remaining_hours_str }} hrs open
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            <div class="capacity-track mb-3">
+              <div class="capacity-fill capacity-{{ week.status }}" style="width:{{ week.used_pct }}%"></div>
+            </div>
+            {% if week.large_sos %}
+              <div class="capacity-sub text-uppercase fw-bold mb-1">SOs over 20 units</div>
+              {% for so in week.large_sos %}
+                <div class="large-so">
+                  <div>
+                    <div class="large-so-main">{{ so.qb_num }} | {{ so.family }}</div>
+                    <div class="large-so-meta">{{ so.customer or '-' }} | {{ so.first_item }}</div>
+                  </div>
+                  <div class="text-end">
+                    <div class="fw-bold">{{ so.total_units_str }} units</div>
+                    <div class="large-so-meta">{{ so.labor_hours_str }} hrs</div>
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <div class="text-muted small">No SOs over 20 units this week.</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
 
   {% if not date_groups %}
     <div class="alert alert-info">No production data available.</div>

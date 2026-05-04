@@ -67,6 +67,19 @@ QUOTATION_VIEW_CACHE: dict[tuple[str, int], dict] = {}
 CHAT_LOG_FILE = REPO_ROOT / "Webpage" / "chatbox.log"
 READY_ASSIGN_CACHE: list[dict] | None = None
 RECENT_HOME_SEARCHES: list[dict[str, str]] = []
+WEEKLY_LABOR_CAPACITY_HOURS = 80.0
+LABOR_HOURS_PER_UNIT = {
+    "NUVO": 1.0,
+    "POC": 0.5,
+    "NRU": 2.0,
+    "SEMIL": 1.0,
+}
+LABOR_FAMILY_LABELS = {
+    "NUVO": "Nuvo",
+    "POC": "POC",
+    "NRU": "NRU",
+    "SEMIL": "SEMIL",
+}
 
 # =========================
 # PDF settings/cache
@@ -103,10 +116,142 @@ def _to_date_str(s: pd.Series, fmt="%Y-%m-%d") -> pd.Series:
     return s.apply(lambda x: x.strftime(fmt) if pd.notnull(x) else "")
 
 
+def _format_num(value, digits: int = 1) -> str:
+    try:
+        num = float(value)
+    except Exception:
+        return ""
+    if not np.isfinite(num):
+        return ""
+    if abs(num - round(num)) < 0.000001:
+        return str(int(round(num)))
+    return f"{num:.{digits}f}".rstrip("0").rstrip(".")
+
+
 def _normalize_so_key(v: str) -> str:
     """Normalize SO/QB key for tolerant matching (SO-20260328 == so20260328)."""
     s = str(v or "").upper().strip()
     return re.sub(r"[^A-Z0-9]", "", s)
+
+
+def _classify_labor_family(item: object) -> tuple[str, float | None]:
+    item_upper = str(item or "").strip().upper()
+    for family, hours_per_unit in LABOR_HOURS_PER_UNIT.items():
+        if item_upper.startswith(family):
+            return LABOR_FAMILY_LABELS[family], hours_per_unit
+    return "Unknown", None
+
+
+def _build_first_wo_item_map(structured_df: pd.DataFrame | None) -> dict[str, dict[str, object]]:
+    if (
+        structured_df is None
+        or structured_df.empty
+        or "QB Num" not in structured_df.columns
+        or "Item" not in structured_df.columns
+    ):
+        return {}
+
+    work = structured_df.copy()
+    work["QB Num"] = work["QB Num"].astype(str).str.strip()
+    work = work.loc[work["QB Num"].ne("")]
+    if work.empty:
+        return {}
+
+    qty_col = "Qty(-)" if "Qty(-)" in work.columns else None
+    first_rows = work.drop_duplicates(subset=["QB Num"], keep="first")
+    first_map: dict[str, dict[str, object]] = {}
+    for _, row in first_rows.iterrows():
+        qty = None
+        if qty_col is not None:
+            qty = pd.to_numeric(pd.Series([row.get(qty_col)]), errors="coerce").iloc[0]
+            if pd.isna(qty):
+                qty = None
+        first_map[str(row.get("QB Num", "")).strip()] = {
+            "item": row.get("Item") or "",
+            "qty": qty,
+        }
+    return first_map
+
+
+def _build_weekly_labor_capacity(df: pd.DataFrame, structured_df: pd.DataFrame | None = None) -> list[dict]:
+    if df is None or df.empty or "Lead Time" not in df.columns:
+        return []
+
+    work = df.copy()
+    work["Lead Time"] = pd.to_datetime(work["Lead Time"], errors="coerce")
+    work = work.dropna(subset=["Lead Time"])
+    if work.empty:
+        return []
+
+    work["Qty"] = pd.to_numeric(work.get("Qty", 0), errors="coerce").fillna(0)
+    work["week_start"] = work["Lead Time"].dt.to_period("W-SUN").dt.start_time
+    current_week_start = pd.Timestamp.today().normalize().to_period("W-SUN").start_time
+    work = work.loc[work["week_start"] >= current_week_start].copy()
+    if work.empty:
+        return []
+
+    first_wo_items = _build_first_wo_item_map(structured_df)
+
+    weeks: list[dict] = []
+    for week_start, week_group in work.sort_values(["week_start", "Lead Time", "QB Num"]).groupby(
+        "week_start", sort=True
+    ):
+        so_rows: list[dict] = []
+        known_hours = 0.0
+        unknown_count = 0
+        for qb_num, so_group in week_group.groupby("QB Num", sort=True):
+            so_group = so_group.sort_values(["Lead Time", "Item"])
+            first = so_group.iloc[0]
+            wo_first = first_wo_items.get(str(qb_num).strip(), {})
+            first_item = wo_first.get("item") or first.get("Item") or ""
+            family, hours_per_unit = _classify_labor_family(first_item)
+            wo_qty = wo_first.get("qty")
+            total_units = float(wo_qty) if wo_qty is not None else float(so_group["Qty"].sum())
+            labor_hours = None if hours_per_unit is None else total_units * hours_per_unit
+            if labor_hours is None:
+                unknown_count += 1
+            else:
+                known_hours += labor_hours
+
+            customer = first.get("Customer") or first.get("Name") or ""
+            so_rows.append(
+                {
+                    "qb_num": str(qb_num),
+                    "customer": str(customer or ""),
+                    "first_item": str(first_item or ""),
+                    "family": family,
+                    "total_units": total_units,
+                    "total_units_str": _format_num(total_units),
+                    "hours_per_unit": hours_per_unit,
+                    "hours_per_unit_str": _format_num(hours_per_unit) if hours_per_unit is not None else "",
+                    "labor_hours": labor_hours,
+                    "labor_hours_str": _format_num(labor_hours) if labor_hours is not None else "Review",
+                    "is_large": total_units > 20,
+                    "needs_review": labor_hours is None,
+                }
+            )
+
+        remaining = WEEKLY_LABOR_CAPACITY_HOURS - known_hours
+        used_pct = min(max((known_hours / WEEKLY_LABOR_CAPACITY_HOURS) * 100, 0), 140)
+        status = "over" if known_hours > WEEKLY_LABOR_CAPACITY_HOURS else "tight" if known_hours >= 64 else "ok"
+        large_sos = [r for r in so_rows if r["is_large"]]
+        weeks.append(
+            {
+                "week_start": week_start.strftime("%Y-%m-%d"),
+                "week_end": (week_start + pd.Timedelta(days=6)).strftime("%Y-%m-%d"),
+                "capacity_hours_str": _format_num(WEEKLY_LABOR_CAPACITY_HOURS),
+                "used_hours": known_hours,
+                "used_hours_str": _format_num(known_hours),
+                "remaining_hours": remaining,
+                "remaining_hours_str": _format_num(remaining),
+                "used_pct": f"{used_pct:.1f}",
+                "status": status,
+                "so_count": len(so_rows),
+                "unknown_count": unknown_count,
+                "large_sos": large_sos,
+            }
+        )
+    return weeks
 
 def _read_table(schema: str, table: str) -> pd.DataFrame:
     sql = f'SELECT * FROM "{schema}"."{table}"'
@@ -1592,6 +1737,7 @@ def production_planning():
         return render_template_string(ERR_TPL, error="No valid Lead Time rows in final_sales_order."), 503
 
     df["lead_date_str"] = df["Lead Time"].dt.strftime("%Y-%m-%d")
+    capacity_weeks = _build_weekly_labor_capacity(df, SO_INV)
 
     wo_status_map = _wo_status_by_qb_num()
     date_groups: list[dict] = []
@@ -1629,6 +1775,7 @@ def production_planning():
     return render_template_string(
         PRODUCTION_TPL,
         loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
+        capacity_weeks=capacity_weeks,
         date_groups=date_groups,
     )
 
