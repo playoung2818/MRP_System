@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import re
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, render_template_string, jsonify, abort, redirect, url_for, send_file, Response
@@ -16,8 +17,8 @@ from ui import (
     SUBPAGE_TPL,
     ITEM_TPL,
     INVENTORY_TPL,
+    ITEM_INFO_TPL,
     PRODUCTION_TPL,
-    SOLT_RR_TPL,
 )
 from quote_ui import QUOTE_TPL
 
@@ -53,10 +54,13 @@ OPEN_PO: pd.DataFrame | None = None
 FINAL_SO: pd.DataFrame | None = None
 LEDGER: pd.DataFrame | None = None
 ITEM_ATP: pd.DataFrame | None = None
+ITEM_INFO: pd.DataFrame | None = None
 _LAST_LOAD_ERR: str | None = None
 _LAST_LOADED_AT: datetime | None = None
 LLM_CACHE: LLMDataCache | None = None
 ITEM_SUGGEST_CACHE: list[str] = []
+ITEM_INFO_SUGGEST_CACHE: list[str] = []
+ITEM_INFO_PHOTO_BY_SUGGESTION: dict[str, bool] = {}
 QUOTE_ITEM_SUGGEST_ROWS: list[dict[str, object]] = []
 SO_LOOKUP_BASE: pd.DataFrame | None = None
 WAITING_ITEMS_BY_QB: dict[str, str] = {}
@@ -256,6 +260,86 @@ def _build_weekly_labor_capacity(df: pd.DataFrame, structured_df: pd.DataFrame |
 def _read_table(schema: str, table: str) -> pd.DataFrame:
     sql = f'SELECT * FROM "{schema}"."{table}"'
     return pd.read_sql_query(text(sql), con=engine)
+
+
+def _load_item_info(force: bool = False) -> pd.DataFrame:
+    global ITEM_INFO, ITEM_INFO_SUGGEST_CACHE, ITEM_INFO_PHOTO_BY_SUGGESTION
+    if force or ITEM_INFO is None:
+        item_info = _read_table("public", "Item Info")
+        ITEM_INFO = item_info
+
+        suggest_items: list[str] = []
+        photo_by_suggestion: dict[str, bool] = {}
+        for _, row in item_info.iterrows():
+            has_photo = bool(str(row.get("Photo File", "") or "").strip())
+            for col in ("Name", "Part Name"):
+                if col not in item_info.columns:
+                    continue
+                value = str(row.get(col, "") or "").strip()
+                if not value:
+                    continue
+                suggest_items.append(value)
+                photo_by_suggestion[value] = photo_by_suggestion.get(value, False) or has_photo
+        ITEM_INFO_SUGGEST_CACHE = sorted(set(suggest_items))
+        ITEM_INFO_PHOTO_BY_SUGGESTION = photo_by_suggestion
+    return ITEM_INFO
+
+
+def _resolve_item_photo_path(photo_file: str) -> Path | None:
+    raw = str(photo_file or "").strip()
+    if not raw:
+        return None
+
+    allowed_root = (Path.home() / "OneDrive - neousys-tech" / "Share NTA Warehouse" / "Product List").resolve()
+    raw_path = Path(raw)
+    candidates: list[Path] = []
+
+    if raw_path.is_absolute():
+        candidates.append(raw_path)
+    else:
+        candidates.append(Path.home() / raw_path)
+        candidates.append(allowed_root / raw_path.name)
+
+    expanded: list[Path] = []
+    known_photo_suffixes = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"}
+    for candidate in candidates:
+        expanded.append(candidate)
+        if candidate.suffix.lower() not in known_photo_suffixes:
+            for suffix in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"):
+                expanded.append(candidate.with_suffix(suffix))
+                expanded.append(Path(str(candidate) + suffix))
+
+    for candidate in expanded:
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(allowed_root)
+        except Exception:
+            continue
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def _hydrate_onedrive_file(path: Path) -> None:
+    try:
+        with path.open("rb") as handle:
+            handle.read(1)
+        return
+    except OSError:
+        if os.name != "nt":
+            raise
+
+    subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "& { param($p) Get-Content -LiteralPath $p -Encoding Byte -TotalCount 1 | Out-Null }",
+            str(path),
+        ],
+        check=True,
+        timeout=60,
+    )
 
 
 def _reorder_df_out_by_output(output_df: pd.DataFrame, df_out: pd.DataFrame) -> pd.DataFrame:
@@ -1640,6 +1724,73 @@ def item_details():
         so_total_on_po=so_totals.get("on_po"),
     )
 
+
+@app.route("/item_info")
+def item_info():
+    try:
+        df = _load_item_info(force=request.args.get("reload") == "1")
+    except Exception as exc:
+        return render_template_string(ERR_TPL, error=f"Item Info query failed: {exc}"), 500
+
+    q = (request.values.get("q") or "").strip()
+    rows: list[dict] = []
+    display_columns = ["Part Name", "Description", "Preferred Vendor", "Original MPN", "Location", "Photo File", "Notes"]
+    columns = [col for col in display_columns if df is not None and col in df.columns]
+    count = 0
+
+    if q and df is not None and not df.empty:
+        ql = q.lower()
+        search_cols = [
+            col
+            for col in ("Name", "Part Name", "Description", "Type", "Taiwan MPN", "Original MPN", "Preferred Vendor")
+            if col in df.columns
+        ]
+        if search_cols:
+            mask = pd.Series(False, index=df.index)
+            for col in search_cols:
+                mask = mask | df[col].fillna("").astype(str).str.lower().str.contains(ql, regex=False)
+            result = df.loc[mask].copy()
+        else:
+            result = df.iloc[0:0].copy()
+        count = len(result)
+        rows = result.head(200)[columns].fillna("").astype(str).to_dict(orient="records")
+        for row in rows:
+            if row.get("Photo File"):
+                row["_photo_href"] = url_for("item_photo", path=row["Photo File"])
+
+    return render_template_string(
+        ITEM_INFO_TPL,
+        loaded_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        q_val=q,
+        columns=columns,
+        rows=rows,
+        count=count,
+        shown=len(rows),
+    )
+
+
+@app.route("/item_photo")
+def item_photo():
+    photo_file = (request.args.get("path") or "").strip()
+    path = _resolve_item_photo_path(photo_file)
+    if path is None:
+        abort(404)
+    try:
+        return send_file(path, as_attachment=False)
+    except OSError:
+        try:
+            _hydrate_onedrive_file(path)
+            return send_file(path, as_attachment=False)
+        except OSError as exc:
+            return render_template_string(
+                ERR_TPL,
+                error=(
+                    "Photo file was found, but Windows/OneDrive would not make it available locally. "
+                    f"Path: {path}. Error: {exc}"
+                ),
+            ), 503
+
+
 @app.route("/inventory_count")
 def inventory_count():
     _ensure_loaded()
@@ -1780,48 +1931,6 @@ def production_planning():
     )
 
 
-@app.route("/solt_rr")
-def solt_rr():
-    _ensure_loaded()
-    if _LAST_LOAD_ERR:
-        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
-
-    if request.args.get("reload") == "1":
-        _load_from_db(force=True)
-
-    qb_num = (request.values.get("qb_num") or request.values.get("so") or "").strip().upper()
-    rows: list[dict] = []
-    columns: list[str] = []
-    try:
-        if qb_num:
-            sql = text(
-                'SELECT * FROM "public"."so_assignment_blockers" '
-                'WHERE "QB Num" = :qb ORDER BY "QB Num", "Item"'
-            )
-            params = {"qb": qb_num}
-        else:
-            sql = text(
-                'SELECT * FROM "public"."so_assignment_blockers" '
-                'ORDER BY "QB Num", "Item"'
-            )
-            params = {}
-        with engine.connect() as conn:
-            df = pd.read_sql_query(sql, conn, params=params)
-        if not df.empty:
-            columns = df.columns.tolist()
-            rows = df.fillna("").astype(str).to_dict(orient="records")
-    except Exception as exc:
-        return render_template_string(ERR_TPL, error=f"SOLT-RR query failed: {exc}"), 500
-
-    return render_template_string(
-        SOLT_RR_TPL,
-        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
-        qb_num=qb_num,
-        rows=rows,
-        columns=columns,
-        count=len(rows),
-    )
-
 @app.route("/api/item_suggest")
 def api_item_suggest():
     _ensure_loaded()
@@ -1837,6 +1946,26 @@ def api_item_suggest():
         return jsonify({"ok": True, "items": out})
     except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/item_info_suggest")
+def api_item_info_suggest():
+    q = (request.args.get("q") or request.args.get("query") or "").strip()
+    if not q:
+        return jsonify({"ok": True, "items": []})
+    try:
+        _load_item_info()
+        items = ITEM_INFO_SUGGEST_CACHE
+        ql = q.lower()
+        starts = [i for i in items if i.lower().startswith(ql)]
+        contains = [i for i in items if ql in i.lower() and i not in starts]
+        out = [
+            {"text": item, "has_photo": ITEM_INFO_PHOTO_BY_SUGGESTION.get(item, False)}
+            for item in (starts + contains)[:20]
+        ]
+        return jsonify({"ok": True, "items": out})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/quotation_item_suggest")

@@ -199,8 +199,8 @@ INDEX_TPL = """
         <a class="nav-link active" href="/"><span class="nav-dot"></span><span>Home</span></a>
         <a class="nav-link" href="/quotation_lookup"><span class="nav-dot"></span><span>Quotations</span></a>
         <a class="nav-link" href="/inventory_count"><span class="nav-dot"></span><span>Inventory Count</span></a>
+        <a class="nav-link" href="/item_info"><span class="nav-dot"></span><span>Item Info</span></a>
         <a class="nav-link" href="/production_planning"><span class="nav-dot"></span><span>Planning</span></a>
-        <a class="nav-link" href="/solt_rr"><span class="nav-dot"></span><span>SOLT-RR</span></a>
       </div>
       <div class="sidebar-note">
         Use the homepage for quick search, shortage triage, and operational alerts. The sidebar is the permanent module navigation.
@@ -713,6 +713,7 @@ INVENTORY_TPL = """
     .metric .value{ font-size:1.6rem; font-weight:700; }
     .table-responsive{ max-height:70vh; overflow:auto; }
     .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); }
+    .item-suggest{ position:absolute; top:62px; left:0; right:0; z-index:1000; display:none; max-height:260px; overflow:auto; }
   </style>
   </head>
 <body>
@@ -733,7 +734,10 @@ INVENTORY_TPL = """
     </div>
     <div class="col-12 col-md-4">
       <label class="form-label" for="inv-item">By Item</label>
-      <input id="inv-item" class="form-control form-control-lg" style="height:60px;font-size:1.05rem" name="item" placeholder="Item (e.g., M.280-SSD-1TB-SATA-TLC5WT-TD)" value="{{ item_val or '' }}">
+      <div style="position:relative;">
+        <input id="inv-item" autocomplete="off" class="form-control form-control-lg" style="height:60px;font-size:1.05rem" name="item" placeholder="Item (e.g., M.280-SSD-1TB-SATA-TLC5WT-TD)" value="{{ item_val or '' }}">
+        <div id="inv-item-suggest" class="list-group item-suggest"></div>
+      </div>
     </div>
     <div class="col-6 col-md-auto">
       <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
@@ -785,18 +789,68 @@ INVENTORY_TPL = """
     </div>
   </div>
 
+  <script>
+  (function () {
+    var input = document.getElementById('inv-item');
+    var list = document.getElementById('inv-item-suggest');
+    var suggestTimer;
+
+    function esc(value) {
+      return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    }
+
+    function hideList() {
+      if (!list) return;
+      list.style.display = 'none';
+      list.innerHTML = '';
+    }
+
+    function showList(items) {
+      if (!items || !items.length) { hideList(); return; }
+      list.innerHTML = items.map(function (item) {
+        return '<button type="button" class="list-group-item list-group-item-action">' + esc(item) + '</button>';
+      }).join('');
+      list.style.display = 'block';
+    }
+
+    if (input && list) {
+      input.addEventListener('input', function () {
+        var q = input.value.trim();
+        if (suggestTimer) clearTimeout(suggestTimer);
+        if (!q) { hideList(); return; }
+        suggestTimer = setTimeout(function () {
+          fetch('/api/item_suggest?q=' + encodeURIComponent(q))
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j && j.ok) showList(j.items); else hideList(); })
+            .catch(function () { hideList(); });
+        }, 180);
+      });
+
+      list.addEventListener('click', function (e) {
+        var target = e.target.closest('.list-group-item');
+        if (!target) return;
+        input.value = target.textContent.trim();
+        hideList();
+      });
+
+      document.addEventListener('click', function (e) {
+        if (!e.target.closest || (!e.target.closest('#inv-item-suggest') && !e.target.closest('#inv-item'))) hideList();
+      });
+    }
+  })();
+  </script>
 </body>
 </html>
 """
 
 
-SOLT_RR_TPL = """
+ITEM_INFO_TPL = """
 <!doctype html>
 <html>
 <head>
   <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
   <meta charset="utf-8">
-  <title>SOLT-RR</title>
+  <title>Item Info</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     :root{ --ink:#0f172a; --muted:#6b7280; --bg:#f7fafc; --hdr:#f8fafc; }
@@ -805,42 +859,52 @@ SOLT_RR_TPL = """
     .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); }
     .table-responsive{ max-height:72vh; overflow:auto; }
     .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); white-space:nowrap; }
+    .table td{ white-space:nowrap; }
+    .item-info-suggest{ position:absolute; top:62px; left:0; right:0; z-index:1000; display:none; max-height:280px; overflow:auto; }
+    .suggest-item-row{ display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+    .photo-mark{ flex:0 0 auto; font-size:.72rem; font-weight:700; color:#166534; background:#dcfce7; border:1px solid #bbf7d0; border-radius:999px; padding:.12rem .45rem; }
   </style>
 </head>
 <body>
-  <div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-      <div class="h3 m-0">SOLT-RR</div>
+      <div class="h3 m-0">Item Info</div>
       <div class="text-muted small">Loaded {{ loaded_at }}</div>
     </div>
     <div class="d-flex gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
-      <a class="btn btn-sm btn-outline-primary" href="/solt_rr?reload=1">Reload</a>
+      <a class="btn btn-sm btn-outline-primary" href="/item_info?reload=1">Reload</a>
     </div>
   </div>
 
-  <form class="row gy-3 gx-4 align-items-end justify-content-start mb-3" method="get">
-    <div class="col-12 col-md-6">
-      <label class="form-label" for="solt-qb">QB Num</label>
-      <input id="solt-qb" class="form-control form-control-lg"
-             style="height:60px;font-size:1.05rem"
-             name="qb_num"
-             placeholder="e.g. SO-20260169"
-             value="{{ qb_num or '' }}">
+  <form class="row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
+    <div class="col-12 col-md-7">
+      <label class="form-label" for="item-info-q">Search Item</label>
+      <div style="position:relative;">
+        <input id="item-info-q" autocomplete="off" class="form-control form-control-lg"
+               style="height:60px;font-size:1.05rem"
+               name="q"
+               placeholder="Type item name, part name, MPN, vendor, or description"
+               value="{{ q_val or '' }}">
+        <div id="item-info-suggest" class="list-group item-info-suggest"></div>
+      </div>
     </div>
     <div class="col-6 col-md-auto">
       <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
     </div>
   </form>
 
-  <div class="card-lite bg-white p-3 mb-3">
-    <div class="d-flex justify-content-between align-items-center">
-      <div class="fw-bold">Rows: {{ count }}</div>
-      <div class="text-muted small">Source: public.so_assignment_blockers</div>
-    </div>
-  </div>
-
   <div class="card-lite bg-white">
+    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+      <span>Results</span>
+      <span class="text-muted small">
+        {% if q_val %}
+          Showing {{ shown }} of {{ count }} matches
+        {% else %}
+          Enter a search term
+        {% endif %}
+      </span>
+    </div>
     <div class="card-body">
       <div class="table-responsive">
         <table class="table table-sm table-bordered table-hover align-middle">
@@ -853,24 +917,89 @@ SOLT_RR_TPL = """
           </thead>
           <tbody>
             {% if rows %}
-              {% for r in rows %}
+              {% for row in rows %}
                 <tr>
                   {% for c in columns %}
-                    <td>{{ r[c] }}</td>
+                    <td>
+                      {% if c == 'Photo File' and row[c] %}
+                        <a href="{{ row['_photo_href'] }}" target="_blank" rel="noopener">{{ row[c] }}</a>
+                      {% else %}
+                        {{ row[c] }}
+                      {% endif %}
+                    </td>
                   {% endfor %}
                 </tr>
               {% endfor %}
             {% else %}
-              <tr><td colspan="{{ columns|length or 1 }}" class="text-center text-muted">No blocker rows found for that QB Num.</td></tr>
+              <tr><td colspan="{{ columns|length or 1 }}" class="text-center text-muted">
+                {% if q_val %}No item info rows found.{% else %}Search to show item info rows.{% endif %}
+              </td></tr>
             {% endif %}
           </tbody>
         </table>
       </div>
+      <div class="text-muted small">Source: public.Item Info</div>
     </div>
   </div>
+
+  <script>
+  (function () {
+    var input = document.getElementById('item-info-q');
+    var list = document.getElementById('item-info-suggest');
+    var suggestTimer;
+
+    function esc(value) {
+      return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    }
+
+    function hideList() {
+      if (!list) return;
+      list.style.display = 'none';
+      list.innerHTML = '';
+    }
+
+    function showList(items) {
+      if (!items || !items.length) { hideList(); return; }
+      list.innerHTML = items.map(function (item) {
+        var text = typeof item === 'string' ? item : item.text;
+        var photoMark = item && item.has_photo ? '<span class="photo-mark">PHOTO</span>' : '';
+        return '<button type="button" class="list-group-item list-group-item-action" data-value="' + esc(text) + '">' +
+               '<span class="suggest-item-row"><span>' + esc(text) + '</span>' + photoMark + '</span>' +
+               '</button>';
+      }).join('');
+      list.style.display = 'block';
+    }
+
+    if (input && list) {
+      input.addEventListener('input', function () {
+        var q = input.value.trim();
+        if (suggestTimer) clearTimeout(suggestTimer);
+        if (!q) { hideList(); return; }
+        suggestTimer = setTimeout(function () {
+          fetch('/api/item_info_suggest?q=' + encodeURIComponent(q))
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j && j.ok) showList(j.items); else hideList(); })
+            .catch(function () { hideList(); });
+        }, 180);
+      });
+
+      list.addEventListener('click', function (e) {
+        var target = e.target.closest('.list-group-item');
+        if (!target) return;
+        input.value = target.getAttribute('data-value') || target.textContent.trim();
+        hideList();
+      });
+
+      document.addEventListener('click', function (e) {
+        if (!e.target.closest || (!e.target.closest('#item-info-suggest') && !e.target.closest('#item-info-q'))) hideList();
+      });
+    }
+  })();
+  </script>
 </body>
 </html>
 """
+
 
 SUBPAGE_TPL = """
 <!doctype html>
