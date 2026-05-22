@@ -177,6 +177,30 @@ def _build_first_wo_item_map(structured_df: pd.DataFrame | None) -> dict[str, di
     return first_map
 
 
+def _fully_picked_qb_nums(structured_df: pd.DataFrame | None) -> set[str]:
+    if (
+        structured_df is None
+        or structured_df.empty
+        or "QB Num" not in structured_df.columns
+        or "Picked" not in structured_df.columns
+    ):
+        return set()
+
+    work = structured_df[["QB Num", "Picked"]].copy()
+    work["QB Num"] = work["QB Num"].fillna("").astype(str).str.strip()
+    work["Picked"] = work["Picked"].fillna("").astype(str).str.strip().str.lower()
+    work = work.loc[work["QB Num"].ne("")]
+    if work.empty:
+        return set()
+
+    fully_picked: set[str] = set()
+    for qb_num, group in work.groupby("QB Num", sort=False):
+        statuses = group["Picked"]
+        if not statuses.empty and statuses.ne("").all() and statuses.eq("picked").all():
+            fully_picked.add(str(qb_num).strip())
+    return fully_picked
+
+
 def _build_weekly_labor_capacity(df: pd.DataFrame, structured_df: pd.DataFrame | None = None) -> list[dict]:
     if df is None or df.empty or "Lead Time" not in df.columns:
         return []
@@ -195,6 +219,11 @@ def _build_weekly_labor_capacity(df: pd.DataFrame, structured_df: pd.DataFrame |
         return []
 
     first_wo_items = _build_first_wo_item_map(structured_df)
+    fully_picked_qb_nums = _fully_picked_qb_nums(structured_df)
+    if fully_picked_qb_nums and "QB Num" in work.columns:
+        work = work.loc[~work["QB Num"].astype(str).str.strip().isin(fully_picked_qb_nums)].copy()
+        if work.empty:
+            return []
 
     weeks: list[dict] = []
     for week_start, week_group in work.sort_values(["week_start", "Lead Time", "QB Num"]).groupby(
