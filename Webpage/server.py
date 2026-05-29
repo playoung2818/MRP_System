@@ -75,7 +75,7 @@ WEEKLY_LABOR_CAPACITY_HOURS = 80.0
 LABOR_HOURS_PER_UNIT = {
     "NUVO": 1.0,
     "POC": 0.5,
-    "NRU": 2.0,
+    "NRU": 1.0,
     "SEMIL": 1.0,
 }
 LABOR_FAMILY_LABELS = {
@@ -268,6 +268,16 @@ def _build_weekly_labor_capacity(df: pd.DataFrame, structured_df: pd.DataFrame |
         used_pct = min(max((known_hours / WEEKLY_LABOR_CAPACITY_HOURS) * 100, 0), 140)
         status = "over" if known_hours > WEEKLY_LABOR_CAPACITY_HOURS else "tight" if known_hours >= 64 else "ok"
         large_sos = [r for r in so_rows if r["is_large"]]
+        review_sos = [r for r in so_rows if r["needs_review"]]
+        family_units = {label: 0.0 for label in LABOR_FAMILY_LABELS.values()}
+        for row in so_rows:
+            family = row.get("family")
+            if family in family_units:
+                family_units[family] += float(row.get("total_units") or 0)
+        family_counts = [
+            {"label": label, "units_str": _format_num(family_units[label])}
+            for label in ("POC", "Nuvo", "SEMIL", "NRU")
+        ]
         weeks.append(
             {
                 "week_start": week_start.strftime("%Y-%m-%d"),
@@ -282,6 +292,8 @@ def _build_weekly_labor_capacity(df: pd.DataFrame, structured_df: pd.DataFrame |
                 "so_count": len(so_rows),
                 "unknown_count": unknown_count,
                 "large_sos": large_sos,
+                "review_sos": review_sos,
+                "family_counts": family_counts,
             }
         )
     return weeks
