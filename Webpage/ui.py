@@ -1263,6 +1263,13 @@ PRODUCTION_TPL = """
     .status-pill{ display:inline-block; padding:.15rem .5rem; border-radius:999px; font-weight:700; }
     .status-picked{ background:#dcfce7; color:#166534; }
     .status-na{ background:#fef3c7; color:#92400e; }
+    .picked-qty-control{ display:inline-flex; align-items:center; gap:.3rem; margin-left:.45rem; text-transform:none; letter-spacing:0; }
+    .picked-qty-label{ color:var(--muted); font-size:.75rem; font-weight:700; text-transform:uppercase; }
+    .picked-qty-input{ width:4.75rem; height:1.65rem; padding:.1rem .35rem; border:1px solid #cbd5e1; border-radius:6px; font-size:.78rem; }
+    .picked-qty-save{ display:none; height:1.65rem; padding:.1rem .45rem; border:1px solid #0d6efd; border-radius:6px; background:#0d6efd; color:#fff; font-size:.74rem; font-weight:700; line-height:1; }
+    .picked-qty-control.is-dirty .picked-qty-save{ display:inline-block; }
+    .picked-qty-save:disabled{ opacity:.7; }
+    .picked-qty-msg{ min-width:2.5rem; color:var(--muted); font-size:.72rem; font-weight:600; }
     .order-sub{ font-size:.85rem; color:var(--muted); }
     .order-link{ text-decoration:none; color:#0d6efd; font-size:.85rem; }
     .order-link:hover{ text-decoration:underline; }
@@ -1272,7 +1279,7 @@ PRODUCTION_TPL = """
     .capacity-week{ font-weight:700; }
     .capacity-metric{ font-weight:700; font-size:1.05rem; }
     .capacity-sub{ color:var(--muted); font-size:.82rem; }
-    .family-counts{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.35rem; margin:.75rem 0; }
+    .family-counts{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.35rem; margin:.75rem 0; }
     .family-count{ border:1px solid #e5e7eb; border-radius:8px; padding:.35rem .45rem; background:#f9fafb; }
     .family-label{ color:var(--muted); font-size:.7rem; font-weight:700; text-transform:uppercase; }
     .family-value{ font-weight:800; font-size:.95rem; line-height:1.1; }
@@ -1297,6 +1304,11 @@ PRODUCTION_TPL = """
     .review-row:first-child{ border-top:0; }
     .review-main{ font-weight:700; font-size:.85rem; }
     .review-meta{ color:var(--muted); font-size:.78rem; line-height:1.25; }
+    .unassigned-lt-card{ grid-column:1/-1; max-height:360px; overflow:auto; }
+    .unassigned-lt-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:.45rem; }
+    .unassigned-lt-row{ display:flex; justify-content:space-between; gap:.75rem; padding:.55rem .65rem; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb; }
+    .unassigned-lt-main{ font-weight:800; font-size:.9rem; }
+    .unassigned-lt-meta{ color:var(--muted); font-size:.78rem; line-height:1.25; }
   </style>
 </head>
 <body>
@@ -1307,11 +1319,12 @@ PRODUCTION_TPL = """
     </div>
     <div class="d-flex gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
+      <a class="btn btn-sm btn-outline-success" href="/production_planning">Recalculate Labor</a>
       <a class="btn btn-sm btn-outline-primary" href="/production_planning?reload=1">Reload</a>
     </div>
   </div>
 
-  {% if capacity_weeks %}
+  {% if capacity_weeks or unassigned_lt_orders %}
     <div class="mb-4">
       <div class="d-flex justify-content-between align-items-end mb-2">
         <div>
@@ -1330,7 +1343,7 @@ PRODUCTION_TPL = """
                   {% if week.unknown_count %}
                     |
                     <span class="review-hover">
-                      <span class="review-pill" tabindex="0">{{ week.unknown_count }} review</span>
+                      <span class="review-pill" tabindex="0">{{ week.unknown_count }} Pack &amp; Go</span>
                       <span class="review-panel">
                         <span class="capacity-sub text-uppercase fw-bold mb-1 d-block">WOs needing review</span>
                         {% for so in week.review_sos %}
@@ -1396,6 +1409,51 @@ PRODUCTION_TPL = """
             </div>
           </div>
         {% endfor %}
+        {% if unassigned_lt_orders %}
+          <div class="capacity-card unassigned-lt-card">
+            <div class="capacity-head mb-2">
+              <div>
+                <div class="capacity-week">Unassigned L/T SO</div>
+                <div class="capacity-sub">
+                  {{ unassigned_lt_orders|length }} SO(s) with 7/4 or 12/31 L/T
+                  {% if unassigned_lt_summary.unknown_count %}
+                    | {{ unassigned_lt_summary.unknown_count }} Pack &amp; Go
+                  {% endif %}
+                </div>
+              </div>
+              <div class="text-end">
+                <div class="capacity-metric">{{ unassigned_lt_summary.known_hours_str }} hrs</div>
+                <div class="capacity-sub">estimated labor</div>
+              </div>
+            </div>
+            <div class="family-counts">
+              {% for family in unassigned_lt_summary.family_counts %}
+                <div class="family-count">
+                  <div class="family-label">{{ family.label }}</div>
+                  <div class="family-value">{{ family.units_str }}</div>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="unassigned-lt-grid">
+              {% for o in unassigned_lt_orders %}
+                <div class="unassigned-lt-row">
+                  <div>
+                    <div class="unassigned-lt-main">{{ o.qb_num }}</div>
+                    <div class="unassigned-lt-meta">{{ o.customer or '-' }}</div>
+                    <div class="unassigned-lt-meta">{{ o.line or '-' }}</div>
+                  </div>
+                  <div class="text-end">
+                    <div class="unassigned-lt-main">{{ o.lead_time }}</div>
+                    <div class="unassigned-lt-meta">{{ o.labor_hours_str }} hrs</div>
+                    {% if o.pdf_url %}
+                      <a class="order-link" href="{{ o.pdf_url }}" target="_blank">PDF</a>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
       </div>
     </div>
   {% endif %}
@@ -1420,6 +1478,12 @@ PRODUCTION_TPL = """
                         <span class="status-pill {% if (o.wo_status or 'NA') == 'Picked' %}status-picked{% else %}status-na{% endif %}">
                           {{ o.wo_status or 'NA' }}
                         </span>
+                        <span class="picked-qty-control" data-wo="{{ o.qb_num }}">
+                          <span class="picked-qty-label">Picked Qty</span>
+                          <input class="picked-qty-input" type="number" min="0" step="1" value="{{ o.picked_qty_str }}" data-planned-qty="{{ o.qty_str }}" aria-label="Picked Qty for {{ o.qb_num }}">
+                          <button class="picked-qty-save" type="button">Save</button>
+                          <span class="picked-qty-msg">{% if o.picked_qty_saved %}Saved{% endif %}</span>
+                        </span>
                       </div>
                       <div class="order-sub">
                         {{ o.customer or '-' }}{% if o.line %} • {{ o.line }}{% endif %}
@@ -1439,6 +1503,64 @@ PRODUCTION_TPL = """
       {% endfor %}
     </div>
   {% endif %}
+  <script>
+    document.querySelectorAll(".picked-qty-control").forEach(function(control){
+      var input = control.querySelector(".picked-qty-input");
+      var button = control.querySelector(".picked-qty-save");
+      var msg = control.querySelector(".picked-qty-msg");
+      var originalValue = input.value;
+
+      function setMessage(text, isError){
+        msg.textContent = text || "";
+        msg.style.color = isError ? "#b91c1c" : "#6b7280";
+      }
+
+      function updateDirtyState(){
+        var isDirty = input.value !== originalValue;
+        control.classList.toggle("is-dirty", isDirty);
+        if (isDirty) {
+          setMessage("Unsaved", false);
+        } else if (msg.textContent === "Unsaved") {
+          setMessage("", false);
+        }
+      }
+
+      input.addEventListener("input", function(){
+        updateDirtyState();
+      });
+
+      button.addEventListener("click", function(){
+        var woNumber = control.getAttribute("data-wo") || "";
+        var pickedQty = input.value;
+        button.disabled = true;
+        button.textContent = "Saving";
+        setMessage("", false);
+
+        fetch("/api/wo_picked_qty", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({wo_number: woNumber, picked_qty: pickedQty})
+        })
+          .then(function(resp){
+            return resp.json().then(function(data){ return {ok: resp.ok, data: data}; });
+          })
+          .then(function(result){
+            if (!result.ok || !result.data.ok) {
+              throw new Error(result.data.error || "Save failed");
+            }
+            input.value = result.data.picked_qty_str;
+            originalValue = input.value;
+            control.classList.remove("is-dirty");
+            setMessage("Saved", false);
+          })
+          .catch(function(err){
+            setMessage(err.message || "Save failed", true);
+            button.disabled = false;
+            button.textContent = "Save";
+          });
+      });
+    });
+  </script>
 </body>
 </html>
 """
