@@ -1,4 +1,4 @@
-# server.py
+﻿# server.py
 import os
 import sys
 import json
@@ -55,11 +55,13 @@ OPEN_PO: pd.DataFrame | None = None
 FINAL_SO: pd.DataFrame | None = None
 LEDGER: pd.DataFrame | None = None
 ITEM_ATP: pd.DataFrame | None = None
+RECEIVING_LOG: pd.DataFrame | None = None
 ITEM_INFO: pd.DataFrame | None = None
 _LAST_LOAD_ERR: str | None = None
 _LAST_LOADED_AT: datetime | None = None
 LLM_CACHE: LLMDataCache | None = None
 ITEM_SUGGEST_CACHE: list[str] = []
+GLOBAL_SEARCH_INDEX: list[dict[str, str]] = []
 ITEM_INFO_SUGGEST_CACHE: list[str] = []
 ITEM_INFO_PHOTO_BY_SUGGESTION: dict[str, bool] = {}
 QUOTE_ITEM_SUGGEST_ROWS: list[dict[str, object]] = []
@@ -989,9 +991,40 @@ def _build_quote_item_summaries(
         cleaned.append(out)
     return cleaned
 
+def _build_global_search_index(so: pd.DataFrame, inventory: pd.DataFrame) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, label: object, href: str) -> None:
+        value = str(label or "").strip()
+        if not value:
+            return
+        key = (kind, value.upper())
+        if key in seen:
+            return
+        seen.add(key)
+        entries.append({"type": kind, "label": value, "href": href, "search": value.lower()})
+
+    if so is not None and not so.empty:
+        if "QB Num" in so.columns:
+            for value in so["QB Num"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist():
+                add("SO", value, "/?so=" + quote(value, safe=""))
+        if "Name" in so.columns:
+            for value in so["Name"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist():
+                add("Customer", value, "/?customer=" + quote(value, safe=""))
+        if "Item" in so.columns:
+            for value in so["Item"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist():
+                add("Item", value, "/inventory_count?item=" + quote(value, safe=""))
+
+    if inventory is not None and not inventory.empty and "Part_Number" in inventory.columns:
+        for value in inventory["Part_Number"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist():
+            add("Item", value, "/inventory_count?item=" + quote(value, safe=""))
+
+    return entries
+
 def _load_from_db(force: bool = False):
     global SO_INV, INVENTORY_STATUS, NAV, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
-    global ITEM_SUGGEST_CACHE
+    global ITEM_SUGGEST_CACHE, GLOBAL_SEARCH_INDEX
     global SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX
     global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE, QUOTE_ITEM_SUGGEST_ROWS, READY_ASSIGN_CACHE
     try:
@@ -1039,6 +1072,7 @@ def _load_from_db(force: bool = False):
                     inventory["Part_Number"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].tolist()
                 )
             ITEM_SUGGEST_CACHE = sorted(set(suggest_items))
+            GLOBAL_SEARCH_INDEX = _build_global_search_index(so, inventory)
             QUOTE_ITEM_SUGGEST_ROWS = _build_quote_item_summaries(inventory, ledger)
             PDF_DB_SEARCH_CACHE = {}
             INDEX_VIEW_CACHE = {}
@@ -1058,6 +1092,7 @@ def _load_from_db(force: bool = False):
         WAITING_ITEMS_BY_QB = {}
         LEDGER_ITEM_INDEX = {}
         ITEM_SUGGEST_CACHE = []
+        GLOBAL_SEARCH_INDEX = []
         QUOTE_ITEM_SUGGEST_ROWS = []
         PDF_DB_SEARCH_CACHE = {}
         INDEX_VIEW_CACHE = {}
@@ -1253,12 +1288,12 @@ def _dashboard_top_shortage_items(limit: int = 5) -> list[dict[str, object]]:
     return out
 
 
-def _dashboard_alerts() -> list[str]:
-    alerts: list[str] = []
+def _dashboard_alerts() -> list[dict[str, str]]:
+    alerts: list[dict[str, str]] = []
 
     ready_rows = _ready_to_assign_rows()
     if ready_rows:
-        alerts.append(f"{len(ready_rows)} SOs can be assigned before 2099-07-04.")
+        alerts.append({"label": f"{len(ready_rows)} SOs can be assigned before 2099-07-04.", "href": "/production_planning"})
 
     if OPEN_PO is not None and not OPEN_PO.empty:
         pod = OPEN_PO.copy()
@@ -1269,7 +1304,7 @@ def _dashboard_alerts() -> list[str]:
             pod[ship_col] = pd.to_datetime(pod[ship_col], errors="coerce")
             missing_ship_count = pod.loc[pod[pod_no_col].ne("") & pod[ship_col].isna(), pod_no_col].nunique()
             if missing_ship_count:
-                alerts.append(f"{int(missing_ship_count)} PODs are missing ship dates.")
+                alerts.append({"label": f"{int(missing_ship_count)} PODs are missing ship dates.", "href": ""})
 
     if LEDGER is not None and not LEDGER.empty and {"Date", "Projected_NAV", "Item"}.issubset(LEDGER.columns):
         led = LEDGER.copy()
@@ -1281,16 +1316,56 @@ def _dashboard_alerts() -> list[str]:
             .dropna().astype(str).str.strip().loc[lambda s: s.ne("")].nunique()
         )
         if neg_item_count:
-            alerts.append(f"{int(neg_item_count)} items go negative before 2099-07-04.")
+            alerts.append({"label": f"{int(neg_item_count)} items go negative before 2099-07-04.", "href": "/dashboard/negative_inventory"})
 
     if _LAST_LOADED_AT is not None:
         age_minutes = max(0, int((datetime.now() - _LAST_LOADED_AT).total_seconds() // 60))
         if age_minutes >= 60:
-            alerts.append(f"Homepage data is {age_minutes} minutes old.")
+            alerts.append({"label": f"Homepage data is {age_minutes} minutes old.", "href": "/?reload=1"})
 
     if not alerts:
-        alerts.append("No active system alerts.")
+        alerts.append({"label": "No active system alerts.", "href": ""})
     return alerts[:4]
+
+def _negative_inventory_detail_rows(limit: int | None = None) -> tuple[list[str], list[dict[str, object]]]:
+    columns = ["Item", "First Negative Date", "Min Projected Qty", "Event Count", "Latest Source", "Latest QB Num", "Latest Name"]
+    if LEDGER is None or LEDGER.empty or not {"Date", "Projected_NAV", "Item"}.issubset(LEDGER.columns):
+        return columns, []
+
+    led = LEDGER.copy()
+    led["Date"] = pd.to_datetime(led["Date"], errors="coerce")
+    led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
+    cutoff = pd.Timestamp("2099-07-04")
+    neg = led.loc[
+        led["Date"].notna()
+        & led["Date"].lt(cutoff)
+        & led["Projected_NAV"].lt(0)
+        & led["Item"].notna()
+    ].copy()
+    if neg.empty:
+        return columns, []
+
+    rows: list[dict[str, object]] = []
+    for item, grp in neg.sort_values(["Date", "Projected_NAV"], kind="mergesort").groupby("Item", sort=True):
+        first = grp.iloc[0]
+        min_qty = grp["Projected_NAV"].min()
+        latest = grp.iloc[-1]
+        rows.append(
+            {
+                "Item": str(item),
+                "First Negative Date": first["Date"].strftime("%Y-%m-%d") if pd.notna(first["Date"]) else "",
+                "Min Projected Qty": _format_intish(min_qty),
+                "Event Count": int(len(grp)),
+                "Latest Source": str(latest.get("Source", "") or ""),
+                "Latest QB Num": str(latest.get("QB Num", "") or ""),
+                "Latest Name": str(latest.get("Name", "") or ""),
+            }
+        )
+
+    rows.sort(key=lambda r: (r["First Negative Date"], float(str(r["Min Projected Qty"]).replace(",", "") or 0)))
+    if limit is not None:
+        rows = rows[:limit]
+    return columns, rows
 
 def lookup_on_po_by_item(item: str) -> int | None:
     df = SO_INV[SO_INV["Item"] == item]
@@ -1536,6 +1611,81 @@ def _compute_on_hand_metrics(df: pd.DataFrame) -> tuple[int | float | None, int 
     on_hand_wip = _aggregate_metric(df.get(col_wip, pd.Series(dtype=float))) if col_wip else None
     return on_hand, on_hand_wip
 
+
+def _item_lookup_values(item: str) -> set[str]:
+    raw = str(item or "").strip()
+    values = {raw, raw.upper()}
+    try:
+        norm = str(normalize_item(raw)).strip()
+        values.update({norm, norm.upper()})
+    except Exception:
+        pass
+    return {v for v in values if v}
+
+
+def _first_existing_column(df: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
+    lookup = {str(col).lower(): col for col in df.columns}
+    for candidate in candidates:
+        found = lookup.get(candidate.lower())
+        if found is not None:
+            return found
+    return None
+
+
+
+def _recent_receiving_summary_for_item(item: str, days: int = 7) -> tuple[list[str], list[dict]]:
+    global RECEIVING_LOG
+    if not item:
+        return [], []
+    if RECEIVING_LOG is None:
+        RECEIVING_LOG = pd.DataFrame()
+        for receiving_table in ("receving_log", "receiving_log", "receving-log", "receiving-log"):
+            try:
+                RECEIVING_LOG = _read_table("public", receiving_table)
+                break
+            except Exception:
+                continue
+    if RECEIVING_LOG.empty:
+        return [], []
+
+    df = RECEIVING_LOG.copy()
+    item_col = _first_existing_column(
+        df,
+        ("part_number", "Part_Number", "Part Number", "Item", "item", "part_name", "Part Name"),
+    )
+    date_col = _first_existing_column(df, ("entry_date", "Entry Date", "date", "Date", "received_date", "Received Date"))
+    qty_col = _first_existing_column(df, ("quantity", "Quantity", "qty", "Qty", "received_qty", "Received Qty"))
+    inv_col = _first_existing_column(df, ("invoice_number", "Invoice Number", "Invoice#", "Inv#", "Inv #"))
+    pod_col = _first_existing_column(df, ("pod_number", "POD Number", "POD#", "POD #", "pod"))
+    ref_col = _first_existing_column(df, ("Reference", "reference", "Ref", "ref"))
+    if item_col is None or date_col is None or qty_col is None:
+        return [], []
+
+    wanted = {v.upper() for v in _item_lookup_values(item)}
+    df[item_col] = df[item_col].fillna("").astype(str).str.strip()
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df[qty_col] = pd.to_numeric(df[qty_col], errors="coerce").fillna(0.0)
+    today = pd.Timestamp.today().normalize()
+    start = today - pd.Timedelta(days=days)
+    mask = df[item_col].str.upper().isin(wanted) & df[date_col].notna() & (df[date_col] >= start) & (df[date_col] < today + pd.Timedelta(days=1))
+    df = df.loc[mask].copy()
+    if df.empty:
+        return ["Date", "Inv#", "POD#", "Reference", "Qty"], []
+
+    df["Date"] = df[date_col].dt.strftime("%Y-%m-%d")
+    df["Inv#"] = df[inv_col].fillna("").astype(str).str.strip() if inv_col else ""
+    df["POD#"] = df[pod_col].fillna("").astype(str).str.strip() if pod_col else ""
+    df["Reference"] = df[ref_col].fillna("").astype(str).str.strip() if ref_col else ""
+    grouped = (
+        df.groupby(["Date", "Inv#", "POD#", "Reference"], dropna=False, as_index=False)[qty_col]
+        .sum()
+        .rename(columns={qty_col: "Qty"})
+    )
+    grouped["Qty"] = grouped["Qty"].apply(_format_intish)
+    columns = ["Date", "Inv#", "POD#", "Reference", "Qty"]
+    rows = grouped.sort_values(["Date", "Inv#", "POD#", "Reference"], ascending=[False, True, True, True], kind="mergesort").fillna("").astype(str).to_dict(orient="records")
+    return columns, rows
+
 def _po_table_for_item(item: str) -> tuple[list[str], list[dict]]:
     if "Item" not in NAV.columns:
         raise ValueError("NAV table missing 'Item' column.")
@@ -1613,7 +1763,6 @@ def index():
         return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
 
     lt_unassigned_count = _dashboard_lt_unassigned_count()
-    top_shortage_items = _dashboard_top_shortage_items(limit=5)
     alerts = _dashboard_alerts()
     recent_searches = list(RECENT_HOME_SEARCHES)
 
@@ -1631,10 +1780,9 @@ def index():
             customer_options=cached["customer_options"],
             rows=cached["rows"],
             count=cached["count"],
-            loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "—",
+            loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "â€”",
             order_summary=cached["order_summary"],
             lt_unassigned_count=lt_unassigned_count,
-            top_shortage_items=top_shortage_items,
             recent_searches=recent_searches,
             alerts=alerts,
             headers=cached["table_headers"],
@@ -1810,10 +1958,9 @@ def index():
         customer_options=customer_options,
         rows=rows,
         count=count,
-        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "—",
+        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "â€”",
         order_summary=order_summary,
         lt_unassigned_count=lt_unassigned_count,
-        top_shortage_items=top_shortage_items,
         recent_searches=recent_searches,
         alerts=alerts,
         headers=table_headers,
@@ -1825,6 +1972,70 @@ def index():
         ],
     )
 
+@app.route("/dashboard/negative_inventory")
+def dashboard_negative_inventory():
+    _ensure_loaded()
+    if _LAST_LOAD_ERR:
+        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
+
+    columns, rows = _negative_inventory_detail_rows()
+    return render_template_string(
+        """
+<!doctype html>
+<html>
+<head>
+  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <meta charset="utf-8">
+  <title>Negative Inventory Details</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body{ background:#f7fafc; color:#0f172a; padding:28px; }
+    .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); }
+    .table-responsive{ max-height:78vh; overflow:auto; }
+    .table thead th{ position:sticky; top:0; z-index:2; background:#f8fafc; white-space:nowrap; }
+    .num{ text-align:right; font-variant-numeric:tabular-nums; }
+  </style>
+</head>
+<body>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <div class="h3 m-0">Negative Inventory Details</div>
+      <div class="text-muted small">Items with Projected Qty below 0 before 2099-07-04.</div>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
+  </div>
+  <div class="card-lite bg-white p-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="fw-bold">{{ rows|length }} item(s)</div>
+      <div class="text-muted small">Source: public.ledger_analytics</div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered table-hover align-middle mb-0">
+        <thead class="table-light text-uppercase small text-muted">
+          <tr>{% for c in columns %}<th>{{ c }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% if rows %}
+            {% for row in rows %}
+              <tr>
+                {% for c in columns %}
+                  <td class="{{ 'num' if c in ['Min Projected Qty', 'Event Count'] else '' }}">{{ row[c] }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="{{ columns|length }}" class="text-center text-muted py-4">No negative inventory details found.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>
+        """,
+        columns=columns,
+        rows=rows,
+    )
 @app.route("/api/reload", methods=["POST"])
 def api_reload():
     _load_from_db(force=True)
@@ -2007,7 +2218,7 @@ def so_lines():
 
     return render_template_string(
         SUBPAGE_TPL,
-        title=f"On Sales Order — {item}",
+        title=f"On Sales Order â€” {item}",
         columns=columns,
         rows=rows,
         extra_note="Source: public.wo_structured",
@@ -2037,7 +2248,7 @@ def po_lines():
 
     return render_template_string(
         SUBPAGE_TPL,
-        title=f"On PO — {item}",
+        title=f"On PO â€” {item}",
         columns=cols,
         rows=rows,
         extra_note='Source: SAP"',
@@ -2170,6 +2381,10 @@ def inventory_count():
     so_rows: list[dict] | None = None
     on_hand: int | float | None = None
     on_hand_wip: int | float | None = None
+    receiving_columns: list[str] = []
+    receiving_rows: list[dict] = []
+    inv_status_columns: list[str] = []
+    inv_status_rows: list[dict] = []
 
     inv_filtered = INVENTORY_STATUS.copy() if INVENTORY_STATUS is not None else pd.DataFrame()
     if item_input and not inv_filtered.empty and "Part_Number" in inv_filtered.columns:
@@ -2204,6 +2419,7 @@ def inventory_count():
 
     # Build the "On Sales Order" table depending on provided filters
     if item_input:
+        receiving_columns, receiving_rows = _recent_receiving_summary_for_item(item_input)
         so_columns, so_rows, _ = _so_table_for_item(item_input)
         # If SO also provided, further filter rows to that SO
         if so_num and so_rows:
@@ -2212,16 +2428,38 @@ def inventory_count():
         so_columns, so_rows = _so_table_for_so(so_num)
     else:
         so_columns, so_rows = [], []
+        inv_status = INVENTORY_STATUS.copy() if INVENTORY_STATUS is not None else pd.DataFrame()
+        if not inv_status.empty:
+            if "Part_Number" not in inv_status.columns and "Item" in inv_status.columns:
+                inv_status["Part_Number"] = inv_status["Item"]
+            if "On Hand - WIP" not in inv_status.columns:
+                if "In Stock(Inventory)" in inv_status.columns:
+                    inv_status["On Hand - WIP"] = inv_status["In Stock(Inventory)"]
+                elif "On Hand" in inv_status.columns:
+                    inv_status["On Hand - WIP"] = inv_status["On Hand"]
+            inv_status_columns = [c for c in ("Part_Number", "On Hand", "On Hand - WIP") if c in inv_status.columns]
+            if inv_status_columns:
+                inv_status = inv_status[inv_status_columns].copy()
+                if "Part_Number" in inv_status.columns:
+                    inv_status = inv_status.sort_values("Part_Number", kind="mergesort")
+                for col in ("On Hand", "On Hand - WIP"):
+                    if col in inv_status.columns:
+                        inv_status[col] = inv_status[col].apply(_format_intish)
+                inv_status_rows = inv_status.fillna("").astype(str).to_dict(orient="records")
 
     return render_template_string(
         INVENTORY_TPL,
-        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "�?",
+        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "ï¿½?",
         so_val=so_input,
         item_val=item_input,
         on_hand=on_hand,
         on_hand_wip=on_hand_wip,
         so_columns=so_columns,
         so_rows=so_rows,
+        receiving_columns=receiving_columns,
+        receiving_rows=receiving_rows,
+        inv_status_columns=inv_status_columns,
+        inv_status_rows=inv_status_rows,
     )
 
 
@@ -2364,6 +2602,43 @@ def api_wo_picked_qty():
         }
     )
 
+
+
+@app.route("/api/global_suggest")
+def api_global_suggest():
+    _ensure_loaded()
+    q = (request.args.get("q") or request.args.get("query") or "").strip()
+    if not q:
+        return jsonify({"ok": True, "items": []})
+    try:
+        ql = q.lower()
+        rows = GLOBAL_SEARCH_INDEX
+        starts = [r for r in rows if str(r.get("label", "")).lower().startswith(ql)]
+        contains = [r for r in rows if ql in str(r.get("search", r.get("label", ""))).lower() and r not in starts]
+        out = []
+        for row in (starts + contains)[:20]:
+            out.append({"type": row.get("type", ""), "label": row.get("label", ""), "href": row.get("href", "")})
+        return jsonify({"ok": True, "items": out})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+@app.route("/global_search")
+def global_search():
+    _ensure_loaded()
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return redirect(url_for("index"))
+    ql = q.lower()
+    rows = GLOBAL_SEARCH_INDEX
+    exact = next((r for r in rows if str(r.get("label", "")).lower() == ql), None)
+    if exact and exact.get("href"):
+        return redirect(str(exact["href"]))
+    starts = next((r for r in rows if str(r.get("label", "")).lower().startswith(ql)), None)
+    if starts and starts.get("href"):
+        return redirect(str(starts["href"]))
+    if q.upper().startswith("SO") or q.replace("-", "").isdigit():
+        return redirect(url_for("index", so=q))
+    return redirect(url_for("index", customer=q))
 
 @app.route("/api/item_suggest")
 def api_item_suggest():
@@ -2577,3 +2852,4 @@ if __name__ == "__main__":
     # Preload PDF map on startup for faster first-hit
     _load_pdf_map(force=True)
     app.run(debug=True, host="0.0.0.0", port=5002)
+
