@@ -6,11 +6,7 @@ import numpy as np
 import pandas as pd
 
 from erp_system.runtime.constants import UNASSIGNED_LT_DATE
-from erp_system.runtime.policies import (
-    PREINSTALL_EXCLUDED_PREFIXES,
-    PREINSTALL_MODEL_EXCLUSIONS,
-    PREINSTALL_MODEL_PREFIXES,
-)
+from erp_system.runtime.policies import PREINSTALL_MODEL_PREFIXES
 
 
 def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
@@ -54,12 +50,8 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
     ship["Qty(+)"] = ship["Qty(+)"].astype(int)
 
     model_key = ship["Item"].astype(str).str.upper().str.strip()
-    model_ok = (
-        model_key.str.startswith(PREINSTALL_MODEL_PREFIXES, na=False)
-        & ~model_key.str.startswith(PREINSTALL_EXCLUDED_PREFIXES)
-        & ~model_key.isin(PREINSTALL_MODEL_EXCLUSIONS)
-    )
-    including_ok = ship["Description"].str.contains(r"[ï¼Œ,]\s*including\b", case=False, na=False)
+    model_ok = model_key.str.startswith(PREINSTALL_MODEL_PREFIXES, na=False)
+    including_ok = ship["Description"].str.contains(r"[,\uFF0C]\s*including\b", case=False, na=False)
     ship["Pre/Bare"] = np.where(model_ok & including_ok, "Pre", "Bare")
 
     desired = ["SO NO.", "QB Num", "Item", "Description", "Ship Date", "Qty(+)", "Pre/Bare"]
