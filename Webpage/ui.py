@@ -118,6 +118,10 @@ INDEX_TPL = """
       height:58px; border-radius:16px; font-size:1.02rem; border:1px solid #dbe4f0;
       background:#fbfdff;
     }
+    .global-search-wrap{ position:relative; }
+    .global-suggest{ position:absolute; left:0; right:0; top:86px; z-index:1000; display:none; max-height:320px; overflow:auto; }
+    .global-suggest-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .global-suggest-type{ flex:0 0 auto; font-size:.72rem; font-weight:800; color:#0d6efd; background:#e7f0ff; border:1px solid #cfe0ff; border-radius:999px; padding:.14rem .5rem; }
     .section-title{ font-size:1rem; font-weight:700; margin-bottom:12px; }
     .metric-card{ padding:22px; margin-bottom:24px; position:relative; overflow:hidden; }
     .metric-card::after{
@@ -223,16 +227,13 @@ INDEX_TPL = """
 
       {% if not so_num and not customer_val %}
         <div class="card-lite search-card">
-          <div class="search-title">Search</div>
-          <div class="search-sub">Find a sales order or list a customer's SOs. Search accepts `SO-20251368`, `20251368`, or a customer name.</div>
-          <form class="row g-3 align-items-end" method="get">
-            <div class="col-12 col-xl-5">
-              <label class="form-label text-uppercase small text-muted fw-semibold" for="search-so">By SO</label>
-              <input id="search-so" class="form-control search-input" name="so" placeholder="SO-20251368 or 20251368" value="{{ so_num or '' }}">
-            </div>
-            <div class="col-12 col-xl-5">
-              <label class="form-label text-uppercase small text-muted fw-semibold" for="search-customer">By Customer</label>
-              <input id="search-customer" class="form-control search-input" name="customer" placeholder="Customer name" value="{{ customer_val or '' }}">
+          <div class="search-title">Global Search</div>
+          <div class="search-sub">Search SO, item, or customer. Suggestions are cached and limited to 20 results.</div>
+          <form id="global-search-form" class="row g-3 align-items-end" method="get" action="/global_search">
+            <div class="col-12 col-xl-10 global-search-wrap">
+              <label class="form-label text-uppercase small text-muted fw-semibold" for="global-search-input">Search</label>
+              <input id="global-search-input" autocomplete="off" class="form-control search-input" name="q" placeholder="SO, item, or customer" value="">
+              <div id="global-search-suggest" class="list-group global-suggest"></div>
             </div>
             <div class="col-6 col-xl-1 d-grid">
               <button class="btn btn-primary" style="height:58px;font-weight:700;">Go</button>
@@ -250,37 +251,6 @@ INDEX_TPL = """
               <div class="metric-value">{{ lt_unassigned_count or 0 }}</div>
               <div class="metric-label">SO Not Assigned LT</div>
               <div class="metric-note">Unique sales orders still using the `2099-07-04` placeholder lead time.</div>
-            </div>
-          </div>
-          <div class="col-12 col-xl-8">
-            <div class="card-lite panel-card h-100">
-              <div class="section-title">Top 5 Shortage Items</div>
-              <div class="table-responsive">
-                <table class="table table-sm align-middle dash-table mb-0">
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th class="text-end">Blocked SOs</th>
-                      <th class="text-end">Open SO Qty</th>
-                      <th class="text-end">On Hand</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% if top_shortage_items %}
-                      {% for item in top_shortage_items %}
-                        <tr>
-                          <td class="fw-semibold">{{ item.item }}</td>
-                          <td class="text-end">{{ item.blocked_so_count }}</td>
-                          <td class="text-end">{{ item.open_so_qty }}</td>
-                          <td class="text-end">{{ item.on_hand }}</td>
-                        </tr>
-                      {% endfor %}
-                    {% else %}
-                      <tr><td colspan="4" class="text-center text-muted py-4">No shortage items found.</td></tr>
-                    {% endif %}
-                  </tbody>
-                </table>
-              </div>
             </div>
           </div>
         </div>
@@ -313,7 +283,11 @@ INDEX_TPL = """
                   <li>
                     <div>
                       <div class="panel-kicker">System</div>
-                      <div class="fw-semibold">{{ item }}</div>
+                      {% if item.href %}
+                        <a class="fw-semibold" href="{{ item.href }}">{{ item.label }}</a>
+                      {% else %}
+                        <div class="fw-semibold">{{ item.label }}</div>
+                      {% endif %}
                     </div>
                   </li>
                 {% endfor %}
@@ -457,6 +431,47 @@ INDEX_TPL = """
     </form>
     <div class="chatbox-hint">Uses your existing LLM parser and DB tools.</div>
   </div>
+  <script>
+  (function () {
+    var input = document.getElementById('global-search-input');
+    var list = document.getElementById('global-search-suggest');
+    var timer;
+    if (!input || !list) return;
+
+    function esc(value) {
+      return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    }
+    function hideList() {
+      list.style.display = 'none';
+      list.innerHTML = '';
+    }
+    function showList(items) {
+      if (!items || !items.length) { hideList(); return; }
+      list.innerHTML = items.map(function (item) {
+        return '<a class="list-group-item list-group-item-action" href="' + esc(item.href) + '">' +
+          '<span class="global-suggest-row"><span>' + esc(item.label) + '</span>' +
+          '<span class="global-suggest-type">' + esc(item.type) + '</span></span></a>';
+      }).join('');
+      list.style.display = 'block';
+    }
+
+    input.addEventListener('input', function () {
+      var q = input.value.trim();
+      if (timer) clearTimeout(timer);
+      if (!q) { hideList(); return; }
+      timer = setTimeout(function () {
+        fetch('/api/global_suggest?q=' + encodeURIComponent(q))
+          .then(function (r) { return r.json(); })
+          .then(function (j) { if (j && j.ok) showList(j.items); else hideList(); })
+          .catch(function () { hideList(); });
+      }, 200);
+    });
+
+    document.addEventListener('click', function (event) {
+      if (!event.target.closest || (!event.target.closest('#global-search-suggest') && !event.target.closest('#global-search-input'))) hideList();
+    });
+  })();
+  </script>
   <script>
   (function () {
     var panel = document.getElementById('item-detail-panel');
@@ -758,6 +773,39 @@ INVENTORY_TPL = """
     </div>
   </div>
 
+  {% if not so_val and not item_val %}
+  <div class="card-lite bg-white mb-4">
+    <div class="card-header fw-bold">Inventory Status</div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered table-hover align-middle">
+          <thead class="table-light text-uppercase small text-muted">
+            <tr>
+              {% for c in inv_status_columns %}
+                <th>{{ c }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% if inv_status_rows %}
+              {% for r in inv_status_rows %}
+                <tr>
+                  {% for c in inv_status_columns %}
+                    <td>{{ r[c] }}</td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="{{ inv_status_columns|length or 1 }}" class="text-center text-muted">No inventory status rows.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-muted small">Source: public.inventory_status</div>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="card-lite bg-white">
     <div class="card-header fw-bold">On Sales Order</div>
     <div class="card-body">
@@ -788,6 +836,39 @@ INVENTORY_TPL = """
       <div class="text-muted small">Source: public.wo_structured</div>
     </div>
   </div>
+  {% if item_val %}
+
+  <div class="card-lite bg-white mt-4">
+    <div class="card-header fw-bold">Receiving Records - Last 7 Days</div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered table-hover align-middle">
+          <thead class="table-light text-uppercase small text-muted">
+            <tr>
+              {% for c in receiving_columns %}
+                <th>{{ c }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% if receiving_rows %}
+              {% for r in receiving_rows %}
+                <tr>
+                  {% for c in receiving_columns %}
+                    <td>{{ r[c] }}</td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="{{ receiving_columns|length or 1 }}" class="text-center text-muted">No receiving records in the last 7 days for this item.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-muted small">Source: public.receving_log / public.receiving_log</div>
+    </div>
+  </div>
+  {% endif %}
 
   <script>
   (function () {
