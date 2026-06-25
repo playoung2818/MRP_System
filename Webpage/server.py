@@ -1238,8 +1238,11 @@ def _dashboard_lt_unassigned_count() -> int:
     so = SO_INV.copy()
     so["Ship Date"] = pd.to_datetime(so["Ship Date"], errors="coerce")
     so["QB Num"] = so["QB Num"].astype(str).str.strip()
-    cutoff = pd.Timestamp("2099-07-04")
-    return int(so.loc[so["Ship Date"].eq(cutoff) & so["QB Num"].ne(""), "QB Num"].nunique())
+    unassigned_mask = (
+        (so["Ship Date"].dt.month.eq(7) & so["Ship Date"].dt.day.eq(4))
+        | (so["Ship Date"].dt.month.eq(12) & so["Ship Date"].dt.day.eq(31))
+    )
+    return int(so.loc[unassigned_mask & so["QB Num"].ne(""), "QB Num"].nunique())
 
 
 def _dashboard_top_shortage_items(limit: int = 5) -> list[dict[str, object]]:
@@ -1291,9 +1294,6 @@ def _dashboard_top_shortage_items(limit: int = 5) -> list[dict[str, object]]:
 def _dashboard_alerts() -> list[dict[str, str]]:
     alerts: list[dict[str, str]] = []
 
-    ready_rows = _ready_to_assign_rows()
-    if ready_rows:
-        alerts.append({"label": f"{len(ready_rows)} SOs can be assigned before 2099-07-04.", "href": "/production_planning"})
 
     if OPEN_PO is not None and not OPEN_PO.empty:
         pod = OPEN_PO.copy()
@@ -1328,7 +1328,7 @@ def _dashboard_alerts() -> list[dict[str, str]]:
     return alerts[:4]
 
 def _negative_inventory_detail_rows(limit: int | None = None) -> tuple[list[str], list[dict[str, object]]]:
-    columns = ["Item", "First Negative Date", "Min Projected Qty", "Event Count", "Latest Source", "Latest QB Num", "Latest Name"]
+    columns = ["Item", "Date", "Projected Qty"]
     if LEDGER is None or LEDGER.empty or not {"Date", "Projected_NAV", "Item"}.issubset(LEDGER.columns):
         return columns, []
 
@@ -1340,31 +1340,24 @@ def _negative_inventory_detail_rows(limit: int | None = None) -> tuple[list[str]
         led["Date"].notna()
         & led["Date"].lt(cutoff)
         & led["Projected_NAV"].lt(0)
-        & led["Item"].notna()
+        & led["Item"].notna(),
+        ["Item", "Date", "Projected_NAV"],
     ].copy()
     if neg.empty:
         return columns, []
 
-    rows: list[dict[str, object]] = []
-    for item, grp in neg.sort_values(["Date", "Projected_NAV"], kind="mergesort").groupby("Item", sort=True):
-        first = grp.iloc[0]
-        min_qty = grp["Projected_NAV"].min()
-        latest = grp.iloc[-1]
-        rows.append(
-            {
-                "Item": str(item),
-                "First Negative Date": first["Date"].strftime("%Y-%m-%d") if pd.notna(first["Date"]) else "",
-                "Min Projected Qty": _format_intish(min_qty),
-                "Event Count": int(len(grp)),
-                "Latest Source": str(latest.get("Source", "") or ""),
-                "Latest QB Num": str(latest.get("QB Num", "") or ""),
-                "Latest Name": str(latest.get("Name", "") or ""),
-            }
-        )
-
-    rows.sort(key=lambda r: (r["First Negative Date"], float(str(r["Min Projected Qty"]).replace(",", "") or 0)))
+    neg = neg.sort_values(["Date", "Item", "Projected_NAV"], kind="mergesort")
     if limit is not None:
-        rows = rows[:limit]
+        neg = neg.head(limit)
+
+    rows = [
+        {
+            "Item": str(row["Item"]),
+            "Date": row["Date"].strftime("%Y-%m-%d") if pd.notna(row["Date"]) else "",
+            "Projected Qty": _format_intish(row["Projected_NAV"]),
+        }
+        for _, row in neg.iterrows()
+    ]
     return columns, rows
 
 def lookup_on_po_by_item(item: str) -> int | None:
@@ -2000,13 +1993,13 @@ def dashboard_negative_inventory():
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
       <div class="h3 m-0">Negative Inventory Details</div>
-      <div class="text-muted small">Items with Projected Qty below 0 before 2099-07-04.</div>
+      <div class="text-muted small">Negative projected quantity rows before 2099-07-04.</div>
     </div>
     <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
   </div>
   <div class="card-lite bg-white p-3">
     <div class="d-flex justify-content-between align-items-center mb-2">
-      <div class="fw-bold">{{ rows|length }} item(s)</div>
+      <div class="fw-bold">{{ rows|length }} row(s)</div>
       <div class="text-muted small">Source: public.ledger_analytics</div>
     </div>
     <div class="table-responsive">
@@ -2019,12 +2012,12 @@ def dashboard_negative_inventory():
             {% for row in rows %}
               <tr>
                 {% for c in columns %}
-                  <td class="{{ 'num' if c in ['Min Projected Qty', 'Event Count'] else '' }}">{{ row[c] }}</td>
+                  <td class="{{ 'num' if c == 'Projected Qty' else '' }}">{{ row[c] }}</td>
                 {% endfor %}
               </tr>
             {% endfor %}
           {% else %}
-            <tr><td colspan="{{ columns|length }}" class="text-center text-muted py-4">No negative inventory details found.</td></tr>
+            <tr><td colspan="{{ columns|length }}" class="text-center text-muted py-4">No negative projected quantity rows found.</td></tr>
           {% endif %}
         </tbody>
       </table>
@@ -2852,4 +2845,7 @@ if __name__ == "__main__":
     # Preload PDF map on startup for faster first-hit
     _load_pdf_map(force=True)
     app.run(debug=True, host="0.0.0.0", port=5002)
+
+
+
 
