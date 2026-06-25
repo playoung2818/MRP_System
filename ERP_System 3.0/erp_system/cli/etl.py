@@ -84,7 +84,7 @@ def main() -> None:
     events_all = _order_events(build_events(structured, nav_exp, pod))
     ledger, item_summary, violations = build_ledger_from_events(structured, events_all, inv)
 
-    cols = ["Date", "Item_raw", "Projected_NAV", "Name", "QB Num"]
+    cols = ["Date", "Item", "Item_raw", "Projected_NAV", "Name", "QB Num"]
     print(violations.loc[:, cols])
 
     inv, structured, pod, ship, ledger = _validate_outputs(inv, structured, pod, ship, ledger)
