@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from erp_system.normalize.erp_normalize import normalize_item
+from erp_system.runtime.constants import UNASSIGNED_LT_DATE
 from erp_system.runtime.policies import EXCLUDED_POD_SOURCE_NAMES
 
 
@@ -47,8 +48,7 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     pod["Order Date"] = pd.to_datetime(pod["Order Date"])
     if "Deliv Date" in pod.columns:
         pod["Deliv Date"] = pd.to_datetime(pod["Deliv Date"], errors="coerce")
-    if "Ship Date" not in pod.columns:
-        pod["Ship Date"] = pd.NaT
+    pod["Ship Date"] = UNASSIGNED_LT_DATE
     if "Source Name" in pod.columns and "Deliv Date" in pod.columns:
         mask = ~pod["Source Name"].astype(str).isin(EXCLUDED_POD_SOURCE_NAMES)
         pod.loc[mask, "Ship Date"] = pod.loc[mask, "Deliv Date"]
@@ -75,7 +75,7 @@ def enrich_pod_with_shipping_audit(df_pod: pd.DataFrame, df_shipping: pd.DataFra
         return pod
 
     pod["POD#"] = pod.get("POD#", pod.get("QB Num", pd.Series("", index=pod.index))).fillna("").astype(str).str.strip()
-    pod["Ship Date"] = pd.to_datetime(pod.get("Ship Date", pd.NaT), errors="coerce")
+    pod["Ship Date"] = pd.to_datetime(pod.get("Ship Date", UNASSIGNED_LT_DATE), errors="coerce").fillna(UNASSIGNED_LT_DATE)
     pod["POD Ship Date Raw"] = pod["Ship Date"].dt.strftime("%Y-%m-%d").fillna("")
 
     if df_shipping is None or df_shipping.empty:
