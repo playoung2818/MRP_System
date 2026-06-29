@@ -5,12 +5,19 @@ import pandas as pd
 from erp_system.contracts import TABLE_CONTRACTS, ensure_contract_columns
 from erp_system.ledger.atp import earliest_atp_strict
 from erp_system.normalize.erp_normalize import normalize_item
+from erp_system.runtime.constants import DUMMY_SHIP_DATES, INVALID_SUPPLY_DATE_START
 from erp_system.transform.common import _norm_key
 
 
 def _normalize_item_key(item: str) -> str:
     series = pd.Series([item], dtype="string").map(normalize_item)
     return str(_norm_key(series).iloc[0])
+
+
+def _assignment_cutoff_dates(cutoff_date: str | None = None) -> set[pd.Timestamp]:
+    if cutoff_date:
+        return {pd.Timestamp(cutoff_date).normalize()}
+    return {pd.Timestamp(dt).normalize() for dt in DUMMY_SHIP_DATES}
 
 
 def _build_adjusted_item_atp(
@@ -60,6 +67,9 @@ def _build_adjusted_item_atp(
     adjusted["Date"] = pd.to_datetime(adjusted["Date"], errors="coerce")
     adjusted["Delta"] = pd.to_numeric(adjusted["Delta"], errors="coerce").fillna(0.0)
     adjusted = adjusted.loc[adjusted["Date"].notna()].copy()
+    kind_col = adjusted.get("Kind", pd.Series("", index=adjusted.index)).astype(str)
+    invalid_inbound = kind_col.eq("IN") & adjusted["Date"].ge(INVALID_SUPPLY_DATE_START)
+    adjusted = adjusted.loc[~invalid_inbound].copy()
     adjusted = adjusted.sort_values("Date", kind="mergesort").reset_index(drop=True)
     adjusted["Projected_NAV"] = opening + adjusted["Delta"].cumsum()
     projected = pd.to_numeric(adjusted["Projected_NAV"], errors="coerce").tolist()
@@ -133,7 +143,7 @@ def _build_assignment_readiness_for_mode(
     ledger: pd.DataFrame,
     *,
     from_date: pd.Timestamp | None = None,
-    cutoff_date: str = "2099-07-04",
+    cutoff_date: str | None = None,
     mode: str = "loose",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     summary_cols = [
@@ -164,7 +174,7 @@ def _build_assignment_readiness_for_mode(
     if structured is None or structured.empty or ledger is None or ledger.empty:
         return pd.DataFrame(columns=summary_cols), pd.DataFrame(columns=blocker_cols)
 
-    cutoff = pd.Timestamp(cutoff_date).normalize()
+    cutoff_dates = _assignment_cutoff_dates(cutoff_date)
     start_date = pd.Timestamp.today().normalize() if from_date is None else pd.to_datetime(from_date).normalize()
     include_cutoff_in_check = str(mode).strip().lower() == "strict"
 
@@ -183,7 +193,7 @@ def _build_assignment_readiness_for_mode(
     so["Order Date"] = pd.to_datetime(so["Order Date"], errors="coerce")
 
     pending = so.loc[
-        so["Ship Date"].eq(cutoff)
+        so["Ship Date"].isin(cutoff_dates)
         & so["QB Num"].ne("")
         & so["Item"].ne("")
         & so["Qty(-)"].gt(0)
@@ -195,6 +205,9 @@ def _build_assignment_readiness_for_mode(
     blocker_rows: list[dict[str, object]] = []
 
     for qb_num, grp in pending.groupby("QB Num", sort=True):
+        group_cutoffs = sorted(pd.to_datetime(grp["Ship Date"], errors="coerce").dropna().unique())
+        cutoff = pd.Timestamp(group_cutoffs[0]).normalize()
+        current_ship_date = ", ".join(pd.Timestamp(dt).strftime("%Y-%m-%d") for dt in group_cutoffs)
         demands_df = grp.groupby("Item", as_index=False)["Qty(-)"].sum().sort_values("Item", kind="mergesort")
         demand_map = {str(r["Item"]): float(r["Qty(-)"]) for _, r in demands_df.iterrows()}
         first = grp.iloc[0]
@@ -224,7 +237,7 @@ def _build_assignment_readiness_for_mode(
                         "Name": str(first.get("Name") or ""),
                         "P. O. #": str(first.get("P. O. #") or ""),
                         "Order Date": first["Order Date"].strftime("%Y-%m-%d") if pd.notna(first["Order Date"]) else "",
-                        "Current Ship Date": cutoff.strftime("%Y-%m-%d"),
+                        "Current Ship Date": current_ship_date,
                         "Item": item,
                         "Required Qty": qty,
                         "Earliest Feasible Date": None,
@@ -243,7 +256,7 @@ def _build_assignment_readiness_for_mode(
                         "Name": str(first.get("Name") or ""),
                         "P. O. #": str(first.get("P. O. #") or ""),
                         "Order Date": first["Order Date"].strftime("%Y-%m-%d") if pd.notna(first["Order Date"]) else "",
-                        "Current Ship Date": cutoff.strftime("%Y-%m-%d"),
+                        "Current Ship Date": current_ship_date,
                         "Item": item,
                         "Required Qty": qty,
                         "Earliest Feasible Date": dt.strftime("%Y-%m-%d"),
@@ -276,7 +289,7 @@ def _build_assignment_readiness_for_mode(
                 "Name": str(first.get("Name") or ""),
                 "P. O. #": str(first.get("P. O. #") or ""),
                 "Order Date": first["Order Date"].strftime("%Y-%m-%d") if pd.notna(first["Order Date"]) else "",
-                "Current Ship Date": cutoff.strftime("%Y-%m-%d"),
+                "Current Ship Date": current_ship_date,
                 "Item Count": int(len(demand_map)),
                 "Ready to be assigned": bool(is_ready),
                 "Earliest Ready Date": ready_dt.strftime("%Y-%m-%d") if ready_dt is not None else None,
@@ -302,7 +315,7 @@ def build_assignment_readiness_reports(
     ledger: pd.DataFrame,
     *,
     from_date: pd.Timestamp | None = None,
-    cutoff_date: str = "2099-07-04",
+    cutoff_date: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     return _build_assignment_readiness_for_mode(
         structured,
@@ -318,7 +331,7 @@ def build_assignment_run_tables(
     ledger: pd.DataFrame,
     *,
     from_date: pd.Timestamp | None = None,
-    cutoff_date: str = "2099-07-04",
+    cutoff_date: str | None = None,
     run_ts: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     run_ts = pd.Timestamp.now() if run_ts is None else pd.to_datetime(run_ts)

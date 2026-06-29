@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from erp_system.normalize.erp_normalize import normalize_item
-from erp_system.runtime.constants import FAR_FUTURE_DATE, UNASSIGNED_LT_DATE
+from erp_system.runtime.constants import UNASSIGNED_LT_DATE, UNASSIGNED_LT_FALLBACK_DATE
 from erp_system.runtime.policies import EXCLUDED_PREINSTALLED_PO_VENDORS
 
 from .sales_order import normalize_wo_number
@@ -105,9 +105,12 @@ def build_structured_df(
     mask_july4 = structured_df["Lead Time"].dt.month.eq(7) & structured_df["Lead Time"].dt.day.eq(4)
     mask_dec31 = structured_df["Lead Time"].dt.month.eq(12) & structured_df["Lead Time"].dt.day.eq(31)
     structured_df.loc[mask_july4, "Lead Time"] = UNASSIGNED_LT_DATE
-    structured_df.loc[mask_dec31, "Lead Time"] = FAR_FUTURE_DATE
+    structured_df.loc[mask_dec31, "Lead Time"] = UNASSIGNED_LT_FALLBACK_DATE
 
-    not_dummy = ~((structured_df["Lead Time"] == UNASSIGNED_LT_DATE) | (structured_df["Lead Time"] == FAR_FUTURE_DATE))
+    not_dummy = ~(
+        (structured_df["Lead Time"] == UNASSIGNED_LT_DATE)
+        | (structured_df["Lead Time"] == UNASSIGNED_LT_FALLBACK_DATE)
+    )
     structured_df["Assigned Q'ty"] = structured_df["Qty"].where(not_dummy, 0).groupby(structured_df["Item"]).transform("sum")
 
     structured_df["Picked_Qty"] = pd.to_numeric(structured_df.get("Picked_Qty", 0), errors="coerce").fillna(0)
