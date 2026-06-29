@@ -5,7 +5,7 @@ import pandas as pd
 from erp_system.contracts import TABLE_CONTRACTS, ensure_contract_columns
 from erp_system.ledger.atp import earliest_atp_strict
 from erp_system.normalize.erp_normalize import normalize_item
-from erp_system.runtime.constants import DUMMY_SHIP_DATES, INVALID_SUPPLY_DATE_START
+from erp_system.runtime.constants import INVALID_SUPPLY_DATE_START, UNASSIGNED_LT_DATES
 from erp_system.transform.common import _norm_key
 
 
@@ -17,7 +17,7 @@ def _normalize_item_key(item: str) -> str:
 def _assignment_cutoff_dates(cutoff_date: str | None = None) -> set[pd.Timestamp]:
     if cutoff_date:
         return {pd.Timestamp(cutoff_date).normalize()}
-    return {pd.Timestamp(dt).normalize() for dt in DUMMY_SHIP_DATES}
+    return {pd.Timestamp(dt).normalize() for dt in UNASSIGNED_LT_DATES}
 
 
 def _build_adjusted_item_atp(
