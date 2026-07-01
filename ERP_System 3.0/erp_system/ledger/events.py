@@ -7,7 +7,7 @@ import pandas as pd
 from pandas.api.types import CategoricalDtype
 
 from erp_system.normalize.erp_normalize import POD_SITE, normalize_item
-from erp_system.runtime.policies import EXCLUDED_POD_SOURCE_NAMES
+from erp_system.runtime.policies import EXCLUDED_POD_SOURCE_NAMES, PREINSTALL_KEEP_MODEL_SKIP_FIRST_COMPONENT_PREFIXES
 from erp_system.transform.common import _norm_cols, _norm_key
 
 
@@ -22,14 +22,6 @@ NUVO_716_VARIANT_SPLITS: dict[str, tuple[str, str]] = {
     "NUVO-7162GC": ("Nuvo-716xGC", "CSM-7162GC"),
     "NUVO-7166GC": ("Nuvo-716xGC", "CSM-7166GC"),
 }
-SO_BUNDLE_ITEM_SPLITS: dict[str, tuple[str, ...]] = {
-    "NRU-52S+-JON16-NS": ("NRU-52S+", "GC-JETSON-NX16G-ORIN-NVIDIA"),
-    "FLYC-300-EC-JON16-NS": ("FLYC-300-EC", "GC-JETSON-NX16G-ORIN-NVIDIA"),
-    "FLYC-300-EC-JON8-NS": ("FLYC-300-EC", "GC-JETSON-NX8G-ORIN-NVIDIA"),
-    "NRU-171V-PPC-JON16-NS": ("NRU-171V-PPC", "GC-JETSON-NX16G-ORIN-NVIDIA"),
-}
-
-
 def clean_space(s: str) -> str:
     if not isinstance(s, str):
         return ""
@@ -63,6 +55,11 @@ def split_nuvo_716_variant_item(item: str) -> list[str] | None:
     normalized = clean_space(item).upper()
     split_items = NUVO_716_VARIANT_SPLITS.get(normalized)
     return list(split_items) if split_items else None
+
+
+def keep_model_skip_first_component(item: str) -> bool:
+    normalized = clean_space(item).upper()
+    return normalized.startswith(PREINSTALL_KEEP_MODEL_SKIP_FIRST_COMPONENT_PREFIXES)
 
 
 def _split_special_shipping_variants(nav: pd.DataFrame) -> pd.DataFrame:
@@ -108,7 +105,11 @@ def _split_special_shipping_variants(nav: pd.DataFrame) -> pd.DataFrame:
 def expand_preinstalled_row(row: pd.Series) -> pd.DataFrame:
     parent, tokens = parse_description(row.get("Description", ""))
     base_qty = float(row.get("Qty(+)", 0) or 0)
-    parent_item = parent or clean_space(str(row.get("Item", "")))
+    row_item = clean_space(str(row.get("Item", "")))
+    parent_item = parent or row_item
+    if keep_model_skip_first_component(row_item or parent_item):
+        parent_item = row_item or parent_item
+        tokens = tokens[1:]
     variant_split = split_nuvo_716_variant_item(parent_item)
     if variant_split:
         tokens = variant_split
@@ -211,36 +212,6 @@ def _order_events(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _split_special_so_bundles(outbound: pd.DataFrame) -> pd.DataFrame:
-    if outbound.empty or "Item" not in outbound.columns:
-        return outbound.copy()
-
-    split_rows = []
-    passthrough_rows = []
-    for _, row in outbound.iterrows():
-        raw_item = clean_space(str(row.get("Item_raw", "") or row.get("Item", ""))).upper()
-        normalized_item = clean_space(str(row.get("Item", ""))).upper()
-        split_items = SO_BUNDLE_ITEM_SPLITS.get(raw_item) or SO_BUNDLE_ITEM_SPLITS.get(normalized_item)
-        if not split_items:
-            passthrough_rows.append(row)
-            continue
-
-        for item in split_items:
-            out = row.copy()
-            out["Item"] = _norm_key(pd.Series([normalize_item(item)])).iloc[0]
-            out["Item_raw"] = raw_item
-            split_rows.append(out)
-
-    frames = []
-    if passthrough_rows:
-        frames.append(pd.DataFrame(passthrough_rows))
-    if split_rows:
-        frames.append(pd.DataFrame(split_rows))
-    if not frames:
-        return outbound.iloc[0:0].copy()
-    return pd.concat(frames, ignore_index=True, sort=False)
-
-
 def build_events(so: pd.DataFrame, nav_exp: pd.DataFrame, pod: pd.DataFrame | None = None) -> pd.DataFrame:
     so = _norm_cols(so)
     nav = _norm_cols(nav_exp)
@@ -261,7 +232,6 @@ def build_events(so: pd.DataFrame, nav_exp: pd.DataFrame, pod: pd.DataFrame | No
     outbound["Item_raw"] = outbound["Item"]
     outbound["Item"] = _norm_key(outbound["Item"])
     outbound["Delta"] = -outbound["Delta"]
-    outbound = _split_special_so_bundles(outbound)
 
     cols = ["Date", "Item", "Delta", "Kind", "Source", "QB Num", "P. O. #", "Name", "Item_raw"]
     inbound = inbound.reindex(columns=cols)
