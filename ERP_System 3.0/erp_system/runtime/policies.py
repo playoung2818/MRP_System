@@ -39,18 +39,4 @@ EXCLUDED_PREINSTALLED_PO_VENDORS = frozenset(
 EXCLUDED_POD_SOURCE_NAMES = frozenset({"Neousys Technology Incorp."})
 
 PREINSTALL_MODEL_PREFIXES = ("N", "SEMIL", "POC", "F", "S1", "S2")
-PREINSTALL_EXCLUDED_PREFIXES = ("NRU-52S-NX",)
-PREINSTALL_MODEL_EXCLUSIONS = frozenset(
-    {
-        "NRU-120S-AGX32G",
-        "NRU-120S-JAXI32GB",
-        "NRU-154-JON16-NS",
-        "NRU-154-JON8-NS",
-        "NRU-156-JON8-128GB",
-        "NRU-156-JON8-NS",
-        "NRU-161V-AWP-JON16-NS",
-        "NRU-162S-AWP-JON16-NS",
-        "NRU-171V-PPC-JON16-NS",
-        "NRU-172S-PPC-JON16-NS",
-    }
-)
+PREINSTALL_KEEP_MODEL_SKIP_FIRST_COMPONENT_PREFIXES = ("NRU-1", "NRU-5") # NRU-52+-JON16-NS, only expand the peripherals, keep the SOM
