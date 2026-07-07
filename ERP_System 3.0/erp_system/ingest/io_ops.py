@@ -19,7 +19,6 @@ from erp_system.runtime.policies import GOOGLE_SHEET_SPREADSHEET, GOOGLE_SHEET_W
 from ._helpers import (
     ServiceAccountCredentials,
     _copy_via_powershell,
-    _reset_gsheet_user_format,
     _resolve_google_cred_path,
     gspread,
     set_with_dataframe,
@@ -93,6 +92,9 @@ def write_final_sales_order_to_gsheet(
             export_df = export_df.drop(columns=["SO Entry Date"])
         if "Remark" in export_df.columns:
             export_df = export_df.drop(columns=["Remark"]) # Drop old Remark completely
+        if "Terms" in export_df.columns:
+            old_order_cols = [col for col in export_df.columns if col != "Terms"]
+            export_df = export_df[old_order_cols + ["Terms"]]
         remarks = pd.Series("", index=export_df.index, dtype="string")
         if "QB Num" in export_df.columns:
             try:
@@ -115,7 +117,6 @@ def write_final_sales_order_to_gsheet(
             ws.clear()
         except gspread.exceptions.WorksheetNotFound:
             ws = sh.add_worksheet(title=worksheet_name, rows=100, cols=26)
-        _reset_gsheet_user_format(ws)
         set_with_dataframe(ws, export_df, include_index=False, include_column_header=True, resize=True)
         try:
             ws.freeze(rows=1)

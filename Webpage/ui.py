@@ -1,4 +1,4 @@
-# Webpage/ui.py
+﻿# Webpage/ui.py
 ERR_TPL = """
 <!doctype html>
 <html>
@@ -1334,12 +1334,24 @@ PRODUCTION_TPL = """
     html,body{ background:var(--bg); color:var(--ink); }
     body{ padding:28px; }
     .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); background:var(--card); }
-    .day-card{ border-left:4px solid #0d6efd; }
+    .day-card{ border-left:4px solid #0d6efd; transition:border-color .15s ease, box-shadow .15s ease; }
+    .day-card.drag-over{ border-color:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.18), 0 10px 22px rgba(0,0,0,.06); }
+    .order-list.drag-over{ outline:2px dashed #16a34a; outline-offset:3px; border-radius:8px; }
     .day-header{ font-weight:600; font-size:1rem; }
-    .order-line{ display:flex; justify-content:space-between; align-items:center; padding:.4rem .6rem; border-radius:10px; }
+    .day-summary{ display:flex; gap:.6rem; flex-wrap:wrap; color:var(--muted); font-size:.82rem; font-weight:700; }
+    .day-summary strong{ color:var(--ink); }
+    .order-list{ min-height:2.2rem; }
+    .order-line{ display:flex; justify-content:space-between; align-items:center; padding:.4rem .6rem; border-radius:10px; cursor:grab; }
+    .order-line:active{ cursor:grabbing; }
+    .order-line.is-dragging{ opacity:.5; }
     .order-line:nth-child(odd){ background:#f9fafb; }
     .order-line:nth-child(even){ background:#eef2ff; }
+    .order-line.lt-same-day{ background:#fee2e2; border:1px solid #fca5a5; color:#7f1d1d; }
+    .order-line.lt-same-day .order-sub,
+    .order-line.lt-same-day .order-meta{ color:#991b1b; }
     .order-main{ font-weight:600; }
+    .order-ship-date{ display:block; margin-top:.1rem; font-size:.82em; color:var(--muted); font-weight:600; }
+    .order-terms{ font-size:.82em; color:var(--muted); font-weight:600; }
     .order-meta{ font-size:.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
     .status-pill{ display:inline-block; padding:.15rem .5rem; border-radius:999px; font-weight:700; }
     .status-picked{ background:#dcfce7; color:#166534; }
@@ -1390,6 +1402,8 @@ PRODUCTION_TPL = """
     .unassigned-lt-row{ display:flex; justify-content:space-between; gap:.75rem; padding:.55rem .65rem; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb; }
     .unassigned-lt-main{ font-weight:800; font-size:.9rem; }
     .unassigned-lt-meta{ color:var(--muted); font-size:.78rem; line-height:1.25; }
+    .schedule-save-msg{ min-width:5rem; color:var(--muted); font-size:.82rem; font-weight:700; align-self:center; }
+    .schedule-unsaved{ outline:2px solid rgba(245,158,11,.45); outline-offset:1px; }
   </style>
 </head>
 <body>
@@ -1399,13 +1413,15 @@ PRODUCTION_TPL = """
       <div class="text-muted small">Loaded {{ loaded_at }}</div>
     </div>
     <div class="d-flex gap-2">
+      <button id="schedule-save" class="btn btn-sm btn-primary" type="button" disabled>Save Schedule</button>
+      <span id="schedule-save-msg" class="schedule-save-msg"></span>
       <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
       <a class="btn btn-sm btn-outline-success" href="/production_planning">Recalculate Labor</a>
       <a class="btn btn-sm btn-outline-primary" href="/production_planning?reload=1">Reload</a>
     </div>
   </div>
 
-  {% if capacity_weeks or unassigned_lt_orders %}
+  {% if capacity_weeks or passed_lt_orders %}
     <div class="mb-4">
       <div class="d-flex justify-content-between align-items-end mb-2">
         <div>
@@ -1430,8 +1446,10 @@ PRODUCTION_TPL = """
                         {% for so in week.review_sos %}
                           <span class="review-row">
                             <span>
-                              <span class="review-main d-block">{{ so.qb_num }}</span>
-                              <span class="review-meta d-block">{{ so.customer or '-' }}</span>
+                              <span class="review-main d-block">
+                                {{ so.qb_num }}{% if so.customer %} | {{ so.customer }}{% endif %}{% if so.terms %} | <span class="order-terms">{{ so.terms }}</span>{% endif %}
+                              </span>
+                              {% if so.ship_date %}<span class="review-meta d-block">Ship: {{ so.ship_date }}</span>{% endif %}
                               <span class="review-meta d-block">{{ so.first_item or 'No item found' }}</span>
                             </span>
                             <span class="text-end">
@@ -1474,8 +1492,11 @@ PRODUCTION_TPL = """
                   {% for so in week.large_sos %}
                     <div class="large-so">
                       <div>
-                        <div class="large-so-main">{{ so.qb_num }} | {{ so.family }}</div>
-                        <div class="large-so-meta">{{ so.customer or '-' }} | {{ so.first_item }}</div>
+                        <div class="large-so-main">
+                          {{ so.qb_num }}{% if so.customer %} | {{ so.customer }}{% endif %}{% if so.terms %} | <span class="order-terms">{{ so.terms }}</span>{% endif %} | {{ so.family }}
+                        </div>
+                        {% if so.ship_date %}<div class="large-so-meta">Ship: {{ so.ship_date }}</div>{% endif %}
+                        <div class="large-so-meta">{{ so.first_item }}</div>
                       </div>
                       <div class="text-end">
                         <div class="fw-bold">{{ so.total_units_str }} units</div>
@@ -1490,51 +1511,53 @@ PRODUCTION_TPL = """
             </div>
           </div>
         {% endfor %}
-        {% if unassigned_lt_orders %}
-          <div class="capacity-card unassigned-lt-card">
+        <div class="capacity-card unassigned-lt-card">
             <div class="capacity-head mb-2">
               <div>
-                <div class="capacity-week">Unassigned L/T SO</div>
+                <div class="capacity-week">Finish Goods</div>
                 <div class="capacity-sub">
-                  {{ unassigned_lt_orders|length }} SO(s) with 7/4 or 12/31 L/T
-                  {% if unassigned_lt_summary.unknown_count %}
-                    | {{ unassigned_lt_summary.unknown_count }} Pack &amp; Go
+                  {{ passed_lt_orders|length }} SO(s)
+                  {% if passed_lt_summary.unknown_count %}
+                    | {{ passed_lt_summary.unknown_count }} review
                   {% endif %}
                 </div>
               </div>
               <div class="text-end">
-                <div class="capacity-metric">{{ unassigned_lt_summary.known_hours_str }} hrs</div>
+                <div class="capacity-metric">{{ passed_lt_summary.known_hours_str }} hrs</div>
                 <div class="capacity-sub">estimated labor</div>
               </div>
             </div>
-            <div class="family-counts">
-              {% for family in unassigned_lt_summary.family_counts %}
-                <div class="family-count">
-                  <div class="family-label">{{ family.label }}</div>
-                  <div class="family-value">{{ family.units_str }}</div>
+            <div class="unassigned-lt-grid order-list" data-target-area="finished_goods">
+              {% for o in passed_lt_orders %}
+                <div class="order-line" draggable="true" data-wo="{{ o.qb_num }}" data-ship-date="{{ o.ship_date }}" data-schedule-units="{{ o.remaining_units_str }}" data-schedule-hours="{{ o.labor_hours if o.labor_hours is not none else '' }}">
+                  <div class="me-2">
+                    <div class="order-main">
+                      {{ o.qb_num }}{% if o.customer %} | {{ o.customer }}{% endif %}{% if o.terms %} | <span class="order-terms">{{ o.terms }}</span>{% endif %}
+                      {% if o.ship_date %}<span class="order-ship-date">Ship: {{ o.ship_date }}</span>{% endif %}
+                    </div>
+                    <div class="order-meta">
+                      WO Status:
+                      <span class="status-pill {% if (o.wo_status or 'NA') == 'Picked' %}status-picked{% else %}status-na{% endif %}">
+                        {{ o.wo_status or 'NA' }}
+                      </span>
+                      <span class="picked-qty-control" data-wo="{{ o.qb_num }}">
+                        <span class="picked-qty-label">Picked Qty</span>
+                        <input class="picked-qty-input" type="number" min="0" step="1" value="{{ o.picked_qty_str }}" data-planned-qty="{{ o.qty_str }}" aria-label="Picked Qty for {{ o.qb_num }}">
+                        <button class="picked-qty-save" type="button">Save</button>
+                        <span class="picked-qty-msg">{% if o.picked_qty_saved %}Saved{% endif %}</span>
+                      </span>
+                    </div>
+                    <div class="order-sub">
+                      {{ o.line or '-' }} | Est: {{ o.labor_hours_str }} hrs | Remaining: {{ o.remaining_units_str }} units
+                    </div>
+                  </div>
+                  {% if o.pdf_url %}
+                    <a class="order-link" href="{{ o.pdf_url }}" target="_blank">PDF</a>
+                  {% endif %}
                 </div>
               {% endfor %}
             </div>
-            <div class="unassigned-lt-grid">
-              {% for o in unassigned_lt_orders %}
-                <div class="unassigned-lt-row">
-                  <div>
-                    <div class="unassigned-lt-main">{{ o.qb_num }}</div>
-                    <div class="unassigned-lt-meta">{{ o.customer or '-' }}</div>
-                    <div class="unassigned-lt-meta">{{ o.line or '-' }}</div>
-                  </div>
-                  <div class="text-end">
-                    <div class="unassigned-lt-main">{{ o.lead_time }}</div>
-                    <div class="unassigned-lt-meta">{{ o.labor_hours_str }} hrs</div>
-                    {% if o.pdf_url %}
-                      <a class="order-link" href="{{ o.pdf_url }}" target="_blank">PDF</a>
-                    {% endif %}
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          </div>
-        {% endif %}
+        </div>
       </div>
     </div>
   {% endif %}
@@ -1547,13 +1570,20 @@ PRODUCTION_TPL = """
         <div class="col-12 col-md-6 col-xl-4">
           <div class="card-lite day-card p-3 h-100">
             <div class="day-header mb-2">{{ group.date }}</div>
-            <div class="small text-muted mb-2">{{ group.orders|length }} order(s)</div>
+            <div class="day-summary mb-2">
+              <span><strong class="day-order-count">{{ group.orders|length }}</strong> order(s)</span>
+              <span><strong class="day-unit-total">{{ group.total_units_str }}</strong> units</span>
+              <span><strong class="day-hour-total">{{ group.labor_hours_str }}</strong> hrs<span class="day-review-count">{% if group.unknown_hours_count %} + {{ group.unknown_hours_count }} review{% endif %}</span></span>
+            </div>
             {% if group.orders %}
-              <div class="d-flex flex-column gap-1">
+              <div class="order-list d-flex flex-column gap-1" data-production-date="{{ group.date }}">
                 {% for o in group.orders %}
-                  <div class="order-line">
+                  <div class="order-line {% if o.lt_matches_production_date %}lt-same-day{% endif %}" draggable="true" data-wo="{{ o.qb_num }}" data-production-date="{{ group.date }}" data-ship-date="{{ o.ship_date }}" data-schedule-units="{{ o.remaining_units_str }}" data-schedule-hours="{{ o.labor_hours if o.labor_hours is not none else '' }}">
                     <div class="me-2">
-                      <div class="order-main">{{ o.qb_num }}</div>
+                      <div class="order-main">
+                        {{ o.qb_num }}{% if o.customer %} | {{ o.customer }}{% endif %}{% if o.terms %} | <span class="order-terms">{{ o.terms }}</span>{% endif %}
+                        {% if o.ship_date %}<span class="order-ship-date">Ship: {{ o.ship_date }}</span>{% endif %}
+                      </div>
                       <div class="order-meta">
                         WO Status:
                         <span class="status-pill {% if (o.wo_status or 'NA') == 'Picked' %}status-picked{% else %}status-na{% endif %}">
@@ -1567,7 +1597,7 @@ PRODUCTION_TPL = """
                         </span>
                       </div>
                       <div class="order-sub">
-                        {{ o.customer or '-' }}{% if o.line %} • {{ o.line }}{% endif %}
+                        {{ o.line or '-' }}
                       </div>
                     </div>
                     {% if o.pdf_url %}
@@ -1577,11 +1607,59 @@ PRODUCTION_TPL = """
                 {% endfor %}
               </div>
             {% else %}
-              <div class="text-muted small">No orders on this date.</div>
+              <div class="order-list text-muted small" data-production-date="{{ group.date }}">No orders on this date.</div>
             {% endif %}
           </div>
         </div>
       {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if unassigned_lt_orders %}
+    <div class="capacity-card unassigned-lt-card mt-4">
+      <div class="capacity-head mb-2">
+        <div>
+          <div class="capacity-week">Unassigned L/T SO</div>
+          <div class="capacity-sub">
+            {{ unassigned_lt_orders|length }} SO(s) with 7/4 or 12/31 L/T
+            {% if unassigned_lt_summary.unknown_count %}
+              | {{ unassigned_lt_summary.unknown_count }} Pack &amp; Go
+            {% endif %}
+          </div>
+        </div>
+        <div class="text-end">
+          <div class="capacity-metric">{{ unassigned_lt_summary.known_hours_str }} hrs</div>
+          <div class="capacity-sub">estimated labor</div>
+        </div>
+      </div>
+      <div class="family-counts">
+        {% for family in unassigned_lt_summary.family_counts %}
+          <div class="family-count">
+            <div class="family-label">{{ family.label }}</div>
+            <div class="family-value">{{ family.units_str }}</div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="unassigned-lt-grid">
+        {% for o in unassigned_lt_orders %}
+          <div class="unassigned-lt-row order-line" draggable="true" data-wo="{{ o.qb_num }}" data-ship-date="{{ o.lead_time }}" data-schedule-units="{{ o.remaining_qty_str }}" data-schedule-hours="{{ o.labor_hours if o.labor_hours is not none else '' }}">
+            <div>
+              <div class="unassigned-lt-main">
+                {{ o.qb_num }}{% if o.customer %} | {{ o.customer }}{% endif %}{% if o.terms %} | <span class="order-terms">{{ o.terms }}</span>{% endif %}
+                {% if o.lead_time %}<span class="order-ship-date">Ship: {{ o.lead_time }}</span>{% endif %}
+              </div>
+              <div class="unassigned-lt-meta">{{ o.line or '-' }}</div>
+            </div>
+            <div class="text-end">
+              <div class="unassigned-lt-main">{{ o.lead_time }}</div>
+              <div class="unassigned-lt-meta">{{ o.labor_hours_str }} hrs</div>
+              {% if o.pdf_url %}
+                <a class="order-link" href="{{ o.pdf_url }}" target="_blank">PDF</a>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     </div>
   {% endif %}
   <script>
@@ -1641,6 +1719,185 @@ PRODUCTION_TPL = """
           });
       });
     });
+
+    var pendingScheduleChanges = {};
+    var scheduleSaveButton = document.getElementById("schedule-save");
+    var scheduleSaveMsg = document.getElementById("schedule-save-msg");
+
+    function setScheduleSaveMessage(text, isError){
+      if (!scheduleSaveMsg) {
+        return;
+      }
+      scheduleSaveMsg.textContent = text || "";
+      scheduleSaveMsg.style.color = isError ? "#b91c1c" : "#6b7280";
+    }
+
+    function updateScheduleSaveState(){
+      var count = Object.keys(pendingScheduleChanges).length;
+      if (scheduleSaveButton) {
+        scheduleSaveButton.disabled = count === 0;
+      }
+      if (count > 0) {
+        setScheduleSaveMessage(count + " unsaved", false);
+      } else {
+        setScheduleSaveMessage("", false);
+      }
+    }
+
+    function formatScheduleNumber(value){
+      if (!Number.isFinite(value)) {
+        return "0";
+      }
+      if (Math.abs(value - Math.round(value)) < 0.000001) {
+        return String(Math.round(value));
+      }
+      return value.toFixed(1).replace(/[.]0$/, "");
+    }
+
+    function recalcDaySummaries(){
+      document.querySelectorAll(".day-card").forEach(function(card){
+        var rows = card.querySelectorAll(".order-list .order-line");
+        var units = 0;
+        var hours = 0;
+        var review = 0;
+        rows.forEach(function(row){
+          var rowUnits = parseFloat(row.getAttribute("data-schedule-units") || "0");
+          if (Number.isFinite(rowUnits)) {
+            units += rowUnits;
+          }
+          var rowHoursRaw = row.getAttribute("data-schedule-hours") || "";
+          var rowHours = parseFloat(rowHoursRaw);
+          if (rowHoursRaw === "" || !Number.isFinite(rowHours)) {
+            review += 1;
+          } else {
+            hours += rowHours;
+          }
+        });
+        var countEl = card.querySelector(".day-order-count");
+        var unitsEl = card.querySelector(".day-unit-total");
+        var hoursEl = card.querySelector(".day-hour-total");
+        var reviewEl = card.querySelector(".day-review-count");
+        if (countEl) {
+          countEl.textContent = String(rows.length);
+        }
+        if (unitsEl) {
+          unitsEl.textContent = formatScheduleNumber(units);
+        }
+        if (hoursEl) {
+          hoursEl.textContent = formatScheduleNumber(hours);
+        }
+        if (reviewEl) {
+          reviewEl.textContent = review ? " + " + review + " review" : "";
+        }
+      });
+    }
+
+    document.querySelectorAll(".order-line[draggable='true']").forEach(function(row){
+      row.addEventListener("dragstart", function(event){
+        row.classList.add("is-dragging");
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", row.getAttribute("data-wo") || "");
+      });
+      row.addEventListener("dragend", function(){
+        row.classList.remove("is-dragging");
+      });
+    });
+
+    document.querySelectorAll(".day-card, .order-list[data-target-area='finished_goods']").forEach(function(target){
+      var dropList = target.matches(".order-list") ? target : target.querySelector(".order-list");
+      if (!dropList) {
+        return;
+      }
+      target.addEventListener("dragover", function(event){
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        target.classList.add("drag-over");
+      });
+      target.addEventListener("dragleave", function(event){
+        if (!target.contains(event.relatedTarget)) {
+          target.classList.remove("drag-over");
+        }
+      });
+      target.addEventListener("drop", function(event){
+        event.preventDefault();
+        target.classList.remove("drag-over");
+        var woNumber = event.dataTransfer.getData("text/plain") || "";
+        var targetArea = dropList.getAttribute("data-target-area") || "schedule";
+        var productionDate = dropList.getAttribute("data-production-date") || "";
+        if (!woNumber || (targetArea !== "finished_goods" && !productionDate)) {
+          return;
+        }
+        var draggedRow = document.querySelector(".order-line.is-dragging") || document.querySelector(".order-line[data-wo='" + woNumber.replace(/'/g, "\\'") + "']");
+        if (draggedRow && dropList) {
+          if (dropList.classList.contains("text-muted")) {
+            dropList.classList.remove("text-muted", "small");
+            dropList.textContent = "";
+            dropList.classList.add("d-flex", "flex-column", "gap-1");
+          }
+          dropList.appendChild(draggedRow);
+          if (targetArea === "finished_goods") {
+            draggedRow.removeAttribute("data-production-date");
+            draggedRow.classList.remove("lt-same-day");
+          } else {
+            draggedRow.setAttribute("data-production-date", productionDate);
+            var shipDateValue = draggedRow.getAttribute("data-ship-date") || "";
+            if (shipDateValue && Date.parse(shipDateValue) <= Date.parse(productionDate)) {
+              draggedRow.classList.add("lt-same-day");
+            } else {
+              draggedRow.classList.remove("lt-same-day");
+            }
+          }
+          draggedRow.classList.add("schedule-unsaved");
+        }
+        pendingScheduleChanges[woNumber] = {target_area: targetArea, production_date: productionDate};
+        recalcDaySummaries();
+        updateScheduleSaveState();
+      });
+    });
+
+    if (scheduleSaveButton) {
+      scheduleSaveButton.addEventListener("click", function(){
+        var assignments = Object.keys(pendingScheduleChanges).map(function(woNumber){
+          var change = pendingScheduleChanges[woNumber] || {};
+          return {
+            wo_number: woNumber,
+            target_area: change.target_area || "schedule",
+            production_date: change.production_date || ""
+          };
+        });
+        if (!assignments.length) {
+          return;
+        }
+        scheduleSaveButton.disabled = true;
+        scheduleSaveButton.textContent = "Saving";
+        setScheduleSaveMessage("", false);
+        fetch("/api/production_schedule", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({assignments: assignments})
+        })
+          .then(function(resp){
+            return resp.json().then(function(data){ return {ok: resp.ok, data: data}; });
+          })
+          .then(function(result){
+            if (!result.ok || !result.data.ok) {
+              throw new Error(result.data.error || "Schedule save failed");
+            }
+            pendingScheduleChanges = {};
+            document.querySelectorAll(".schedule-unsaved").forEach(function(row){
+              row.classList.remove("schedule-unsaved");
+            });
+            scheduleSaveButton.textContent = "Save Schedule";
+            updateScheduleSaveState();
+            setScheduleSaveMessage("Saved", false);
+          })
+          .catch(function(err){
+            scheduleSaveButton.disabled = false;
+            scheduleSaveButton.textContent = "Save Schedule";
+            setScheduleSaveMessage(err.message || "Schedule save failed", true);
+          });
+      });
+    }
   </script>
 </body>
 </html>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from erp_system.ledger.events import expand_nav_preinstalled
 from erp_system.ledger.events import expand_preinstalled_row
 from erp_system.ledger.events import parse_description
 
@@ -46,3 +47,27 @@ def test_nru_preinstall_keeps_model_and_skips_first_included_component() -> None
         "SSD-512GB-TLC5WT-TD1",
     ]
     assert expanded["Qty(+)"].tolist() == [1.0, 1, 2.0]
+
+
+def test_nuvo_716_variant_split_preserves_included_components() -> None:
+    nav = pd.DataFrame(
+        [
+            {
+                "QB Num": "POD-260859",
+                "Item": "Nuvo-7162GC-PoE",
+                "Description": "Nuvo-7162GC-PoE, including 2x DDR4-8GB-WT32-SM",
+                "Ship Date": "2026-07-08",
+                "Qty(+)": 1,
+                "Pre/Bare": "Pre",
+            }
+        ]
+    )
+
+    expanded = expand_nav_preinstalled(nav)
+    by_item = expanded.groupby("Item", as_index=False)["Qty(+)"].sum()
+
+    assert dict(zip(by_item["Item"], by_item["Qty(+)"])) == {
+        "CSM-7162GC": 1.0,
+        "DDR4-8GB-WT32-SM": 2.0,
+        "Nuvo-716xGC-PoE": 1.0,
+    }
