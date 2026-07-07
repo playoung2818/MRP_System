@@ -36,11 +36,13 @@ def build_structured_df(
     pdf_orders_df: pd.DataFrame,
     df_pod: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    terms_col = next((col for col in ("Terms", "Term", "term") if col in df_sales_order.columns), "Terms")
     needed_cols = {
         "Order Date": "SO Entry Date",
         "Name": "Customer",
         "P. O. #": "Customer PO",
         "QB Num": "QB Num",
+        terms_col: "Terms",
         "Item": "Item",
         "Qty(-)": "Qty",
         "Ship Date": "Lead Time",

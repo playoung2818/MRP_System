@@ -76,6 +76,8 @@ READY_ASSIGN_CACHE: list[dict] | None = None
 RECENT_HOME_SEARCHES: list[dict[str, str]] = []
 WEEKLY_LABOR_CAPACITY_HOURS = 80.0
 WO_PICKED_QTY_OVERRIDES_TABLE = "wo_picked_qty_overrides"
+PRODUCTION_SCHEDULE_OVERRIDES_TABLE = "production_schedule_overrides"
+FINISHED_GOODS_OVERRIDES_TABLE = "production_finished_goods_overrides"
 LABOR_HOURS_PER_UNIT = {
     "NUVO": 1.0,
     "POC": 0.5,
@@ -337,6 +339,165 @@ def _save_wo_picked_qty_override(wo_number: str, picked_qty: float, updated_by: 
             )
 
 
+def _ensure_production_schedule_overrides_table() -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE} (
+                    wo_number TEXT PRIMARY KEY,
+                    production_date DATE NOT NULL,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT
+                )
+                """
+            )
+        )
+
+
+def _load_production_schedule_overrides() -> dict[str, str]:
+    try:
+        _ensure_production_schedule_overrides_table()
+        rows = pd.read_sql_query(
+            text(f"SELECT wo_number, production_date FROM public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE}"),
+            con=engine,
+        )
+    except Exception:
+        return {}
+
+    overrides: dict[str, str] = {}
+    for _, row in rows.iterrows():
+        key = str(row.get("wo_number") or "").strip()
+        date_val = pd.to_datetime(row.get("production_date"), errors="coerce")
+        if key and pd.notnull(date_val):
+            overrides[key] = date_val.strftime("%Y-%m-%d")
+    return overrides
+
+
+def _save_production_schedule_override(
+    wo_number: str,
+    production_date: str,
+    updated_by: str | None = None,
+) -> None:
+    _ensure_production_schedule_overrides_table()
+    dialect = engine.dialect.name
+    updated_by = updated_by or None
+    with engine.begin() as conn:
+        if dialect == "postgresql":
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE}
+                        (wo_number, production_date, updated_at, updated_by)
+                    VALUES (:wo_number, :production_date, CURRENT_TIMESTAMP, :updated_by)
+                    ON CONFLICT (wo_number)
+                    DO UPDATE SET
+                        production_date = EXCLUDED.production_date,
+                        updated_at = CURRENT_TIMESTAMP,
+                        updated_by = EXCLUDED.updated_by
+                    """
+                ),
+                {"wo_number": wo_number, "production_date": production_date, "updated_by": updated_by},
+            )
+        else:
+            conn.execute(
+                text(
+                    f"DELETE FROM public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE} "
+                    "WHERE wo_number = :wo_number"
+                ),
+                {"wo_number": wo_number},
+            )
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE}
+                        (wo_number, production_date, updated_at, updated_by)
+                    VALUES (:wo_number, :production_date, CURRENT_TIMESTAMP, :updated_by)
+                    """
+                ),
+                {"wo_number": wo_number, "production_date": production_date, "updated_by": updated_by},
+            )
+
+
+def _ensure_finished_goods_overrides_table() -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS public.{FINISHED_GOODS_OVERRIDES_TABLE} (
+                    wo_number TEXT PRIMARY KEY,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT
+                )
+                """
+            )
+        )
+
+
+def _load_finished_goods_overrides() -> set[str]:
+    try:
+        _ensure_finished_goods_overrides_table()
+        rows = pd.read_sql_query(
+            text(f"SELECT wo_number FROM public.{FINISHED_GOODS_OVERRIDES_TABLE}"),
+            con=engine,
+        )
+    except Exception:
+        return set()
+    return {str(row.get("wo_number") or "").strip() for _, row in rows.iterrows() if str(row.get("wo_number") or "").strip()}
+
+
+def _save_finished_goods_override(wo_number: str, updated_by: str | None = None) -> None:
+    _ensure_finished_goods_overrides_table()
+    dialect = engine.dialect.name
+    updated_by = updated_by or None
+    with engine.begin() as conn:
+        if dialect == "postgresql":
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO public.{FINISHED_GOODS_OVERRIDES_TABLE}
+                        (wo_number, updated_at, updated_by)
+                    VALUES (:wo_number, CURRENT_TIMESTAMP, :updated_by)
+                    ON CONFLICT (wo_number)
+                    DO UPDATE SET
+                        updated_at = CURRENT_TIMESTAMP,
+                        updated_by = EXCLUDED.updated_by
+                    """
+                ),
+                {"wo_number": wo_number, "updated_by": updated_by},
+            )
+        else:
+            conn.execute(
+                text(
+                    f"DELETE FROM public.{FINISHED_GOODS_OVERRIDES_TABLE} "
+                    "WHERE wo_number = :wo_number"
+                ),
+                {"wo_number": wo_number},
+            )
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO public.{FINISHED_GOODS_OVERRIDES_TABLE}
+                        (wo_number, updated_at, updated_by)
+                    VALUES (:wo_number, CURRENT_TIMESTAMP, :updated_by)
+                    """
+                ),
+                {"wo_number": wo_number, "updated_by": updated_by},
+            )
+
+
+def _delete_finished_goods_override(wo_number: str) -> None:
+    _ensure_finished_goods_overrides_table()
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                f"DELETE FROM public.{FINISHED_GOODS_OVERRIDES_TABLE} "
+                "WHERE wo_number = :wo_number"
+            ),
+            {"wo_number": wo_number},
+        )
+
+
 def _picked_qty_for_wo(
     qb_num: object,
     total_units: float,
@@ -448,9 +609,11 @@ def _build_weekly_labor_capacity(df: pd.DataFrame, structured_df: pd.DataFrame |
                 family_units_detail[family_display] += remaining_units
 
             customer = first.get("Customer") or first.get("Name") or ""
+            terms = str(first.get("Terms") or "").strip()
             so_rows.append(
                 {
                     "qb_num": str(qb_num),
+                    "terms": terms,
                     "customer": str(customer or ""),
                     "first_item": str(first_item or ""),
                     "family": family_display,
@@ -556,10 +719,12 @@ def _build_unassigned_lt_orders(df: pd.DataFrame, structured_df: pd.DataFrame | 
 
         customer = first.get("Customer") or first.get("Name") or ""
         po_num = first.get("Customer PO") or first.get("P. O. #") or ""
+        terms = str(first.get("Terms") or "").strip()
         lead_time = pd.to_datetime(first.get("Lead Time"), errors="coerce")
         orders.append(
             {
                 "qb_num": str(qb_num),
+                "terms": terms,
                 "customer": str(customer or ""),
                 "line": f"{item_name} x {_format_num(labor_qty)}".strip(),
                 "lead_time": lead_time.strftime("%Y-%m-%d") if pd.notnull(lead_time) else "",
@@ -577,6 +742,96 @@ def _build_unassigned_lt_orders(df: pd.DataFrame, structured_df: pd.DataFrame | 
             }
         )
     return orders
+
+
+def _build_production_order_row(
+    qb_num: object,
+    so_group: pd.DataFrame,
+    *,
+    labor_item_map: dict[str, dict[str, object]],
+    wo_status_map: dict[str, str],
+    picked_qty_overrides: dict[str, float],
+    production_schedule_overrides: dict[str, str],
+    production_date_str: str,
+) -> dict:
+    first = so_group.iloc[0]
+    qb_key = str(qb_num).strip()
+    customer = first.get("Customer") or first.get("Name") or ""
+    terms = str(first.get("Terms") or "").strip()
+    qty_val = first.get("Qty")
+    try:
+        qty_float = float(qty_val)
+        qty_str = str(int(qty_float)) if qty_float.is_integer() else str(qty_float)
+    except Exception:
+        qty_str = str(qty_val) if qty_val is not None else ""
+        qty_float = _parse_float(qty_val, 0.0) or 0.0
+
+    labor_info = labor_item_map.get(qb_key, {})
+    labor_qty = _parse_float(labor_info.get("qty"))
+    if labor_qty is not None:
+        qty_float = labor_qty
+        qty_str = _format_num(labor_qty)
+
+    item_name = labor_info.get("item") or first.get("Item") or ""
+    unit_rows = labor_info.get("unit_rows") or []
+    wo_status = wo_status_map.get(qb_key, "NA")
+    picked_qty, picked_qty_saved = _picked_qty_for_wo(
+        qb_num,
+        qty_float,
+        wo_status,
+        picked_qty_overrides,
+    )
+    remaining_units = max(qty_float - picked_qty, 0.0)
+    remaining_ratio = 0.0 if qty_float <= 0 else min(max(remaining_units / qty_float, 0.0), 1.0)
+    base_labor_hours = _parse_float(labor_info.get("base_labor_hours"))
+    if base_labor_hours is not None:
+        labor_hours = base_labor_hours * remaining_ratio
+    else:
+        _, hours_per_unit = _classify_labor_family(item_name)
+        labor_hours = None if hours_per_unit is None else remaining_units * hours_per_unit
+
+    family_units_detail = {label: 0.0 for label in LABOR_FAMILY_LABELS.values()}
+    if unit_rows:
+        for unit_row in unit_rows:
+            detail_family = unit_row.get("family")
+            if detail_family in family_units_detail:
+                family_units_detail[str(detail_family)] += float(unit_row.get("qty") or 0.0) * remaining_ratio
+    else:
+        family, _ = _classify_labor_family(item_name)
+        if family in family_units_detail:
+            family_units_detail[family] += remaining_units
+
+    po_num = first.get("Customer PO") or first.get("P. O. #") or ""
+    ship_date = pd.to_datetime(first.get("Lead Time"), errors="coerce")
+    production_date = pd.to_datetime(production_date_str, errors="coerce")
+    lt_matches_production_date = (
+        pd.notnull(ship_date)
+        and pd.notnull(production_date)
+        and ship_date.normalize() <= production_date.normalize()
+    )
+    line = f"{item_name} x {qty_str}".strip()
+    return {
+        "qb_num": str(qb_num),
+        "terms": terms,
+        "customer": customer,
+        "line": line,
+        "qty": qty_float,
+        "qty_str": qty_str,
+        "remaining_units": remaining_units,
+        "remaining_units_str": _format_num(remaining_units),
+        "labor_hours": labor_hours,
+        "labor_hours_str": _format_num(labor_hours) if labor_hours is not None else "Review",
+        "family_units_detail": family_units_detail,
+        "ship_date": ship_date.strftime("%Y-%m-%d") if pd.notnull(ship_date) else "",
+        "production_date": production_date_str,
+        "lt_matches_production_date": lt_matches_production_date,
+        "production_date_saved": qb_key in production_schedule_overrides,
+        "wo_status": wo_status,
+        "picked_qty": picked_qty,
+        "picked_qty_str": _format_num(picked_qty),
+        "picked_qty_saved": picked_qty_saved,
+        "pdf_url": _find_pdf_url_for_so(str(qb_num), po_num),
+    }
 
 
 def _summarize_labor_rows(rows: list[dict]) -> dict:
@@ -776,11 +1031,13 @@ def _build_final_sales_order_from_db() -> pd.DataFrame:
 
     pdf_orders_df = _build_pdf_orders_df()
 
+    terms_col = next((col for col in ("Terms", "Term", "term") if col in df_sales_order.columns), "Terms")
     needed_cols = {
         "Order Date": "SO Entry Date",
         "Name": "Customer",
         "P. O. #": "Customer PO",
         "QB Num": "QB Num",
+        terms_col: "Terms",
         "Item": "Item",
         "Qty(-)": "Qty",
         "Ship Date": "Lead Time",
@@ -2477,72 +2734,199 @@ def production_planning():
     if df.empty:
         return render_template_string(ERR_TPL, error="No valid Lead Time rows in final_sales_order."), 503
 
+    today = pd.Timestamp.today().normalize()
     df["lead_date_str"] = df["Lead Time"].dt.strftime("%Y-%m-%d")
-    capacity_weeks = _build_weekly_labor_capacity(df, SO_INV)
+    production_schedule_overrides = _load_production_schedule_overrides()
+    finished_goods_overrides = _load_finished_goods_overrides()
     unassigned_lt_orders = _build_unassigned_lt_orders(df, SO_INV)
+    unassigned_lt_orders = [
+        row for row in unassigned_lt_orders
+        if str(row.get("qb_num") or "").strip() not in production_schedule_overrides
+        and str(row.get("qb_num") or "").strip() not in finished_goods_overrides
+    ]
     unassigned_lt_summary = _summarize_labor_rows(unassigned_lt_orders)
 
     wo_status_map = _wo_status_by_qb_num()
     picked_qty_overrides = _load_wo_picked_qty_overrides()
     labor_item_map = _build_first_wo_item_map(SO_INV)
+    df["__qb_key"] = df["QB Num"].astype(str).str.strip()
+    df["production_date_str"] = df["__qb_key"].map(production_schedule_overrides).fillna("")
+    df["__is_finished_goods"] = df["__qb_key"].isin(finished_goods_overrides)
+    default_schedule_mask = (
+        df["production_date_str"].eq("")
+        & ~_is_unassigned_lt_series(df["Lead Time"])
+    )
+    df.loc[default_schedule_mask, "production_date_str"] = df.loc[default_schedule_mask, "lead_date_str"]
+    capacity_df = df.loc[df["production_date_str"].ne("") & ~df["__is_finished_goods"]].copy()
+    capacity_df["Lead Time"] = pd.to_datetime(capacity_df["production_date_str"], errors="coerce")
+    capacity_df = capacity_df.loc[capacity_df["Lead Time"].ge(today) & capacity_df["Lead Time"].dt.weekday.lt(5)].copy()
+    capacity_weeks = _build_weekly_labor_capacity(capacity_df, SO_INV)
     date_groups: list[dict] = []
-    scheduled_df = df.loc[~_is_unassigned_lt_series(df["Lead Time"])].copy()
-    for date_str, date_group in scheduled_df.sort_values(["Lead Time", "QB Num"]).groupby(
-        "lead_date_str", sort=True
+    scheduled_df = df.loc[df["production_date_str"].ne("")].copy()
+    scheduled_df["__production_date"] = pd.to_datetime(scheduled_df["production_date_str"], errors="coerce")
+    passed_lt_df = scheduled_df.loc[
+        scheduled_df["__is_finished_goods"] | scheduled_df["__production_date"].lt(today)
+    ].copy()
+    scheduled_df = scheduled_df.loc[
+        ~scheduled_df["__is_finished_goods"]
+        &
+        scheduled_df["__production_date"].ge(today)
+        & scheduled_df["__production_date"].dt.weekday.lt(5)
+    ].copy()
+
+    passed_lt_orders: list[dict] = []
+    for qb_num, so_group in passed_lt_df.sort_values(["production_date_str", "Lead Time", "QB Num"]).groupby("QB Num"):
+        first = so_group.iloc[0]
+        row = _build_production_order_row(
+            qb_num,
+            so_group,
+            labor_item_map=labor_item_map,
+            wo_status_map=wo_status_map,
+            picked_qty_overrides=picked_qty_overrides,
+            production_schedule_overrides=production_schedule_overrides,
+            production_date_str=str(first.get("production_date_str") or ""),
+        )
+        passed_lt_orders.append(row)
+    passed_lt_orders.sort(key=lambda r: (r.get("production_date") or "", r.get("qb_num") or ""))
+    passed_lt_summary = _summarize_labor_rows(passed_lt_orders)
+
+    for date_str, date_group in scheduled_df.sort_values(["production_date_str", "Lead Time", "QB Num"]).groupby(
+        "production_date_str", sort=True
     ):
         orders: list[dict] = []
+        group_units = 0.0
+        group_hours = 0.0
+        group_unknown_hours = 0
         for qb_num, so_group in date_group.groupby("QB Num"):
-            first = so_group.iloc[0]
-            customer = first.get("Customer") or first.get("Name") or ""
-            qty_val = first.get("Qty")
-            try:
-                qty_float = float(qty_val)
-                qty_str = str(int(qty_float)) if qty_float.is_integer() else str(qty_float)
-            except Exception:
-                qty_str = str(qty_val) if qty_val is not None else ""
-                qty_float = _parse_float(qty_val, 0.0) or 0.0
-            labor_info = labor_item_map.get(str(qb_num).strip(), {})
-            labor_qty = _parse_float(labor_info.get("qty"))
-            if labor_qty is not None:
-                qty_float = labor_qty
-                qty_str = _format_num(labor_qty)
-            item_name = labor_info.get("item") or first.get("Item") or ""
-            wo_status = wo_status_map.get(str(qb_num).strip(), "NA")
-            picked_qty, picked_qty_saved = _picked_qty_for_wo(
+            row = _build_production_order_row(
                 qb_num,
-                qty_float,
-                wo_status,
-                picked_qty_overrides,
+                so_group,
+                labor_item_map=labor_item_map,
+                wo_status_map=wo_status_map,
+                picked_qty_overrides=picked_qty_overrides,
+                production_schedule_overrides=production_schedule_overrides,
+                production_date_str=date_str,
             )
-            line = f"{item_name} x {qty_str}".strip()
-            po_num = first.get("Customer PO") or first.get("P. O. #") or ""
-            pdf_url = _find_pdf_url_for_so(str(qb_num), po_num)
-            orders.append(
-                {
-                    "qb_num": str(qb_num),
-                    "customer": customer,
-                    "line": line,
-                    "qty": qty_float,
-                    "qty_str": qty_str,
-                    "wo_status": wo_status,
-                    "picked_qty": picked_qty,
-                    "picked_qty_str": _format_num(picked_qty),
-                    "picked_qty_saved": picked_qty_saved,
-                    "pdf_url": pdf_url,
-                }
-            )
+            remaining_units = _parse_float(row.get("remaining_units"), 0.0) or 0.0
+            labor_hours = _parse_float(row.get("labor_hours"))
+            group_units += remaining_units
+            if labor_hours is None:
+                group_unknown_hours += 1
+            else:
+                group_hours += labor_hours
+            orders.append(row)
         orders.sort(key=lambda r: r["qb_num"])
-        date_groups.append({"date": date_str, "orders": orders})
+        date_groups.append(
+            {
+                "date": date_str,
+                "orders": orders,
+                "total_units": group_units,
+                "total_units_str": _format_num(group_units),
+                "labor_hours": group_hours,
+                "labor_hours_str": _format_num(group_hours),
+                "unknown_hours_count": group_unknown_hours,
+            }
+        )
 
-    date_groups.sort(key=lambda g: g["date"])
+    date_groups_by_date = {g["date"]: g for g in date_groups}
+    horizon_start = pd.Timestamp.today().normalize()
+    horizon_end = horizon_start + pd.Timedelta(days=21)
+    for date_val in pd.date_range(horizon_start, horizon_end, freq="B"):
+        date_key = date_val.strftime("%Y-%m-%d")
+        if date_key not in date_groups_by_date:
+            date_groups_by_date[date_key] = {
+                "date": date_key,
+                "orders": [],
+                "total_units": 0.0,
+                "total_units_str": "0",
+                "labor_hours": 0.0,
+                "labor_hours_str": "0",
+                "unknown_hours_count": 0,
+            }
+    date_groups = sorted(date_groups_by_date.values(), key=lambda g: g["date"])
 
     return render_template_string(
         PRODUCTION_TPL,
         loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
         capacity_weeks=capacity_weeks,
+        passed_lt_orders=passed_lt_orders,
+        passed_lt_summary=passed_lt_summary,
         unassigned_lt_orders=unassigned_lt_orders,
         unassigned_lt_summary=unassigned_lt_summary,
         date_groups=date_groups,
+    )
+
+
+@app.route("/api/production_schedule", methods=["POST"])
+def api_production_schedule():
+    _ensure_loaded()
+    if _LAST_LOAD_ERR:
+        return jsonify({"ok": False, "error": _LAST_LOAD_ERR}), 503
+
+    payload = request.get_json(silent=True) or {}
+    assignments = payload.get("assignments")
+    if assignments is None:
+        assignments = [
+            {
+                "wo_number": payload.get("wo_number"),
+                "production_date": payload.get("production_date"),
+            }
+        ]
+    if not isinstance(assignments, list) or not assignments:
+        return jsonify({"ok": False, "error": "No schedule changes to save."}), 400
+
+    parsed_assignments: list[dict[str, str]] = []
+    for assignment in assignments:
+        if not isinstance(assignment, dict):
+            return jsonify({"ok": False, "error": "Invalid schedule assignment."}), 400
+        wo_number = str(assignment.get("wo_number") or "").strip()
+        if not wo_number:
+            return jsonify({"ok": False, "error": "Missing WO number."}), 400
+        target_area = str(assignment.get("target_area") or "schedule").strip()
+        if target_area == "finished_goods":
+            parsed_assignments.append(
+                {
+                    "wo_number": wo_number,
+                    "target_area": "finished_goods",
+                    "production_date": "",
+                }
+            )
+            continue
+        production_date_raw = str(assignment.get("production_date") or "").strip()
+        production_date = pd.to_datetime(production_date_raw, errors="coerce")
+        if pd.isna(production_date):
+            return jsonify({"ok": False, "error": "Production date must be a valid date."}), 400
+        if production_date.weekday() >= 5:
+            return jsonify({"ok": False, "error": "Production date cannot be a weekend."}), 400
+        parsed_assignments.append(
+            {
+                "wo_number": wo_number,
+                "target_area": "schedule",
+                "production_date": production_date.strftime("%Y-%m-%d"),
+            }
+        )
+
+    try:
+        updated_by = request.headers.get("X-User") or request.remote_addr
+        for assignment in parsed_assignments:
+            if assignment["target_area"] == "finished_goods":
+                _save_finished_goods_override(assignment["wo_number"], updated_by=updated_by)
+            else:
+                _save_production_schedule_override(
+                    assignment["wo_number"],
+                    assignment["production_date"],
+                    updated_by=updated_by,
+                )
+                _delete_finished_goods_override(assignment["wo_number"])
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "saved_count": len(parsed_assignments),
+            "assignments": parsed_assignments,
+        }
     )
 
 

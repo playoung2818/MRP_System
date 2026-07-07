@@ -110,10 +110,6 @@ def expand_preinstalled_row(row: pd.Series) -> pd.DataFrame:
     if keep_model_skip_first_component(row_item or parent_item):
         parent_item = row_item or parent_item
         tokens = tokens[1:]
-    variant_split = split_nuvo_716_variant_item(parent_item)
-    if variant_split:
-        tokens = variant_split
-        parent_item = clean_space(str(row.get("Item", "")))
 
     comp_rows = []
     for tok in tokens:
