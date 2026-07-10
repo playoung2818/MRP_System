@@ -7,6 +7,7 @@ import pandas as pd
 
 # Direct canonical-name mappings used across all ingestion sources
 # (POD memo parsing, shipping expansion, SO/item normalization paths).
+# Item Names been shortened because they exceed the maximum length allowed on QB, now expand them
 ITEM_MAPPINGS: dict[str, str] = {
     "AccsyBx-Cardholder-10108GC-5080": "AccsyBx-Cardholder-10108GC-5080_70_70Ti",
     "AccsyBx-Cardholder-10208GC-5080": "AccsyBx-Cardholder-10208GC-5080_70_70Ti",
@@ -42,7 +43,10 @@ ITEM_MAPPINGS: dict[str, str] = {
     "Nuvo-9208VTC-4M12(EA)": "Nuvo-9208VTC-4M12",
     "M.280-SSD-256GB-PCIe44-TLC5WT-TD2": " M.280-SSD-256GB-P44-TLC5WT-TD2",
     "AccsyBx-Cardholder-10109GC-508070TVentus": "AccsyBx-Cardholder-10109GC-5080",
-    "M.242-SSD-256GB-PCIe34-TLC5WT-TD1": "M.242-SSD-256GB-P34-TLC5WT-TD1"
+    "M.242-SSD-256GB-PCIe34-TLC5WT-TD1": "M.242-SSD-256GB-P34-TLC5WT-TD1",
+    "AccsyBx-RPnl_3Ant-Cbl-POC-766AW": "AccsyBx-RPnl_3Ant-Cbl-POC-766AWP",
+    "Cbl-2W5M-M12A8F-40CM-PK-CANFD-T": "Cbl-2W5M-M12A8F-40CM-PK-CANFD-TP",
+    "RPnl-2LTE_2Wifi-SEMIL17": "Pnl-2LTE2Wifi-SEMIL17"
 }
 
 # Pattern-based canonical mappings (e.g., JetPack/JP variants).

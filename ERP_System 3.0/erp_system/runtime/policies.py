@@ -38,5 +38,5 @@ EXCLUDED_PREINSTALLED_PO_VENDORS = frozenset(
 
 EXCLUDED_POD_SOURCE_NAMES = frozenset({"Neousys Technology Incorp."})
 
-PREINSTALL_MODEL_PREFIXES = ("N", "SEMIL", "POC", "F", "S1", "S2")
+PREINSTALL_MODEL_PREFIXES = ("N", "SEMIL", "POC", "F", "S1", "S2", "FLYC")
 PREINSTALL_KEEP_MODEL_SKIP_FIRST_COMPONENT_PREFIXES = ("NRU-1", "NRU-5") # NRU-52+-JON16-NS, only expand the peripherals, keep the SOM
