@@ -1426,7 +1426,7 @@ PRODUCTION_TPL = """
       <div class="d-flex justify-content-between align-items-end mb-2">
         <div>
           <div class="h5 m-0">Weekly Labor Capacity</div>
-          <div class="text-muted small">Estimated from first SO item family: Nuvo 1 hr/unit, POC 0.5, NRU 1, SEMIL 1. Capacity is 80 hrs/week.</div>
+          <div class="text-muted small">Estimated from first SO item family: Nuvo 1 hr/unit, POC 0.5, NRU 1, SEMIL 1. Capacity is 90 hrs/week.</div>
         </div>
       </div>
       <div class="capacity-grid">
