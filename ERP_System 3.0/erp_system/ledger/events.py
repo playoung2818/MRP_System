@@ -13,15 +13,16 @@ from erp_system.transform.shipping import get_shipping_model_group
 
 
 INCL_SPLIT = re.compile(r"\bincluding\b", re.IGNORECASE)
-QTYX_RE = re.compile(r"^\s*(\d+)\s*x\s*(.+)\s*$", re.IGNORECASE)
+QTYX_RE = re.compile(r"^\s*(\d+)\s*x\s*(.+)\s*$", re.IGNORECASE) # Detect quantity prefixes like: "2 x SSD-512GB-TLC5WT-TD1"
 ITEM_AND_SPLIT = re.compile(r"\s+\band\b\s+(?=(?:[A-Z0-9]+[.-]){1,}[A-Z0-9])", re.IGNORECASE)
 NUVO_716_VARIANT_SPLITS: dict[str, tuple[str, str]] = {
     "NUVO-7160GC-POE": ("Nuvo-716xGC-PoE", "CSM-7160GC"),
     "NUVO-7162GC-POE": ("Nuvo-716xGC-PoE", "CSM-7162GC"),
     "NUVO-7166GC-POE": ("Nuvo-716xGC-PoE", "CSM-7166GC"),
+    "NUVO-7168GC-POE": ("Nuvo-716xGC-PoE", "CSM-7168GC"),
     "NUVO-7160GC": ("Nuvo-716xGC", "CSM-7160GC"),
     "NUVO-7162GC": ("Nuvo-716xGC", "CSM-7162GC"),
-    "NUVO-7166GC": ("Nuvo-716xGC", "CSM-7166GC"),
+    "NUVO-7168GC": ("Nuvo-716xGC", "CSM-7168GC"),
 }
 def clean_space(s: str) -> str:
     if not isinstance(s, str):
