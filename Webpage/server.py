@@ -11,6 +11,7 @@ from flask import Flask, request, render_template_string, jsonify, abort, redire
 import pandas as pd
 import numpy as np
 from sqlalchemy import text
+from openpyxl import load_workbook
 
 from ui import (
     ERR_TPL,
@@ -22,6 +23,7 @@ from ui import (
     PRODUCTION_TPL,
 )
 from quote_ui import QUOTE_TPL
+from peripheral_status_ui import PERIPHERAL_STATUS_TPL
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ERP_MODULE_DIR = REPO_ROOT / "ERP_System 3.0"
@@ -36,6 +38,7 @@ os.environ.setdefault("OLLAMA_MODEL", "llama3.1")
 from erp_system.normalize.erp_normalize import normalize_item
 from erp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from erp_system.runtime.db_config import get_engine, DATABASE_DSN
+from erp_system.runtime.paths import PERIPHERAL_STATUS_FILE
 from erp_system.llm_backend import DataCache as LLMDataCache, answer_question as llm_answer_question
 
 app = Flask(__name__)
@@ -71,6 +74,8 @@ LEDGER_ITEM_INDEX: dict[str, pd.DataFrame] = {}
 PDF_DB_SEARCH_CACHE: dict[tuple[str, int], list[dict]] = {}
 INDEX_VIEW_CACHE: dict[tuple[str, str], dict] = {}
 QUOTATION_VIEW_CACHE: dict[tuple[str, int], dict] = {}
+PERIPHERAL_STATUS_CACHE: dict | None = None
+PERIPHERAL_STATUS_CACHE_KEY: tuple[str, int, int] | None = None
 CHAT_LOG_FILE = REPO_ROOT / "Webpage" / "chatbox.log"
 READY_ASSIGN_CACHE: list[dict] | None = None
 RECENT_HOME_SEARCHES: list[dict[str, str]] = []
@@ -3069,6 +3074,108 @@ def api_quotation_item_suggest():
         return jsonify({"ok": True, "items": out})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+def _peripheral_workbook_path() -> Path | None:
+    configured = os.environ.get("PERIPHERAL_STATUS_WORKBOOK", "").strip()
+    if configured:
+        candidate = Path(configured).expanduser()
+        return candidate if candidate.is_file() else None
+    configured_path = Path(PERIPHERAL_STATUS_FILE)
+    return configured_path if configured_path.is_file() else None
+
+
+def _display_excel_value(cell) -> str:
+    value = cell.value
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _excel_fill_class(cell) -> str:
+    if not cell.fill or cell.fill.fill_type is None:
+        return ""
+    color = cell.fill.fgColor
+    rgb = str(color.rgb or "").upper()[-6:] if color.type == "rgb" else ""
+    indexed = color.indexed if color.type == "indexed" else None
+    if rgb in {"FFFF00", "FFF2CC", "FFE699", "FFD966", "FFFF99"} or indexed in {6, 13}:
+        return "model-recommended"
+    if rgb in {"FF0000", "FFC7CE", "F4CCCC", "EA9999", "E06666"} or indexed in {2, 10}:
+        return "model-do-not-use"
+    return ""
+
+
+def _load_peripheral_status(force: bool = False) -> dict:
+    global PERIPHERAL_STATUS_CACHE, PERIPHERAL_STATUS_CACHE_KEY
+    path = _peripheral_workbook_path()
+    if path is None:
+        raise FileNotFoundError("Place 'Peripheral Status Update_YYYYMMDD.xlsx' in the ERP_System base folder, or set PERIPHERAL_STATUS_WORKBOOK to its full path.")
+    stat = path.stat()
+    cache_key = (str(path.resolve()).lower(), stat.st_mtime_ns, stat.st_size)
+    if not force and PERIPHERAL_STATUS_CACHE is not None and PERIPHERAL_STATUS_CACHE_KEY == cache_key:
+        return PERIPHERAL_STATUS_CACHE
+    workbook = load_workbook(path, read_only=False, data_only=True)
+    try:
+        names, sheets, missing = list(workbook.sheetnames), [], []
+        for label, aliases in (("SSD", ("ssd",)), ("DDR / Memory", ("ddr", "memory"))):
+            sheet_name = next((n for n in names if any(a in n.lower() for a in aliases)), None)
+            if sheet_name is None:
+                missing.append(label)
+                continue
+            ws = workbook[sheet_name]
+            values = [list(row) for row in ws.iter_rows(min_col=1, max_col=16)]
+            while values and not any(cell.value is not None for cell in values[-1]):
+                values.pop()
+            if not values:
+                sheets.append({"label": label, "headers": [chr(65+i) for i in range(16)], "rows": []})
+                continue
+            header_idx = next((i for i, row in enumerate(values) if any(c.value is not None for c in row)), 0)
+            source_headers = [_display_excel_value(c).strip() or chr(65+i) for i, c in enumerate(values[header_idx])]
+            hidden_headers = {"M.2 SSD", "常備料", "HQ Status", "WH01S"}
+            if label == "DDR / Memory":
+                hidden_headers.update({"DDR4-3200", "NTA Available", "Sales/week", "Category RR"})
+            visible_indexes = [
+                i for i, header in enumerate(source_headers)
+                if i != 1 and header not in hidden_headers
+            ]
+            headers = [source_headers[i] for i in visible_indexes]
+            rows = []
+            for excel_row in values[header_idx + 1:]:
+                source_cells = [_display_excel_value(c) for c in excel_row]
+                cells = [source_cells[i] for i in visible_indexes]
+                if any(value.strip() for value in source_cells):
+                    rows.append({
+                        "cells": cells,
+                        "model": source_cells[4].strip(),
+                        "status": source_cells[6].strip(),
+                        "cost": source_cells[7].strip(),
+                        "selling_price": source_cells[8].strip(),
+                        "hq_available": source_cells[9].strip(),
+                        "model_class": _excel_fill_class(excel_row[4]),
+                        "model_display_index": visible_indexes.index(4) if 4 in visible_indexes else -1,
+                        "search_text": " ".join(source_cells).lower(),
+                    })
+            sheets.append({"label": label, "headers": headers, "rows": rows})
+    finally:
+        workbook.close()
+    result = {"sheets": sheets, "warnings": (["Missing sheet(s): " + ", ".join(missing) + "."] if missing else []),
+              "workbook_name": path.name, "loaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    PERIPHERAL_STATUS_CACHE, PERIPHERAL_STATUS_CACHE_KEY = result, cache_key
+    return result
+
+
+@app.route("/quotation_lookup/peripheral_status")
+def peripheral_status():
+    try:
+        context = _load_peripheral_status(force=request.args.get("reload") == "1")
+        return render_template_string(PERIPHERAL_STATUS_TPL, error=None, **context)
+    except Exception as exc:
+        return render_template_string(PERIPHERAL_STATUS_TPL, error=str(exc), sheets=[], warnings=[],
+                                      workbook_name="", loaded_at="")
+
 
 @app.route("/quotation_lookup")
 def quotation_lookup():

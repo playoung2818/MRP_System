@@ -40,13 +40,13 @@ ITEM_MAPPINGS: dict[str, str] = {
     "GC-J-A64GB-O-Industrial-Nvidia": "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
     "GC-AGXOrin Ind. 64G-JP 6.0_NRU-230/240S": "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
     "AccsyBx-FPnl_3Ant-Cbl-NRU-170-PPC series": "AccsyBx-FPnl_3Ant-Cbl-NRU170PPC",
-    "Nuvo-9208VTC-4M12(EA)": "Nuvo-9208VTC-4M12",
     "M.280-SSD-256GB-PCIe44-TLC5WT-TD2": " M.280-SSD-256GB-P44-TLC5WT-TD2",
     "AccsyBx-Cardholder-10109GC-508070TVentus": "AccsyBx-Cardholder-10109GC-5080",
     "M.242-SSD-256GB-PCIe34-TLC5WT-TD1": "M.242-SSD-256GB-P34-TLC5WT-TD1",
     "AccsyBx-RPnl_3Ant-Cbl-POC-766AW": "AccsyBx-RPnl_3Ant-Cbl-POC-766AWP",
     "Cbl-2W5M-M12A8F-40CM-PK-CANFD-T": "Cbl-2W5M-M12A8F-40CM-PK-CANFD-TP",
-    "RPnl-2LTE_2Wifi-SEMIL17": "Pnl-2LTE2Wifi-SEMIL17"
+    "RPnl-2LTE_2Wifi-SEMIL17": "Pnl-2LTE2Wifi-SEMIL17",
+    "NRU-240S-AWP-BAG": "NRU-240S-AWP-BAG(EA)",
 }
 
 # Pattern-based canonical mappings (e.g., JetPack/JP variants).

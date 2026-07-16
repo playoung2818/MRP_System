@@ -81,6 +81,7 @@ QUOTE_TPL = """
       <div class="text-muted small">Loaded {{ loaded_at }}</div>
     </div>
     <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-primary" href="/quotation_lookup/peripheral_status">SSD &amp; Memory Status</a>
       <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
     </div>
   </div>
