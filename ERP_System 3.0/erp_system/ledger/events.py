@@ -22,6 +22,7 @@ NUVO_716_VARIANT_SPLITS: dict[str, tuple[str, str]] = {
     "NUVO-7168GC-POE": ("Nuvo-716xGC-PoE", "CSM-7168GC"),
     "NUVO-7160GC": ("Nuvo-716xGC", "CSM-7160GC"),
     "NUVO-7162GC": ("Nuvo-716xGC", "CSM-7162GC"),
+    "NUVO-7166GC": ("Nuvo-716xGC", "CSM-7166GC"),
     "NUVO-7168GC": ("Nuvo-716xGC", "CSM-7168GC"),
 }
 def clean_space(s: str) -> str:
@@ -67,8 +68,8 @@ def keep_model_skip_first_component(item: str) -> bool:
 def _split_special_shipping_variants(nav: pd.DataFrame, *, include_configured_groups: bool = True) -> pd.DataFrame:
     if nav.empty or "Item" not in nav.columns:
         return nav.copy()
-
-    def _group_items(value: object) -> list[tuple[str, float]] | tuple[tuple[str, float], ...] | None:
+    ## Combine 716X Mapping and configured shipping model groups Mapping
+    def _group_items(value: object) -> list[tuple[str, float]] | tuple[tuple[str, float], ...] | None:  
         if include_configured_groups:
             configured_group = get_shipping_model_group(value)
             if configured_group is not None:
@@ -78,7 +79,7 @@ def _split_special_shipping_variants(nav: pd.DataFrame, *, include_configured_gr
             return [(item, 1.0) for item in variant_items]
         return None
 
-    special_mask = nav["Item"].astype(str).map(lambda value: _group_items(value) is not None)
+    special_mask = nav["Item"].astype(str).map(lambda value: _group_items(value) is not None) 
     special_rows = nav.loc[special_mask].copy()
     other_rows = nav.loc[~special_mask].copy()
     if special_rows.empty:
