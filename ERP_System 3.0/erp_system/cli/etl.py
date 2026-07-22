@@ -23,6 +23,7 @@ from erp_system.ledger.events import _order_events, build_events, expand_nav_pre
 from erp_system.ledger.ledger import build_ledger_from_events
 from erp_system.runtime.config import (
     DB_SCHEMA,
+    SHIPPING_SCHEDULE_FILE,
     TBL_INVENTORY,
     TBL_ITEM_ATP,
     TBL_ITEM_SUMMARY,
@@ -181,6 +182,7 @@ def _print_violation_diff(current: pd.DataFrame) -> None:
 
 
 def main() -> None:
+    logging.info("Shipping schedule input: %s", SHIPPING_SCHEDULE_FILE)
     so_raw, inv_raw, ship_raw, pod_raw = extract_inputs()
     validate_input_tables(ship_raw, pod_raw)
     word_files_df = fetch_word_files_df(WORD_FILE_API_URLS)
