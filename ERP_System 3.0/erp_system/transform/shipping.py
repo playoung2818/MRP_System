@@ -33,6 +33,11 @@ SHIPPING_MODEL_GROUP_MAPPINGS: dict[str, tuple[tuple[str, float], ...]] = {
         ("mPCIe-CAN-IPEH-4047", 1.0),
         ("mPCIe-COM-2RS232-X203", 1.0)
     ),
+        "RGS-8805GC-7543P": (
+        ("RGS-8805GC", 1.0),
+        ("7543P", 1.0),
+        ("M.280-SSD-2TB-PCIe44-TLC5ET-TD1", 1.0)
+    ),
 }
 
 
