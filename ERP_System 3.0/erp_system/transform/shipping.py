@@ -40,11 +40,29 @@ SHIPPING_MODEL_GROUP_MAPPINGS: dict[str, tuple[tuple[str, float], ...]] = {
     ),
 }
 
+# Shipping model names whose core inventory items are fixed, while additional
+# peripherals must still be parsed from the shipping description.
+SHIPPING_MODEL_CORE_MAPPINGS: dict[str, tuple[tuple[str, float], ...]] = {
+    "NRU-161V-AWP-JON16-NS": (
+        ("NRU-161V-AWP", 1.0),
+        ("GC-Jetson-NX16G-Orin-Nvidia", 1.0),
+    ),
+}
+
 
 def get_shipping_model_group(model_name: object) -> tuple[tuple[str, float], ...] | None:
     """Return the fixed item group configured for a shipping model name."""
     key = str(model_name).strip().upper()
     for model, items in SHIPPING_MODEL_GROUP_MAPPINGS.items():
+        if model.upper() == key:
+            return items
+    return None
+
+
+def get_shipping_model_core_group(model_name: object) -> tuple[tuple[str, float], ...] | None:
+    """Return core items while allowing description peripherals to be added."""
+    key = str(model_name).strip().upper()
+    for model, items in SHIPPING_MODEL_CORE_MAPPINGS.items():
         if model.upper() == key:
             return items
     return None
@@ -100,4 +118,10 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
     return ship
 
 
-__all__ = ["SHIPPING_MODEL_GROUP_MAPPINGS", "get_shipping_model_group", "transform_shipping"]
+__all__ = [
+    "SHIPPING_MODEL_CORE_MAPPINGS",
+    "SHIPPING_MODEL_GROUP_MAPPINGS",
+    "get_shipping_model_core_group",
+    "get_shipping_model_group",
+    "transform_shipping",
+]

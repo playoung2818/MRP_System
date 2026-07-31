@@ -127,6 +127,36 @@ def test_configured_shipping_model_group_uses_item_quantity_multiplier() -> None
         SHIPPING_MODEL_GROUP_MAPPINGS.pop(key, None)
 
 
+def test_nru_161_ns_expands_core_and_description_peripherals() -> None:
+    nav = pd.DataFrame(
+        [
+            {
+                "QB Num": "POD-261017",
+                "Item": "NRU-161V-AWP-JON16-NS",
+                "Description": (
+                    "NRU-161V-AWP, including GC-OrinNX16G-JetPack 6.2_NRU-160/170, "
+                    "M.242-SSD-256GB-PCIe34-TLC5WT-TD1, "
+                    "FPnl-3Ant-NRU-160-AWP series"
+                ),
+                "Ship Date": "2026-08-26",
+                "Qty(+)": 1,
+                "Pre/Bare": "Pre",
+            }
+        ]
+    )
+
+    expanded = expand_nav_preinstalled(nav)
+
+    assert dict(zip(expanded["Item"], expanded["Qty(+)"])) == {
+        "NRU-161V-AWP": 1.0,
+        "GC-Jetson-NX16G-Orin-Nvidia": 1.0,
+        "M.242-SSD-256GB-P34-TLC5WT-TD1": 1.0,
+        "FPnl-3Ant-of NRU-160-AWP series": 1.0,
+    }
+    assert "NRU-161V-AWP-JON16-NS" not in set(expanded["Item"])
+    assert set(expanded["Date"]) == {pd.Timestamp("2026-08-31")}
+
+
 def test_pod_260978_flyc_300_group_parses_into_ledger_items() -> None:
     nav = pd.DataFrame(
         [
