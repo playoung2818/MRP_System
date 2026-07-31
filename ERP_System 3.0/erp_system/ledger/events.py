@@ -9,7 +9,7 @@ from pandas.api.types import CategoricalDtype
 from erp_system.normalize.erp_normalize import POD_SITE, normalize_item
 from erp_system.runtime.policies import EXCLUDED_POD_SOURCE_NAMES, PREINSTALL_KEEP_MODEL_SKIP_FIRST_COMPONENT_PREFIXES
 from erp_system.transform.common import _norm_cols, _norm_key
-from erp_system.transform.shipping import get_shipping_model_group
+from erp_system.transform.shipping import get_shipping_model_core_group, get_shipping_model_group
 
 
 INCL_SPLIT = re.compile(r"\bincluding\b", re.IGNORECASE)
@@ -120,11 +120,29 @@ def expand_preinstalled_row(row: pd.Series) -> pd.DataFrame:
     base_qty = float(row.get("Qty(+)", 0) or 0)
     row_item = clean_space(str(row.get("Item", "")))
     parent_item = parent or row_item
-    if keep_model_skip_first_component(row_item or parent_item):
+    core_group = get_shipping_model_core_group(row_item)
+    if core_group is not None:
+        parent_item = row_item
+        core_item_keys = {normalize_item(item).casefold() for item, _ in core_group}
+        tokens = [
+            token
+            for token in tokens
+            if normalize_item(parse_component_token(token)[0]).casefold() not in core_item_keys
+        ]
+    elif keep_model_skip_first_component(row_item or parent_item):
         parent_item = row_item or parent_item
         tokens = tokens[1:]
 
     comp_rows = []
+    for item, qty_per in core_group or ():
+        out = row.copy()
+        out["Parent_Item"] = parent_item
+        out["Item"] = item
+        out["Qty_per_parent"] = qty_per
+        out["Qty(+)"] = base_qty * qty_per
+        out["IsParent"] = False
+        comp_rows.append(out)
+
     for tok in tokens:
         item, qty_per = parse_component_token(tok)
         out = row.copy()
@@ -135,13 +153,18 @@ def expand_preinstalled_row(row: pd.Series) -> pd.DataFrame:
         out["IsParent"] = False
         comp_rows.append(out)
 
-    parent_row = row.copy()
-    parent_row["Parent_Item"] = parent_item
-    parent_row["Item"] = parent_item
-    parent_row["Qty_per_parent"] = 1.0
-    parent_row["IsParent"] = True
+    parent_row = None
+    if core_group is None:
+        parent_row = row.copy()
+        parent_row["Parent_Item"] = parent_item
+        parent_row["Item"] = parent_item
+        parent_row["Qty_per_parent"] = 1.0
+        parent_row["IsParent"] = True
     if comp_rows:
-        return pd.concat([pd.DataFrame(comp_rows), pd.DataFrame([parent_row])], ignore_index=True)
+        frames = [pd.DataFrame(comp_rows)]
+        if parent_row is not None:
+            frames.append(pd.DataFrame([parent_row]))
+        return pd.concat(frames, ignore_index=True)
     return pd.DataFrame([parent_row])
 
 

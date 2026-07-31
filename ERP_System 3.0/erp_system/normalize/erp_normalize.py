@@ -47,6 +47,7 @@ ITEM_MAPPINGS: dict[str, str] = {
     "Cbl-2W5M-M12A8F-40CM-PK-CANFD-T": "Cbl-2W5M-M12A8F-40CM-PK-CANFD-TP",
     "RPnl-2LTE_2Wifi-SEMIL17": "Pnl-2LTE2Wifi-SEMIL17",
     "NRU-240S-AWP-BAG": "NRU-240S-AWP-BAG(EA)",
+    "AccsyBx-Cardholder-960GC-RTX Pro 2000":"AccsyBx-CH-960GC-RTX Pro 2000",
 }
 
 # Pattern-based canonical mappings (e.g., JetPack/JP variants).
