@@ -1253,11 +1253,41 @@ def _build_quote_item_summaries(
         cleaned.append(out)
     return cleaned
 
-def _build_global_search_index(so: pd.DataFrame, inventory: pd.DataFrame) -> list[dict[str, str]]:
-    entries: list[dict[str, str]] = []
+def _build_global_search_index(so: pd.DataFrame, inventory: pd.DataFrame) -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
     seen: set[tuple[str, str]] = set()
 
-    def add(kind: str, label: object, href: str) -> None:
+    customer_by_so: dict[str, str] = {}
+    if so is not None and not so.empty and {"QB Num", "Name"}.issubset(so.columns):
+        for qb_num, group in so.groupby("QB Num", dropna=True, sort=False):
+            names = group["Name"].dropna().astype(str).str.strip()
+            names = names.loc[names.ne("")]
+            if not names.empty:
+                customer_by_so[str(qb_num).strip().casefold()] = names.iloc[0]
+
+    ship_date_by_so: dict[str, str] = {}
+    if so is not None and not so.empty and {"QB Num", "Ship Date"}.issubset(so.columns):
+        for qb_num, group in so.groupby("QB Num", dropna=True, sort=False):
+            ship_dates = pd.to_datetime(group["Ship Date"], errors="coerce").dropna()
+            if not ship_dates.empty:
+                ship_date_by_so[str(qb_num).strip().casefold()] = ship_dates.min().strftime("%Y-%m-%d")
+
+    on_hand_by_item: dict[str, str] = {}
+    if inventory is not None and not inventory.empty and {"Part_Number", "On Hand"}.issubset(inventory.columns):
+        for item, group in inventory.groupby("Part_Number", dropna=True):
+            item_key = str(item or "").strip().casefold()
+            if item_key:
+                on_hand_by_item[item_key] = _format_num(_aggregate_metric(group["On Hand"]))
+
+    def add(
+        kind: str,
+        label: object,
+        href: str,
+        *,
+        on_hand: str = "",
+        customer: str = "",
+        ship_date: str = "",
+    ) -> None:
         value = str(label or "").strip()
         if not value:
             return
@@ -1265,22 +1295,44 @@ def _build_global_search_index(so: pd.DataFrame, inventory: pd.DataFrame) -> lis
         if key in seen:
             return
         seen.add(key)
-        entries.append({"type": kind, "label": value, "href": href, "search": value.lower()})
+        entry: dict[str, object] = {"type": kind, "label": value, "href": href, "search": value.lower()}
+        if kind == "Item":
+            entry["on_hand"] = on_hand
+        if kind == "SO":
+            entry["customer"] = customer
+            entry["ship_date"] = ship_date
+        entries.append(entry)
 
     if so is not None and not so.empty:
         if "QB Num" in so.columns:
             for value in so["QB Num"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist():
-                add("SO", value, "/?so=" + quote(value, safe=""))
+                add(
+                    "SO",
+                    value,
+                    "/?so=" + quote(value, safe=""),
+                    customer=customer_by_so.get(value.casefold(), ""),
+                    ship_date=ship_date_by_so.get(value.casefold(), ""),
+                )
         if "Name" in so.columns:
             for value in so["Name"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist():
                 add("Customer", value, "/?customer=" + quote(value, safe=""))
         if "Item" in so.columns:
             for value in so["Item"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist():
-                add("Item", value, "/inventory_count?item=" + quote(value, safe=""))
+                add(
+                    "Item",
+                    value,
+                    "/quotation_lookup?item=" + quote(value, safe=""),
+                    on_hand=on_hand_by_item.get(value.casefold(), ""),
+                )
 
     if inventory is not None and not inventory.empty and "Part_Number" in inventory.columns:
         for value in inventory["Part_Number"].dropna().astype(str).str.strip().loc[lambda s: s.ne("")].unique().tolist():
-            add("Item", value, "/inventory_count?item=" + quote(value, safe=""))
+            add(
+                "Item",
+                value,
+                "/quotation_lookup?item=" + quote(value, safe=""),
+                on_hand=on_hand_by_item.get(value.casefold(), ""),
+            )
 
     return entries
 
@@ -2999,7 +3051,16 @@ def api_global_suggest():
         contains = [r for r in rows if ql in str(r.get("search", r.get("label", ""))).lower() and r not in starts]
         out = []
         for row in (starts + contains)[:20]:
-            out.append({"type": row.get("type", ""), "label": row.get("label", ""), "href": row.get("href", "")})
+            out.append(
+                {
+                    "type": row.get("type", ""),
+                    "label": row.get("label", ""),
+                    "href": row.get("href", ""),
+                    "on_hand": row.get("on_hand", ""),
+                    "customer": row.get("customer", ""),
+                    "ship_date": row.get("ship_date", ""),
+                }
+            )
         return jsonify({"ok": True, "items": out})
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500

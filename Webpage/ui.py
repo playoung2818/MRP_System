@@ -121,6 +121,10 @@ INDEX_TPL = """
     .global-search-wrap{ position:relative; }
     .global-suggest{ position:absolute; left:0; right:0; top:86px; z-index:1000; display:none; max-height:320px; overflow:auto; }
     .global-suggest-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .global-suggest-meta{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+    .global-suggest-customer{ color:#475569; font-size:.8rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .global-suggest-ship-date{ color:#64748b; font-size:.76rem; font-weight:700; white-space:nowrap; }
+    .global-suggest-on-hand{ color:#334155; font-size:.76rem; font-weight:700; white-space:nowrap; }
     .global-suggest-type{ flex:0 0 auto; font-size:.72rem; font-weight:800; color:#0d6efd; background:#e7f0ff; border:1px solid #cfe0ff; border-radius:999px; padding:.14rem .5rem; }
     .section-title{ font-size:1rem; font-weight:700; margin-bottom:12px; }
     .metric-card{ padding:22px; margin-bottom:24px; position:relative; overflow:hidden; }
@@ -148,41 +152,6 @@ INDEX_TPL = """
     .detail-panel h6{ text-transform:uppercase; font-size:.85rem; letter-spacing:.08em; font-weight:600; }
     .detail-panel .subcard{ border:1px solid #e2e8f0; border-radius:12px; padding:1rem; background:#f8fafc; height:100%; }
     .detail-panel .subcard.active{ border-color:#0d6efd; box-shadow:0 0 0 3px rgba(13,110,253,.15); }
-    .chat-toggle{
-      position:fixed; right:20px; bottom:20px; z-index:1100;
-      border:none; border-radius:999px; background:#0d6efd; color:#fff;
-      padding:.75rem 1.1rem; font-weight:700; box-shadow:0 10px 24px rgba(13,110,253,.35);
-    }
-    .chatbox{
-      position:fixed; right:20px; bottom:78px; z-index:1100;
-      width:min(380px, calc(100vw - 24px)); border-radius:14px;
-      background:#fff; border:1px solid #dbe4f0; box-shadow:0 18px 40px rgba(2,6,23,.2);
-      display:none; overflow:hidden;
-    }
-    .chatbox.open{ display:block; }
-    .chatbox-head{
-      background:#0d6efd; color:#fff; padding:.7rem .9rem;
-      display:flex; justify-content:space-between; align-items:center;
-      font-weight:700;
-    }
-    .chatbox-close{ background:transparent; border:none; color:#fff; font-size:1.1rem; line-height:1; }
-    .chatbox-body{ max-height:340px; min-height:220px; overflow:auto; background:#f8fbff; padding:.8rem; }
-    .chat-msg{ margin-bottom:.6rem; display:flex; }
-    .chat-msg.user{ justify-content:flex-end; }
-    .chat-bubble{
-      max-width:84%; border-radius:12px; padding:.5rem .65rem; font-size:.92rem; white-space:pre-wrap;
-      border:1px solid #dbe4f0; background:#fff; color:#0f172a;
-    }
-    .chat-msg.user .chat-bubble{
-      background:#0d6efd; color:#fff; border-color:#0d6efd;
-    }
-    .chatbox-form{ border-top:1px solid #e2e8f0; padding:.7rem; display:flex; gap:.5rem; background:#fff; }
-    .chatbox-input{ flex:1; min-width:0; }
-    .chatbox-hint{ padding:0 .75rem .65rem; color:#6b7280; font-size:.77rem; background:#fff; }
-    @media (max-width:576px){
-      .chat-toggle{ right:10px; bottom:10px; }
-      .chatbox{ right:10px; bottom:64px; width:calc(100vw - 20px); }
-    }
     @media (max-width:991.98px){
       .shell{ grid-template-columns:1fr; }
       .sidebar{ padding:18px 16px; }
@@ -195,8 +164,7 @@ INDEX_TPL = """
   <div class="shell">
     <aside class="sidebar">
       <div>
-        <div class="brand-title">LT Check</div>
-        <div class="brand-sub">Planning and shortage control</div>
+        <div class="brand-title">NTA MRP System</div>
       </div>
       <div class="nav-group">
         <div class="nav-label">Workspace</div>
@@ -204,23 +172,23 @@ INDEX_TPL = """
         <a class="nav-link" href="/quotation_lookup"><span class="nav-dot"></span><span>Quotations</span></a>
         <a class="nav-link" href="/inventory_count"><span class="nav-dot"></span><span>Inventory Count</span></a>
         <a class="nav-link" href="/item_info"><span class="nav-dot"></span><span>Item Info</span></a>
-        <a class="nav-link" href="/production_planning"><span class="nav-dot"></span><span>Planning</span></a>
+        <a class="nav-link" href="/production_planning"><span class="nav-dot"></span><span>Production Planning</span></a>
       </div>
       <div class="sidebar-note">
-        Use the homepage for quick search, shortage triage, and operational alerts. The sidebar is the permanent module navigation.
+        <p><strong>Quotations:</strong> For Inventory status lookup</p>
+        <p><strong>Inventory Count:</strong> For Warehouse physically Inventory Count (On Hand - WIP)</p>
+        <p><strong>Item Info:</strong> Item Details</p>
+        <p><strong>Production Planning:</strong> Production Line Schedule</p>
       </div>
     </aside>
 
     <main class="main">
       <div class="topbar">
         <div>
-          <div class="eyebrow">Dashboard</div>
-          <div class="hero-title">Howdy</div>
-          <div class="hero-sub">Sales please use Quotation function to get help with Invenotry quto.</div>
+          <div id="time-greeting" class="hero-title">Howdy</div>
         </div>
         <div class="topbar-actions">
           <div class="loaded-badge">Loaded {{ loaded_at }}</div>
-          <a class="btn btn-outline-secondary" href="/">Home</a>
           <a class="btn btn-outline-secondary" href="/?reload=1">Reload</a>
         </div>
       </div>
@@ -228,18 +196,13 @@ INDEX_TPL = """
       {% if not so_num and not customer_val %}
         <div class="card-lite search-card">
           <div class="search-title">Global Search</div>
-          <div class="search-sub">Search SO, item, or customer. Suggestions are cached and limited to 20 results.</div>
           <form id="global-search-form" class="row g-3 align-items-end" method="get" action="/global_search">
             <div class="col-12 col-xl-10 global-search-wrap">
-              <label class="form-label text-uppercase small text-muted fw-semibold" for="global-search-input">Search</label>
               <input id="global-search-input" autocomplete="off" class="form-control search-input" name="q" placeholder="SO, item, or customer" value="">
               <div id="global-search-suggest" class="list-group global-suggest"></div>
             </div>
             <div class="col-6 col-xl-1 d-grid">
               <button class="btn btn-primary" style="height:58px;font-weight:700;">Go</button>
-            </div>
-            <div class="col-6 col-xl-1 d-grid">
-              <a class="btn btn-outline-secondary" style="height:58px;font-weight:700;" href="/">Clear</a>
             </div>
           </form>
         </div>
@@ -247,10 +210,9 @@ INDEX_TPL = """
         <div class="row g-4">
           <div class="col-12 col-xl-4">
             <div class="card-lite metric-card">
-              <div class="eyebrow">Open Work</div>
               <div class="metric-value">{{ lt_unassigned_count or 0 }}</div>
-              <div class="metric-label">SO Not Assigned LT</div>
-              <div class="metric-note">Unique sales orders still using the `2099-07-04` placeholder lead time.</div>
+              <div class="metric-label">Sales Order Not Assigned LT</div>
+              <div class="metric-note">Ship Date is `07-04` or `12-31`</div>
             </div>
           </div>
         </div>
@@ -414,23 +376,18 @@ INDEX_TPL = """
     </main>
   </div>
 
-  <button id="erp-chat-toggle" class="chat-toggle" type="button">Chat</button>
-  <div id="erp-chatbox" class="chatbox" aria-hidden="true">
-    <div class="chatbox-head">
-      <span>ERP Assistant</span>
-      <button id="erp-chat-close" class="chatbox-close" type="button" aria-label="Close">x</button>
-    </div>
-    <div id="erp-chat-body" class="chatbox-body">
-      <div class="chat-msg">
-        <div class="chat-bubble">Ask me inventory, ATP, ATP date, or SO waiting questions.</div>
-      </div>
-    </div>
-    <form id="erp-chat-form" class="chatbox-form">
-      <input id="erp-chat-input" class="form-control form-control-sm chatbox-input" type="text" maxlength="500" placeholder="Type your question...">
-      <button id="erp-chat-send" class="btn btn-primary btn-sm" type="submit">Send</button>
-    </form>
-    <div class="chatbox-hint">Uses your existing LLM parser and DB tools.</div>
-  </div>
+  <script>
+  (function () {
+    var greeting = document.getElementById("time-greeting");
+    if (!greeting) return;
+    var hour = new Date().getHours();
+    greeting.textContent = hour < 12
+      ? "Good morning"
+      : hour < 18
+        ? "Good afternoon"
+        : "Good evening";
+  })();
+  </script>
   <script>
   (function () {
     var input = document.getElementById('global-search-input');
@@ -448,9 +405,19 @@ INDEX_TPL = """
     function showList(items) {
       if (!items || !items.length) { hideList(); return; }
       list.innerHTML = items.map(function (item) {
+        var customer = item.type === 'SO' && item.customer
+          ? '<span class="global-suggest-customer">' + esc(item.customer) + '</span>'
+          : '';
+        var shipDate = item.type === 'SO' && item.ship_date
+          ? '<span class="global-suggest-ship-date">Ship: ' + esc(item.ship_date) + '</span>'
+          : '';
+        var onHand = item.type === 'Item' && item.on_hand !== '' && item.on_hand != null
+          ? '<span class="global-suggest-on-hand">On Hand: ' + esc(item.on_hand) + '</span>'
+          : '';
         return '<a class="list-group-item list-group-item-action" href="' + esc(item.href) + '">' +
-          '<span class="global-suggest-row"><span>' + esc(item.label) + '</span>' +
-          '<span class="global-suggest-type">' + esc(item.type) + '</span></span></a>';
+          '<span class="global-suggest-row"><span>' + esc(item.label) + '</span>' + customer +
+          '<span class="global-suggest-meta">' + shipDate + onHand +
+          '<span class="global-suggest-type">' + esc(item.type) + '</span></span></span></a>';
       }).join('');
       list.style.display = 'block';
     }

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Greeting Animations</title>
+  <style>
+    body{margin:0;padding:32px;background:#f6f8fb;color:#0f172a;font-family:Segoe UI,Arial,sans-serif}
+    h1{margin:0 0 6px;font-size:22px}.note{margin:0 0 24px;color:#64748b}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+    .card{min-height:190px;padding:20px;border:1px solid #e2e8f0;border-radius:18px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.07);overflow:hidden}
+    .label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b}
+    .mascot{display:block;width:min(100%,480px);height:auto;margin:12px auto 0;transform-origin:22% 60%;animation:greet 2.2s ease-in-out infinite}
+    .card:nth-child(2) .mascot{animation-delay:.35s}
+    @keyframes greet{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-4px) rotate(-1deg)}50%{transform:translateY(0) rotate(1deg)}75%{transform:translateY(-2px) rotate(-.6deg)}}
+    @media(prefers-reduced-motion:reduce){.mascot{animation:none}}
+  </style>
+</head>
+<body>
+  <h1>Header greeting previews</h1>
+  <p class="note">Small motion, transparent background, and reduced-motion support.</p>
+  <div class="grid">
+    <section class="card"><div class="label">Morning</div><img class="mascot" src="assets/greetings/snoopy-good-morning.png" alt="Snoopy waving and saying good morning"></section>
+    <section class="card"><div class="label">Afternoon</div><img class="mascot" src="assets/greetings/snoopy-good-afternoon.png" alt="Snoopy waving and saying good afternoon"></section>
+  </div>
+</body>
+</html>
