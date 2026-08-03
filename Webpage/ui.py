@@ -218,26 +218,7 @@ INDEX_TPL = """
         </div>
 
         <div class="row g-4 page-section">
-          <div class="col-12 col-xl-6">
-            <div class="card-lite panel-card h-100">
-              <div class="section-title">Recent Searches</div>
-              <ul class="panel-list">
-                {% if recent_searches %}
-                  {% for item in recent_searches %}
-                    <li>
-                      <div>
-                        <div class="panel-kicker">{{ item.kind }}</div>
-                        <a href="{{ item.href }}">{{ item.label }}</a>
-                      </div>
-                    </li>
-                  {% endfor %}
-                {% else %}
-                  <li class="text-muted">No recent searches yet.</li>
-                {% endif %}
-              </ul>
-            </div>
-          </div>
-          <div class="col-12 col-xl-6">
+          <div class="col-12">
             <div class="card-lite panel-card h-100">
               <div class="section-title">Alerts</div>
               <ul class="panel-list">
@@ -1904,7 +1885,6 @@ QUOTE_TPL = """
 
   <form class="row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
     <div class="col-12 col-md-6">
-      <label class="form-label" for="quote-item">Item (fuzzy search)</label>
       <div style="position:relative;">
         <input id="quote-item" autocomplete="off" class="form-control form-control-lg"
                style="height:60px;font-size:1.05rem"

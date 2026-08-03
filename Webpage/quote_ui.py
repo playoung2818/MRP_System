@@ -72,6 +72,21 @@ QUOTE_TPL = """
     }
     .quote-legend .swatch-red{ background:#fecdd3; }
     .quote-legend .swatch-green{ background:#bbf7d0; }
+    .quote-search-form{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto auto;
+      align-items:start;
+      gap:12px;
+      margin:1.5rem 0 .55rem;
+    }
+    .quote-search-wrap{ position:relative; min-width:0; }
+    .quote-search-control{ height:60px; font-size:1.05rem; }
+    .quote-search-action{ height:60px; min-width:108px; font-size:1rem; font-weight:600; }
+    @media (max-width:767.98px){
+      .quote-search-form{ grid-template-columns:1fr 1fr; }
+      .quote-search-wrap{ grid-column:1 / -1; }
+      .quote-search-action{ width:100%; }
+    }
   </style>
 </head>
 <body>
@@ -86,12 +101,9 @@ QUOTE_TPL = """
     </div>
   </div>
 
-  <form class="row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
-    <div class="col-12 col-md-9">
-      <label class="form-label" for="quote-item">Item (fuzzy search)</label>
-      <div style="position:relative;">
-        <input id="quote-item" autocomplete="off" class="form-control form-control-lg"
-               style="height:60px;font-size:1.05rem"
+  <form class="quote-search-form" method="get">
+      <div class="quote-search-wrap">
+        <input id="quote-item" autocomplete="off" class="form-control form-control-lg quote-search-control"
                name="item"
                placeholder="Type item name or partial code"
                value="{{ item_val or '' }}">
@@ -105,18 +117,13 @@ QUOTE_TPL = """
         <div id="quote-suggest" class="list-group"
              style="position:absolute; top:96px; left:0; right:0; z-index:1000; display:none; max-height:280px; overflow:auto;"></div>
       </div>
-      <div class="quote-legend">
-        <span><span class="swatch swatch-red"></span>red = Max 0</span>
-        <span><span class="swatch swatch-green"></span>green = Max 99</span>
-      </div>
-    </div>
-    <div class="col-6 col-md-auto">
-      <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
-    </div>
-    <div class="col-6 col-md-auto">
-      <a class="btn btn-outline-secondary w-100" style="height:52px;font-size:1rem;font-weight:600" href="/quotation_lookup?reload=1">Reload</a>
-    </div>
+    <button class="btn btn-primary px-4 quote-search-action" type="submit">Search</button>
+    <a class="btn btn-outline-secondary px-4 quote-search-action d-flex align-items-center justify-content-center" href="/quotation_lookup?reload=1">Reload</a>
   </form>
+  <div class="quote-legend mb-4">
+    <span><span class="swatch swatch-red"></span>red = Max 0</span>
+    <span><span class="swatch swatch-green"></span>green = Max 99</span>
+  </div>
 
   <div class="summary mb-4">
     <div class="metric">
