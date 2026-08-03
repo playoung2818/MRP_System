@@ -1630,7 +1630,7 @@ def _dashboard_alerts() -> list[dict[str, str]]:
             .dropna().astype(str).str.strip().loc[lambda s: s.ne("")].nunique()
         )
         if neg_item_count:
-            alerts.append({"label": f"{int(neg_item_count)} items go negative before 2099-07-04.", "href": "/dashboard/negative_inventory"})
+            alerts.append({"label": f"{int(neg_item_count)} items will go negative in the future", "href": "/dashboard/negative_inventory"})
 
     if _LAST_LOADED_AT is not None:
         age_minutes = max(0, int((datetime.now() - _LAST_LOADED_AT).total_seconds() // 60))
