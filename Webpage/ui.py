@@ -69,6 +69,11 @@ INDEX_TPL = """
     }
     .main{ padding:28px; }
     .topbar{ display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px; }
+    .greeting-wrap{ display:flex; align-items:center; gap:12px; }
+    .greeting-image{
+      width:112px; height:112px; flex:0 0 112px;
+      object-fit:contain; object-position:center;
+    }
     .eyebrow{ font-size:.78rem; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); font-weight:700; }
     .hero-title{ font-size:2rem; font-weight:800; letter-spacing:-.03em; margin:.2rem 0; }
     .hero-sub{ color:var(--muted); }
@@ -184,8 +189,9 @@ INDEX_TPL = """
 
     <main class="main">
       <div class="topbar">
-        <div>
+        <div class="greeting-wrap">
           <div id="time-greeting" class="hero-title">Howdy</div>
+          <img class="greeting-image" src="/static/snoopy-figure-transparent.png" alt="Snoopy dancing">
         </div>
         <div class="topbar-actions">
           <div class="loaded-badge">Loaded {{ loaded_at }}</div>
@@ -212,7 +218,7 @@ INDEX_TPL = """
             <div class="card-lite metric-card">
               <div class="metric-value">{{ lt_unassigned_count or 0 }}</div>
               <div class="metric-label">Sales Order Not Assigned LT</div>
-              <div class="metric-note">Ship Date is `07-04` or `12-31`</div>
+              <div class="metric-note">Ship Date placeholder is `2099-12-31`</div>
             </div>
           </div>
         </div>

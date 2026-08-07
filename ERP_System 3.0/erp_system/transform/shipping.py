@@ -5,7 +5,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from erp_system.runtime.constants import UNASSIGNED_LT_DATE
+from erp_system.runtime.constants import PLACEHOLDER_DATE
 from erp_system.runtime.policies import PREINSTALL_MODEL_PREFIXES
 
 
@@ -46,6 +46,14 @@ SHIPPING_MODEL_CORE_MAPPINGS: dict[str, tuple[tuple[str, float], ...]] = {
     "NRU-161V-AWP-JON16-NS": (
         ("NRU-161V-AWP", 1.0),
         ("GC-Jetson-NX16G-Orin-Nvidia", 1.0),
+    ),
+    "NRU-172S-PPC-JON16-NS" : (
+        ("NRU-172S-PPC", 1.0),
+        ("GC-Jetson-NX16G-Orin-Nvidia", 1.0),        
+    ),
+    "NRU-171V-PPC-JON16-NS" : (
+        ("NRU-171V-PPC", 1.0),
+        ("GC-Jetson-NX16G-Orin-Nvidia", 1.0),        
     ),
 }
 
@@ -100,7 +108,7 @@ def transform_shipping(df_shipping_schedule: pd.DataFrame) -> pd.DataFrame:
     ship_date_raw = ship["Ship Date"].astype("string").str.strip()
     tbc_mask = ship_date_raw.str.upper().eq("TBC")
     ship["Ship Date"] = pd.to_datetime(ship["Ship Date"], errors="coerce")
-    ship.loc[tbc_mask, "Ship Date"] = UNASSIGNED_LT_DATE
+    ship.loc[tbc_mask, "Ship Date"] = PLACEHOLDER_DATE
 
     ship["Qty(+)"] = pd.to_numeric(ship["Qty(+)"], errors="coerce").fillna(0)
     ship["Order Qty"] = pd.to_numeric(ship["Order Qty"], errors="coerce").fillna(0)

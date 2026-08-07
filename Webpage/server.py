@@ -38,6 +38,7 @@ os.environ.setdefault("OLLAMA_MODEL", "llama3.1")
 from erp_system.normalize.erp_normalize import normalize_item
 from erp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from erp_system.runtime.db_config import get_engine, DATABASE_DSN
+from erp_system.runtime.constants import UNASSIGNED_LT_DATE
 from erp_system.runtime.paths import PERIPHERAL_STATUS_FILE
 from erp_system.llm_backend import DataCache as LLMDataCache, answer_question as llm_answer_question
 
@@ -1222,7 +1223,7 @@ def _build_quote_item_summaries(
     led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
     led = led.loc[led["item"].ne("") & led["Date"].notna() & led["Projected_NAV"].notna()].copy()
 
-    cutoff = pd.Timestamp("2099-07-04")
+    cutoff = UNASSIGNED_LT_DATE
     led_regular = (
         led.loc[led["Date"] < cutoff]
         .groupby("item", as_index=False)["Projected_NAV"]
@@ -1464,7 +1465,7 @@ def _ready_to_assign_rows() -> list[dict]:
         READY_ASSIGN_CACHE = []
         return READY_ASSIGN_CACHE
 
-    cutoff = pd.Timestamp("2099-07-04")
+    cutoff = UNASSIGNED_LT_DATE
     today = pd.Timestamp.today().normalize()
 
     so = SO_INV.copy()
@@ -1624,7 +1625,7 @@ def _dashboard_alerts() -> list[dict[str, str]]:
         led = LEDGER.copy()
         led["Date"] = pd.to_datetime(led["Date"], errors="coerce")
         led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
-        cutoff = pd.Timestamp("2099-07-04")
+        cutoff = UNASSIGNED_LT_DATE
         neg_item_count = (
             led.loc[led["Date"].notna() & led["Date"].lt(cutoff) & led["Projected_NAV"].lt(0), "Item"]
             .dropna().astype(str).str.strip().loc[lambda s: s.ne("")].nunique()
@@ -1649,7 +1650,7 @@ def _negative_inventory_detail_rows(limit: int | None = None) -> tuple[list[str]
     led = LEDGER.copy()
     led["Date"] = pd.to_datetime(led["Date"], errors="coerce")
     led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
-    cutoff = pd.Timestamp("2099-07-04")
+    cutoff = UNASSIGNED_LT_DATE
     neg = led.loc[
         led["Date"].notna()
         & led["Date"].lt(cutoff)
@@ -2307,7 +2308,7 @@ def dashboard_negative_inventory():
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
       <div class="h3 m-0">Negative Inventory Details</div>
-      <div class="text-muted small">Negative projected quantity rows before 2099-07-04.</div>
+      <div class="text-muted small">Negative projected quantity rows with real scheduled dates.</div>
     </div>
     <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
   </div>
@@ -3397,7 +3398,5 @@ if __name__ == "__main__":
     # Preload PDF map on startup for faster first-hit
     _load_pdf_map(force=True)
     app.run(debug=True, host="0.0.0.0", port=5002)
-
-
 
 
