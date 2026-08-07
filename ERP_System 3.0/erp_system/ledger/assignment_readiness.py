@@ -5,7 +5,7 @@ import pandas as pd
 from erp_system.contracts import TABLE_CONTRACTS, ensure_contract_columns
 from erp_system.ledger.atp import earliest_atp_strict
 from erp_system.normalize.erp_normalize import normalize_item
-from erp_system.runtime.constants import INVALID_SUPPLY_DATE_START, UNASSIGNED_LT_DATES
+from erp_system.runtime.constants import PLACEHOLDER_DATE
 from erp_system.transform.common import _norm_key
 
 
@@ -17,7 +17,7 @@ def _normalize_item_key(item: str) -> str:
 def _assignment_cutoff_dates(cutoff_date: str | None = None) -> set[pd.Timestamp]:
     if cutoff_date:
         return {pd.Timestamp(cutoff_date).normalize()}
-    return {pd.Timestamp(dt).normalize() for dt in UNASSIGNED_LT_DATES}
+    return {PLACEHOLDER_DATE.normalize()}
 
 
 def _build_adjusted_item_atp(
@@ -68,8 +68,20 @@ def _build_adjusted_item_atp(
     adjusted["Delta"] = pd.to_numeric(adjusted["Delta"], errors="coerce").fillna(0.0)
     adjusted = adjusted.loc[adjusted["Date"].notna()].copy()
     kind_col = adjusted.get("Kind", pd.Series("", index=adjusted.index)).astype(str)
-    invalid_inbound = kind_col.eq("IN") & adjusted["Date"].ge(INVALID_SUPPLY_DATE_START)
+    invalid_inbound = kind_col.eq("IN") & adjusted["Date"].ge(PLACEHOLDER_DATE)
     adjusted = adjusted.loc[~invalid_inbound].copy()
+    if adjusted.empty:
+        base = pd.DataFrame(
+            {
+                "Item_raw": [item],
+                "Item": [item],
+                "Date": [from_date],
+                "Projected_NAV": [opening],
+            }
+        )
+        base["FutureMin_NAV"] = base["Projected_NAV"]
+        return base[["Item", "Date", "Projected_NAV", "FutureMin_NAV"]]
+
     adjusted = adjusted.sort_values("Date", kind="mergesort").reset_index(drop=True)
     adjusted["Projected_NAV"] = opening + adjusted["Delta"].cumsum()
     projected = pd.to_numeric(adjusted["Projected_NAV"], errors="coerce").tolist()

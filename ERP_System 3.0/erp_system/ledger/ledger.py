@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from erp_system.normalize.erp_normalize import normalize_item
-from erp_system.runtime.constants import DUMMY_SHIP_DATES, SHORTAGE_REPORT_CUTOFF, UNASSIGNED_LT_FALLBACK_DATE
+from erp_system.runtime.constants import PLACEHOLDER_DATE
 from erp_system.transform.common import _norm_cols, _norm_key
 
 from .events import _order_events, build_opening_stock
@@ -100,11 +100,10 @@ def build_ledger_from_events(
     mask = (
         (ledger["Projected_NAV"] < 0)
         & ledger["Date"].notna()
-        & (ledger["Date"] != UNASSIGNED_LT_FALLBACK_DATE)
+        & ledger["Date"].ne(PLACEHOLDER_DATE)
         & ledger["Kind"].eq("OUT")
         & ledger["Source"].eq("SO")
         & ~ledger["Item"].fillna("").str.startswith("Total ")
-        & (ledger["Date"] < SHORTAGE_REPORT_CUTOFF)
     )
     violations = ledger.loc[mask].sort_values(by="Date").copy()
     ledger.sort_values(["Item", "Date", "Kind"], inplace=True, kind="mergesort")
@@ -134,7 +133,7 @@ def earliest_atp_by_projected_nav(
     df = df.loc[df["Date"].notna()]
     if df.empty:
         return None
-    df = df.loc[~df["Date"].isin(DUMMY_SHIP_DATES)]
+    df = df.loc[df["Date"].ne(PLACEHOLDER_DATE)]
     if df.empty:
         return None
     df["Projected_NAV"] = pd.to_numeric(df["Projected_NAV"], errors="coerce")
