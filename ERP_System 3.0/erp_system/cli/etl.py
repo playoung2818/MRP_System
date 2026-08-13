@@ -19,8 +19,9 @@ from erp_system.ingest.sources import (
 )
 from erp_system.ledger.atp import build_atp_view
 from erp_system.ledger.assignment_readiness import build_assignment_run_tables
-from erp_system.ledger.events import _order_events, build_events, expand_nav_preinstalled
+from erp_system.ledger.events import _order_events, build_events, expand_sap_preinstalled
 from erp_system.ledger.ledger import build_ledger_from_events
+from erp_system.normalize.erp_normalize import refresh_pod_site
 from erp_system.runtime.config import (
     DB_SCHEMA,
     SHIPPING_SCHEDULE_FILE,
@@ -185,6 +186,15 @@ def main() -> None:
     logging.info("Shipping schedule input: %s", SHIPPING_SCHEDULE_FILE)
     so_raw, inv_raw, ship_raw, pod_raw = extract_inputs()
     validate_input_tables(ship_raw, pod_raw)
+
+    try:
+        updated_site_map = refresh_pod_site(pod_raw)
+        logging.info(
+            "POD_SITE refreshed with %d entries (source file updated; takes effect on the next run).",
+            len(updated_site_map),
+        )
+    except Exception as exc:
+        logging.warning("Skipping POD_SITE refresh: %s", exc)
     word_files_df = fetch_word_files_df(WORD_FILE_API_URLS)
     pdf_orders_df = fetch_pdf_orders_df_from_DB()
 
@@ -198,8 +208,8 @@ def main() -> None:
     structured, final_sales_order = build_structured_df(so_full, word_files_df, inv, pdf_orders_df, pod)
     inv = add_onhand_minus_wip(inv, structured)
 
-    nav_exp = expand_nav_preinstalled(ship)
-    events_all = _order_events(build_events(structured, nav_exp, pod))
+    sap_exp = expand_sap_preinstalled(ship)
+    events_all = _order_events(build_events(structured, sap_exp, pod))
     ledger, item_summary, violations = build_ledger_from_events(structured, events_all, inv)
 
     violation_report = _prepare_violation_report(violations)

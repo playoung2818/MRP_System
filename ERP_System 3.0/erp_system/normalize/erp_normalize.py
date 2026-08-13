@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -105,80 +106,72 @@ PATTERN_MAPPINGS = [
 
 POD_SITE: dict[str, str] = {
     "POD-251229": "WH02D-NTA",
-    "POD-251518": "WH01X-NTA",
-    "POD-251590": "Drop Ship",
-    "POD-251593": "Drop Ship",
-    "POD-251594": "Drop Ship",
-    "POD-251705": "Drop Ship",
-    "POD-251728": "Drop Ship",
-    "POD-251759": "Drop Ship",
-    "POD-260006": "Drop Ship",
-    "POD-260015": "Drop Ship",
-    "POD-260016": "Drop Ship",
-    "POD-260017": "Drop Ship",
-    "POD-260031": "Drop Ship",
-    "POD-260046": "Drop Ship",
-    "POD-260087": "Drop Ship",
-    "POD-260096": "WH01X-NTA",
-    "POD-260106": "Drop Ship",
-    "POD-260107": "Drop Ship",
-    "POD-260108": "Drop Ship",
-    "POD-260109": "Drop Ship",
-    "POD-260119": "WH01X-NTA",
-    "POD-260120": "WH01X-NTA",
-    "POD-260121": "WH01X-NTA",
-    "POD-260137": "Drop Ship",
-    "POD-260144": "Drop Ship",
-    "POD-260145": "Drop Ship",
-    "POD-260158": "Drop Ship",
-    "POD-260161": "Drop Ship",
-    "POD-260162": "Drop Ship",
-    "POD-260163": "Drop Ship",
-    "POD-260171": "Drop Ship",
-    "POD-260182": "WH01X-NTA",
-    "POD-260202": "Drop Ship",
-    "POD-260208": "Drop Ship",
-    "POD-260237": "WH10Parts- NTA",
-    "POD-260250": "Drop Ship",
-    "POD-260261": "WH01X-NTA",
-    "POD-260267": "Drop Ship",
-    "POD-260268": "Drop Ship",
-    "POD-260269": "WH01X-NTA",
-    "POD-260273": "Drop Ship",
-    "POD-260275": "Drop Ship",
-    "POD-260276": "Drop Ship",
-    "POD-260282": "WH01DK-NTA",
-    "POD-260284": "Drop Ship",
-    "POD-260285": "WH01X-NTA",
-    "POD-260286": "WH01X-NTA",
-    "POD-260287": "WH01X-NTA",
-    "POD-260288": "WH01X-NTA",
     "POD-260289": "WH01X-NTA",
     "POD-260290": "WH01X-NTA",
     "POD-260291": "WH01X-NTA",
-    "POD-260313": "Drop Ship",
-    "POD-260314": "Drop Ship",
     "POD-260315": "Drop Ship",
-    "POD-260316": "Drop Ship",
-    "POD-260317": "Drop Ship",
-    "POD-260318": "Drop Ship",
-    "POD-260322": "WH01X-NTA",
-    "POD-260325": "WH01X-NTA",
-    "POD-260326": "WH01X-NTA",
-    "POD-260328": "Drop Ship",
-    "POD-260329": "Drop Ship",
-    "POD-260342": "Drop Ship",
-    "POD-260346": "Drop Ship",
-    "POD-260350": "Drop Ship",
-    "POD-260351": "Drop Ship",
-    "POD-260352": "Drop Ship",
-    "POD-260353": "Drop Ship",
-    "POD-260359": "Drop Ship",
-    "POD-260360": "Drop Ship",
-    "POD-260361": "Drop Ship",
-    "POD-260362": "Drop Ship",
-    "POD-260371": "Drop Ship",
-    "POD-260379": "Drop Ship",
+    "POD-260337": "Drop Ship",
+    "POD-260338": "Drop Ship",
+    "POD-260339": "Drop Ship",
+    "POD-260340": "Drop Ship",
+    "POD-260509": "Drop Ship",
+    "POD-260797": "Drop Ship",
+    "POD-260798": "Drop Ship",
+    "POD-260802": "WH01X-NTA",
+    "POD-260806": "Drop Ship",
+    "POD-260817": "Drop Ship",
+    "POD-260887": "WH01X-NTA",
+    "POD-260888": "WH01X-NTA",
+    "POD-260889": "WH01X-NTA",
+    "POD-260904": "Drop Ship",
+    "POD-260940": "Drop Ship",
+    "POD-260959": "Drop Ship",
+    "POD-260974": "Drop Ship",
+    "POD-260979": "WH01X-NTA",
+    "POD-260980": "WH01X-NTA",
+    "POD-260981": "WH01X-NTA",
+    "POD-260982": "WH01X-NTA",
+    "POD-260983": "WH01X-NTA",
+    "POD-261006": "Drop Ship",
+    "POD-261026": "Drop Ship",
+    "POD-261032": "Drop Ship",
+    "POD-261040": "WH01X-NTA",
+    "POD-261057": "Drop Ship",
+    "POD-261059": "Drop Ship",
+    "POD-261068": "WH01X-NTA",
+    "POD-261069": "WH01X-NTA",
+    "POD-261070": "WH01X-NTA",
+    "POD-261071": "WH01X-NTA",
+    "POD-261072": "WH01X-NTA",
+    "POD-261073": "WH01X-NTA",
+    "POD-261082": "Drop Ship",
+    "POD-261083": "Drop Ship",
+    "POD-261084": "Drop Ship",
+    "POD-261099": "WH01X-NTA",
+    "POD-261115": "Drop Ship",
+    "POD-261130": "Drop Ship",
+    "POD-261147": "Drop Ship",
+    "POD-261148": "Drop Ship",
+    "POD-261160": "Drop Ship",
+    "POD-261162": "Drop Ship",
+    "POD-261164": "WH01DK-NTA",
+    "POD-261170": "Drop Ship",
+    "POD-261171": "Drop Ship",
+    "POD-261174": "Drop Ship",
+    "POD-261175": "Drop Ship",
+    "POD-261182": "WH10Parts- NTA",
+    "POD-261184": "WH01X-NTA",
+    "POD-261185": "Drop Ship",
+    "POD-261193": "Drop Ship",
+    "POD-261195": "Drop Ship",
+    "POD-261196": "Drop Ship",
+    "POD-261207": "Drop Ship",
+    "POD-261208": "Drop Ship",
+    "POD-261209": "Drop Ship",
+    "POD-261215": "Drop Ship",
+    "POD-261216": "Drop Ship",
+    "POD-261226": "Drop Ship",
+    "POD-261231": "Drop Ship",
 }
 
 
@@ -226,6 +219,40 @@ def format_pod_site_entries(site_map: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
+_POD_SITE_BLOCK_RE = re.compile(
+    r"POD_SITE: dict\[str, str\] = \{\n.*?\n\}",
+    re.DOTALL,
+)
+
+
+def _build_pod_site_block(site_map: dict[str, str]) -> str:
+    lines = format_pod_site_entries(site_map)
+    if lines:
+        return f"POD_SITE: dict[str, str] = {{\n{lines}\n}}"
+    return "POD_SITE: dict[str, str] = {\n}"
+
+
+def refresh_pod_site(df_pod: pd.DataFrame) -> dict[str, str]:
+    """
+    Recompute POD_SITE from a raw POD dataframe (same shape as detect_pod_site
+    expects) and rewrite the POD_SITE block in this file on disk.
+
+    This edits the source file in place, so it takes effect starting the next
+    process run -- the POD_SITE already imported into memory for the run that
+    calls this is unchanged.
+    """
+    site_map = detect_pod_site(df_pod)
+
+    target = Path(__file__).resolve()
+    text = target.read_text(encoding="utf-8")
+    new_block = _build_pod_site_block(site_map)
+    updated_text, count = _POD_SITE_BLOCK_RE.subn(new_block, text, count=1)
+    if count != 1:
+        raise RuntimeError("Could not find POD_SITE block in erp_normalize.py")
+    target.write_text(updated_text, encoding="utf-8")
+    return site_map
+
+
 def normalize_item(value: Any) -> Any:
     """
     Normalize a single item name/identifier:
@@ -270,4 +297,5 @@ __all__ = [
     "POD_SITE",
     "detect_pod_site",
     "format_pod_site_entries",
+    "refresh_pod_site",
 ]

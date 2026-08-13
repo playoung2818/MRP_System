@@ -23,7 +23,10 @@ def transform_sales_order(df_sales_order: pd.DataFrame) -> pd.DataFrame:
     df = df[~df["Item"].str.startswith("total", na=False)]
     df = df[~df["Item"].str.lower().isin(["forwarding charge", "tariff (estimation)"])]
     if "Inventory Site" in df.columns:
-        df = df[df["Inventory Site"].astype(str).str.strip() == "WH01S-NTA"]
+        df["Inventory Site"] = df["Inventory Site"].astype(str).str.strip()
+    # Non-WH01S-NTA rows are kept here (not dropped) so the Google Sheet export can show
+    # every site; build_structured_df() re-applies the WH01S-NTA scope for ledger/ATP/
+    # assignment calculations so those numbers are unaffected.
     df["Item"] = df["Item"].map(normalize_item)
     return df
 

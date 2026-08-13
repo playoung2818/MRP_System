@@ -38,6 +38,21 @@ SHIPPING_MODEL_GROUP_MAPPINGS: dict[str, tuple[tuple[str, float], ...]] = {
         ("7543P", 1.0),
         ("M.280-SSD-2TB-PCIe44-TLC5ET-TD1", 1.0)
     ),
+        "Nuvo-9006LP-AUT-KS-CF1": (
+        ("Nuvo-9006LP-AUT-KS", 1.0),
+        ("i9-13900", 1.0),
+        ("DDR5-16GB-56-SM", 2.0),
+        ("M.280-SSD-1TB-PCIe44-TLC5-PN", 1.0),
+        ("M.230-10BASET1S-KS", 1.0),
+        ("MezIO-AE304-KS(EA)", 1.0)
+    ),
+        "Nuvo-9006LP-AUT-KS-CF2": (
+        ("Nuvo-9006LP-AUT-KS", 1.0),
+        ("i9-13900", 1.0),
+        ("DDR5-16GB-56-SM", 2.0),
+        ("M.280-SSD-1TB-PCIe44-TLC5-PN", 1.0),
+        ("MezIO-AE304-KS(EA)", 1.0)
+    ),
 }
 
 # Shipping model names whose core inventory items are fixed, while additional

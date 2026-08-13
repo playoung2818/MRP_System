@@ -218,7 +218,7 @@ INDEX_TPL = """
             <div class="card-lite metric-card">
               <div class="metric-value">{{ lt_unassigned_count or 0 }}</div>
               <div class="metric-label">Sales Order Not Assigned LT</div>
-              <div class="metric-note">Ship Date placeholder is `2099-12-31`</div>
+              <div class="metric-note">Placeholder ship date: 2099-12-31</div>
             </div>
           </div>
         </div>

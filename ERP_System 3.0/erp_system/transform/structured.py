@@ -46,6 +46,7 @@ def build_structured_df(
         "Item": "Item",
         "Qty(-)": "Qty",
         "Ship Date": "Lead Time",
+        "Inventory Site": "Inventory Site",
     }
     for src in list(needed_cols.keys()):
         if src not in df_sales_order.columns:
@@ -102,6 +103,9 @@ def build_structured_df(
     structured_df = df_order_picked.merge(inv_plus, how="left", left_on="Item", right_on="Part_Number")
     structured_df["Qty"] = pd.to_numeric(structured_df["Qty"], errors="coerce")
     structured_df = structured_df.dropna(subset=["Qty"])
+
+    if "Inventory Site" in structured_df.columns:
+        structured_df = structured_df[structured_df["Inventory Site"].astype(str).str.strip() == "WH01S-NTA"].copy()
 
     structured_df["Lead Time"] = pd.to_datetime(structured_df["Lead Time"], errors="coerce").dt.floor("D")
     mask_july4 = structured_df["Lead Time"].dt.month.eq(7) & structured_df["Lead Time"].dt.day.eq(4)

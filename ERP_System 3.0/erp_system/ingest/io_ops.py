@@ -19,10 +19,13 @@ from erp_system.runtime.policies import GOOGLE_SHEET_SPREADSHEET, GOOGLE_SHEET_W
 from ._helpers import (
     ServiceAccountCredentials,
     _copy_via_powershell,
+    _reset_gsheet_user_format,
     _resolve_google_cred_path,
     gspread,
     set_with_dataframe,
 )
+
+NON_WH01S_SITE_FILL = {"backgroundColor": {"red": 1.0, "green": 1.0, "blue": 0.0}}
 
 
 def engine():
@@ -88,6 +91,12 @@ def write_final_sales_order_to_gsheet(
         client = gspread.authorize(creds)
         sh = client.open(spreadsheet_name)
         export_df = df.copy()
+        if "Inventory Site" in export_df.columns:
+            site_raw = export_df["Inventory Site"]
+            site_text = site_raw.astype(str).str.strip().str.casefold()
+            blank_or_nan = site_raw.isna() | site_text.isin(["", "nan", "none", "<na>", "null"])
+            is_drop_ship = site_text.eq("drop ship")
+            export_df = export_df.loc[~(blank_or_nan | is_drop_ship)].copy()
         if "SO Entry Date" in export_df.columns:
             export_df = export_df.drop(columns=["SO Entry Date"])
         if "Remark" in export_df.columns:
@@ -117,11 +126,29 @@ def write_final_sales_order_to_gsheet(
             ws.clear()
         except gspread.exceptions.WorksheetNotFound:
             ws = sh.add_worksheet(title=worksheet_name, rows=100, cols=26)
+        _reset_gsheet_user_format(ws)
         set_with_dataframe(ws, export_df, include_index=False, include_column_header=True, resize=True)
         try:
             ws.freeze(rows=1)
         except Exception:
             pass
+        if "Inventory Site" in export_df.columns:
+            non_wh01_rows = [
+                row_idx
+                for row_idx, site in enumerate(export_df["Inventory Site"].astype(str).str.strip(), start=2)
+                if site and site != "WH01S-NTA"
+            ]
+            if non_wh01_rows:
+                last_col = gspread.utils.rowcol_to_a1(1, len(export_df.columns))
+                last_col_letter = "".join(ch for ch in last_col if ch.isalpha())
+                formats = [
+                    {"range": f"A{row}:{last_col_letter}{row}", "format": NON_WH01S_SITE_FILL}
+                    for row in non_wh01_rows
+                ]
+                try:
+                    ws.batch_format(formats)
+                except Exception:
+                    pass
         print(f"Wrote {len(export_df)} rows to Google Sheet -> {spreadsheet_name} / {worksheet_name}")
     finally:
         if temp_cred_path:

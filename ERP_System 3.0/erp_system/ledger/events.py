@@ -65,11 +65,11 @@ def keep_model_skip_first_component(item: str) -> bool:
     return normalized.startswith(PREINSTALL_KEEP_MODEL_SKIP_FIRST_COMPONENT_PREFIXES)
 
 
-def _split_special_shipping_variants(nav: pd.DataFrame, *, include_configured_groups: bool = True) -> pd.DataFrame:
-    if nav.empty or "Item" not in nav.columns:
-        return nav.copy()
+def _split_special_shipping_variants(sap: pd.DataFrame, *, include_configured_groups: bool = True) -> pd.DataFrame:
+    if sap.empty or "Item" not in sap.columns:
+        return sap.copy()
     ## Combine 716X Mapping and configured shipping model groups Mapping
-    def _group_items(value: object) -> list[tuple[str, float]] | tuple[tuple[str, float], ...] | None:  
+    def _group_items(value: object) -> list[tuple[str, float]] | tuple[tuple[str, float], ...] | None:
         if include_configured_groups:
             configured_group = get_shipping_model_group(value)
             if configured_group is not None:
@@ -79,11 +79,11 @@ def _split_special_shipping_variants(nav: pd.DataFrame, *, include_configured_gr
             return [(item, 1.0) for item in variant_items]
         return None
 
-    special_mask = nav["Item"].astype(str).map(lambda value: _group_items(value) is not None) 
-    special_rows = nav.loc[special_mask].copy()
-    other_rows = nav.loc[~special_mask].copy()
+    special_mask = sap["Item"].astype(str).map(lambda value: _group_items(value) is not None)
+    special_rows = sap.loc[special_mask].copy()
+    other_rows = sap.loc[~special_mask].copy()
     if special_rows.empty:
-        return nav.copy()
+        return sap.copy()
 
     split_parts = []
     for _, row in special_rows.iterrows():
@@ -103,7 +103,7 @@ def _split_special_shipping_variants(nav: pd.DataFrame, *, include_configured_gr
             split_parts.append(pd.DataFrame(component_rows))
 
     split_df = pd.concat(split_parts, ignore_index=True) if split_parts else special_rows.iloc[0:0].copy()
-    needed_cols = list(nav.columns)
+    needed_cols = list(sap.columns)
     for col in ["Parent_Item", "Qty_per_parent", "IsParent"]:
         if col not in needed_cols:
             needed_cols.append(col)
@@ -111,7 +111,7 @@ def _split_special_shipping_variants(nav: pd.DataFrame, *, include_configured_gr
     other_rows = other_rows.reindex(columns=needed_cols, fill_value=pd.NA)
     frames = [df for df in (split_df, other_rows) if not df.empty]
     if not frames:
-        return nav.iloc[0:0].copy()
+        return sap.iloc[0:0].copy()
     return frames[0].copy() if len(frames) == 1 else pd.concat(frames, ignore_index=True)
 
 
@@ -168,37 +168,37 @@ def expand_preinstalled_row(row: pd.Series) -> pd.DataFrame:
     return pd.DataFrame([parent_row])
 
 
-def expand_nav_preinstalled(nav: pd.DataFrame) -> pd.DataFrame:
-    nav = nav.copy()
+def expand_sap_preinstalled(sap: pd.DataFrame) -> pd.DataFrame:
+    sap = sap.copy()
     for col in ["Pre/Bare", "Qty(+)", "Item"]:
-        if col not in nav.columns:
-            raise ValueError(f"NAV must contain '{col}' column.")
-    if "Description" not in nav.columns:
-        nav["Description"] = ""
+        if col not in sap.columns:
+            raise ValueError(f"SAP must contain '{col}' column.")
+    if "Description" not in sap.columns:
+        sap["Description"] = ""
 
-    nav["Description"] = nav["Description"].astype(str).apply(clean_space)
-    configured_mask = nav["Item"].astype(str).map(lambda value: get_shipping_model_group(value) is not None)
-    nav_configured = nav.loc[configured_mask].copy()
-    nav = nav.loc[~configured_mask].copy()
+    sap["Description"] = sap["Description"].astype(str).apply(clean_space)
+    configured_mask = sap["Item"].astype(str).map(lambda value: get_shipping_model_group(value) is not None)
+    sap_configured = sap.loc[configured_mask].copy()
+    sap = sap.loc[~configured_mask].copy()
 
-    pre_mask = nav["Pre/Bare"].astype(str).str.strip().str.casefold().eq("pre")
-    nav_pre = nav.loc[pre_mask].copy()
-    nav_other = nav.loc[~pre_mask].copy()
+    pre_mask = sap["Pre/Bare"].astype(str).str.strip().str.casefold().eq("pre")
+    sap_pre = sap.loc[pre_mask].copy()
+    sap_other = sap.loc[~pre_mask].copy()
 
-    expanded_parts = [expand_preinstalled_row(r) for _, r in nav_pre.iterrows()]
-    expanded_pre = pd.concat(expanded_parts, ignore_index=True) if expanded_parts else nav_pre.copy()
+    expanded_parts = [expand_preinstalled_row(r) for _, r in sap_pre.iterrows()]
+    expanded_pre = pd.concat(expanded_parts, ignore_index=True) if expanded_parts else sap_pre.copy()
 
-    needed_cols = list(nav.columns) + ["Parent_Item", "Qty_per_parent", "IsParent"]
+    needed_cols = list(sap.columns) + ["Parent_Item", "Qty_per_parent", "IsParent"]
     expanded_pre = expanded_pre.reindex(columns=needed_cols, fill_value=pd.NA)
-    nav_other = nav_other.reindex(columns=needed_cols, fill_value=pd.NA)
-    nav_other.loc[:, "Parent_Item"] = nav_other["Item"]
-    nav_other.loc[:, "Qty_per_parent"] = 1.0
-    nav_other.loc[:, "IsParent"] = True
+    sap_other = sap_other.reindex(columns=needed_cols, fill_value=pd.NA)
+    sap_other.loc[:, "Parent_Item"] = sap_other["Item"]
+    sap_other.loc[:, "Qty_per_parent"] = 1.0
+    sap_other.loc[:, "IsParent"] = True
 
-    expanded_configured = _split_special_shipping_variants(nav_configured)
+    expanded_configured = _split_special_shipping_variants(sap_configured)
     expanded_configured = expanded_configured.reindex(columns=needed_cols, fill_value=pd.NA)
 
-    expanded_all = pd.concat([expanded_configured, expanded_pre, nav_other], ignore_index=True)
+    expanded_all = pd.concat([expanded_configured, expanded_pre, sap_other], ignore_index=True)
     expanded_all = _split_special_shipping_variants(expanded_all, include_configured_groups=False)
     expanded_all["Qty(+)"] = pd.to_numeric(expanded_all["Qty(+)"], errors="coerce").fillna(0.0)
     expanded_all["Qty_per_parent"] = pd.to_numeric(expanded_all["Qty_per_parent"], errors="coerce").fillna(1.0)
@@ -251,15 +251,15 @@ def _order_events(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def build_events(so: pd.DataFrame, nav_exp: pd.DataFrame, pod: pd.DataFrame | None = None) -> pd.DataFrame:
+def build_events(so: pd.DataFrame, sap_exp: pd.DataFrame, pod: pd.DataFrame | None = None) -> pd.DataFrame:
     so = _norm_cols(so)
-    nav = _norm_cols(nav_exp)
+    sap = _norm_cols(sap_exp)
 
-    nav_keep = ["Date", "Item", "Qty(+)", "QB Num", "P. O. #", "Name"]
-    for c in nav_keep:
-        if c not in nav.columns:
-            nav[c] = pd.NA
-    inbound = nav.loc[nav["Qty(+)"] > 0, nav_keep].rename(columns={"Qty(+)": "Delta"}).assign(Kind="IN", Source="NAV")
+    sap_keep = ["Date", "Item", "Qty(+)", "QB Num", "P. O. #", "Name"]
+    for c in sap_keep:
+        if c not in sap.columns:
+            sap[c] = pd.NA
+    inbound = sap.loc[sap["Qty(+)"] > 0, sap_keep].rename(columns={"Qty(+)": "Delta"}).assign(Kind="IN", Source="HQ")
     inbound["Item_raw"] = inbound["Item"]
     inbound["Item"] = _norm_key(inbound["Item"])
 
@@ -287,7 +287,7 @@ def build_events(so: pd.DataFrame, nav_exp: pd.DataFrame, pod: pd.DataFrame | No
         for c in pod_keep:
             if c not in pod.columns:
                 pod[c] = pd.NA
-        pod_events = pod.loc[pod["Qty(+)"] > 0, pod_keep].rename(columns={"Ship Date": "Date", "Qty(+)": "Delta"}).assign(Kind="IN", Source="POD")
+        pod_events = pod.loc[pod["Qty(+)"] > 0, pod_keep].rename(columns={"Ship Date": "Date", "Qty(+)": "Delta"}).assign(Kind="IN", Source="USA")
         pod_events["Item_raw"] = pod_events["Item"]
         pod_events["Item"] = _norm_key(pod_events["Item"])
         pod_events = pod_events.reindex(columns=cols)
@@ -355,7 +355,7 @@ __all__ = [
     "build_opening_stock",
     "build_reconcile_events",
     "clean_space",
-    "expand_nav_preinstalled",
+    "expand_sap_preinstalled",
     "parse_component_token",
     "parse_description",
 ]

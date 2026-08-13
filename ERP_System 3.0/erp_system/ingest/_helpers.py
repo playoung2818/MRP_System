@@ -89,14 +89,17 @@ def _resolve_google_cred_path(explicit_path: str | None = None) -> str:
 
 def _reset_gsheet_user_format(ws) -> None:
     try:
+        last_col = gspread.utils.rowcol_to_a1(1, max(ws.col_count, 1))
+        last_col_letter = "".join(ch for ch in last_col if ch.isalpha())
+        full_range = f"A1:{last_col_letter}{max(ws.row_count, 1)}"
         ws.batch_format(
             [
                 {
-                    "range": None,
+                    "range": full_range,
                     "format": {
-                        "backgroundColor": None,
+                        "backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
                         "textFormat": {
-                            "foregroundColor": None,
+                            "foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0},
                             "bold": False,
                             "italic": False,
                             "underline": False,
