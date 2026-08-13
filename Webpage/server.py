@@ -38,7 +38,7 @@ os.environ.setdefault("OLLAMA_MODEL", "llama3.1")
 from erp_system.normalize.erp_normalize import normalize_item
 from erp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from erp_system.runtime.db_config import get_engine, DATABASE_DSN
-from erp_system.runtime.constants import UNASSIGNED_LT_DATE
+from erp_system.runtime.constants import PLACEHOLDER_DATE
 from erp_system.runtime.paths import PERIPHERAL_STATUS_FILE
 from erp_system.llm_backend import DataCache as LLMDataCache, answer_question as llm_answer_question
 
@@ -54,7 +54,7 @@ engine = get_engine()
 # =========================
 SO_INV: pd.DataFrame | None = None
 INVENTORY_STATUS: pd.DataFrame | None = None
-NAV: pd.DataFrame | None = None
+SAP: pd.DataFrame | None = None
 OPEN_PO: pd.DataFrame | None = None
 FINAL_SO: pd.DataFrame | None = None
 LEDGER: pd.DataFrame | None = None
@@ -1223,15 +1223,15 @@ def _build_quote_item_summaries(
     led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
     led = led.loc[led["item"].ne("") & led["Date"].notna() & led["Projected_NAV"].notna()].copy()
 
-    cutoff = UNASSIGNED_LT_DATE
+    placeholder_date = PLACEHOLDER_DATE
     led_regular = (
-        led.loc[led["Date"] < cutoff]
+        led.loc[led["Date"].ne(placeholder_date)]
         .groupby("item", as_index=False)["Projected_NAV"]
         .min()
         .rename(columns={"Projected_NAV": "min_regular"})
     )
     led_2099 = (
-        led.loc[led["Date"] <= cutoff]
+        led.loc[led["Date"] <= placeholder_date]
         .groupby("item", as_index=False)["Projected_NAV"]
         .min()
         .rename(columns={"Projected_NAV": "min_2099"})
@@ -1338,7 +1338,7 @@ def _build_global_search_index(so: pd.DataFrame, inventory: pd.DataFrame) -> lis
     return entries
 
 def _load_from_db(force: bool = False):
-    global SO_INV, INVENTORY_STATUS, NAV, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
+    global SO_INV, INVENTORY_STATUS, SAP, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
     global ITEM_SUGGEST_CACHE, GLOBAL_SEARCH_INDEX
     global SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX
     global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE, QUOTE_ITEM_SUGGEST_ROWS, READY_ASSIGN_CACHE
@@ -1346,7 +1346,7 @@ def _load_from_db(force: bool = False):
         if (
             force
             or SO_INV is None
-            or NAV is None
+            or SAP is None
             or OPEN_PO is None
             or FINAL_SO is None
             or LEDGER is None
@@ -1354,7 +1354,7 @@ def _load_from_db(force: bool = False):
         ):
             so = _read_table("public", "wo_structured")
             inventory = _read_table("public", "inventory_status")
-            nav = _read_table("public", "NT Shipping Schedule")
+            sap = _read_table("public", "NT Shipping Schedule")
             open_po = _read_table("public", "Open_Purchase_Orders")
             ledger = _read_table("public", "ledger_analytics")
             # item_atp is optional; if missing, fall back to empty frame
@@ -1365,14 +1365,14 @@ def _load_from_db(force: bool = False):
 
             for c in ("Ship Date", "Order Date"):
                 _safe_date_col(so, c)
-                _safe_date_col(nav, c)
+                _safe_date_col(sap, c)
             for col in open_po.columns:
                 if "date" in col.lower():
                     _safe_date_col(open_po, col)
             if "Date" in ledger.columns:
                 _safe_date_col(ledger, "Date")
 
-            SO_INV, INVENTORY_STATUS, NAV, OPEN_PO = so, inventory, nav, open_po
+            SO_INV, INVENTORY_STATUS, SAP, OPEN_PO = so, inventory, sap, open_po
             FINAL_SO = _build_final_sales_order_from_db()
             LEDGER = ledger
             ITEM_ATP = item_atp
@@ -1398,7 +1398,7 @@ def _load_from_db(force: bool = False):
     except Exception as e:
         SO_INV = None
         INVENTORY_STATUS = None
-        NAV = None
+        SAP = None
         OPEN_PO = None
         FINAL_SO = None
         LEDGER = None
@@ -1419,7 +1419,7 @@ def _ensure_loaded():
     if (
         SO_INV is None
         or INVENTORY_STATUS is None
-        or NAV is None
+        or SAP is None
         or OPEN_PO is None
         or FINAL_SO is None
         or LEDGER is None
@@ -1465,7 +1465,7 @@ def _ready_to_assign_rows() -> list[dict]:
         READY_ASSIGN_CACHE = []
         return READY_ASSIGN_CACHE
 
-    cutoff = UNASSIGNED_LT_DATE
+    placeholder_date = PLACEHOLDER_DATE
     today = pd.Timestamp.today().normalize()
 
     so = SO_INV.copy()
@@ -1477,7 +1477,9 @@ def _ready_to_assign_rows() -> list[dict]:
     so["QB Num"] = so["QB Num"].astype(str).str.strip()
     so["Item"] = so["Item"].astype(str).str.strip()
     so["Qty(-)"] = pd.to_numeric(so["Qty(-)"], errors="coerce").fillna(0.0)
-    pending = so.loc[so["Ship Date"].eq(cutoff) & so["QB Num"].ne("") & so["Item"].ne("")].copy()
+    pending = so.loc[
+        so["Ship Date"].eq(placeholder_date) & so["QB Num"].ne("") & so["Item"].ne("")
+    ].copy()
     if pending.empty:
         READY_ASSIGN_CACHE = []
         return READY_ASSIGN_CACHE
@@ -1493,7 +1495,7 @@ def _ready_to_assign_rows() -> list[dict]:
             continue
         demand_map = {str(r["Item"]): float(r["Qty(-)"]) for _, r in demands.iterrows()}
         ready_dt = earliest_atp_for_items_strict(ITEM_ATP, demand_map, from_date=today, allow_zero=True)
-        if ready_dt is None or ready_dt >= cutoff:
+        if ready_dt is None or ready_dt >= placeholder_date:
             continue
 
         first = grp.iloc[0]
@@ -1513,7 +1515,7 @@ def _ready_to_assign_rows() -> list[dict]:
                 "customer": str(first.get("Name") or ""),
                 "po_num": str(first.get("P. O. #") or ""),
                 "order_date": first["Order Date"].strftime("%Y-%m-%d") if pd.notna(first.get("Order Date")) else "",
-                "current_ship_date": cutoff.strftime("%Y-%m-%d"),
+                "current_ship_date": placeholder_date.strftime("%Y-%m-%d"),
                 "ready_date": ready_dt.strftime("%Y-%m-%d"),
                 "item_count": int(len(demand_map)),
                 "waiting_items": ", ".join(waiting_items),
@@ -1625,9 +1627,14 @@ def _dashboard_alerts() -> list[dict[str, str]]:
         led = LEDGER.copy()
         led["Date"] = pd.to_datetime(led["Date"], errors="coerce")
         led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
-        cutoff = UNASSIGNED_LT_DATE
+        placeholder_date = PLACEHOLDER_DATE
         neg_item_count = (
-            led.loc[led["Date"].notna() & led["Date"].lt(cutoff) & led["Projected_NAV"].lt(0), "Item"]
+            led.loc[
+                led["Date"].notna()
+                & led["Date"].ne(placeholder_date)
+                & led["Projected_NAV"].lt(0),
+                "Item",
+            ]
             .dropna().astype(str).str.strip().loc[lambda s: s.ne("")].nunique()
         )
         if neg_item_count:
@@ -1650,10 +1657,10 @@ def _negative_inventory_detail_rows(limit: int | None = None) -> tuple[list[str]
     led = LEDGER.copy()
     led["Date"] = pd.to_datetime(led["Date"], errors="coerce")
     led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
-    cutoff = UNASSIGNED_LT_DATE
+    placeholder_date = PLACEHOLDER_DATE
     neg = led.loc[
         led["Date"].notna()
-        & led["Date"].lt(cutoff)
+        & led["Date"].ne(placeholder_date)
         & led["Projected_NAV"].lt(0)
         & led["Item"].notna(),
         ["Item", "Date", "Projected_NAV"],
@@ -1995,21 +2002,21 @@ def _recent_receiving_summary_for_item(item: str, days: int = 7) -> tuple[list[s
     return columns, rows
 
 def _po_table_for_item(item: str) -> tuple[list[str], list[dict]]:
-    if "Item" not in NAV.columns:
-        raise ValueError("NAV table missing 'Item' column.")
+    if "Item" not in SAP.columns:
+        raise ValueError("SAP table missing 'Item' column.")
     item_lower = item.lower()
     item_upper = item.upper()
-    nav_item_series = NAV["Item"].astype(str)
-    mask = nav_item_series.str.lower() == item_lower
+    sap_item_series = SAP["Item"].astype(str)
+    mask = sap_item_series.str.lower() == item_lower
     allow_desc_lookup = not item_upper.startswith(("N", "SEMIL", "POC"))
-    if allow_desc_lookup and "Description" in NAV.columns:
-        desc_mask = NAV["Description"].astype(str).str.lower().str.contains(item_lower, na=False)
+    if allow_desc_lookup and "Description" in SAP.columns:
+        desc_mask = SAP["Description"].astype(str).str.lower().str.contains(item_lower, na=False)
         mask |= desc_mask
-    g = NAV[mask].copy()
+    g = SAP[mask].copy()
     for dc in ("Ship Date", "Order Date", "ETA"):
         if dc in g.columns:
             g[dc] = _to_date_str(g[dc])
-    cols = list(g.columns) if not g.empty else list(NAV.columns)
+    cols = list(g.columns) if not g.empty else list(SAP.columns)
     g = g.fillna("").astype(str)
     rows = g[cols].to_dict(orient="records") if not g.empty else []
     return cols, rows
@@ -3398,5 +3405,4 @@ if __name__ == "__main__":
     # Preload PDF map on startup for faster first-hit
     _load_pdf_map(force=True)
     app.run(debug=True, host="0.0.0.0", port=5002)
-
 

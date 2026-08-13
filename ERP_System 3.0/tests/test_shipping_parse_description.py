@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from erp_system.ledger.events import expand_nav_preinstalled
+from erp_system.ledger.events import expand_sap_preinstalled
 from erp_system.ledger.events import expand_preinstalled_row
 from erp_system.ledger.events import parse_description
 from erp_system.transform.shipping import SHIPPING_MODEL_GROUP_MAPPINGS
@@ -51,7 +51,7 @@ def test_nru_preinstall_keeps_model_and_skips_first_included_component() -> None
 
 
 def test_nuvo_716_variant_split_preserves_included_components() -> None:
-    nav = pd.DataFrame(
+    sap = pd.DataFrame(
         [
             {
                 "QB Num": "POD-260859",
@@ -64,7 +64,7 @@ def test_nuvo_716_variant_split_preserves_included_components() -> None:
         ]
     )
 
-    expanded = expand_nav_preinstalled(nav)
+    expanded = expand_sap_preinstalled(sap)
     by_item = expanded.groupby("Item", as_index=False)["Qty(+)"].sum()
 
     assert dict(zip(by_item["Item"], by_item["Qty(+)"])) == {
@@ -75,7 +75,7 @@ def test_nuvo_716_variant_split_preserves_included_components() -> None:
 
 
 def test_configured_shipping_model_group_expands_to_inventory_items() -> None:
-    nav = pd.DataFrame(
+    sap = pd.DataFrame(
         [
             {
                 "QB Num": "POD-GROUP",
@@ -88,7 +88,7 @@ def test_configured_shipping_model_group_expands_to_inventory_items() -> None:
         ]
     )
 
-    expanded = expand_nav_preinstalled(nav)
+    expanded = expand_sap_preinstalled(sap)
 
     assert dict(zip(expanded["Item"], expanded["Qty(+)"])) == {
         "NRU-161V-AWP": 2.0,
@@ -104,7 +104,7 @@ def test_configured_shipping_model_group_uses_item_quantity_multiplier() -> None
         ("TEST-ACCESSORY", 2.0),
     )
     try:
-        nav = pd.DataFrame(
+        sap = pd.DataFrame(
             [
                 {
                     "QB Num": "POD-GROUP",
@@ -117,7 +117,7 @@ def test_configured_shipping_model_group_uses_item_quantity_multiplier() -> None
             ]
         )
 
-        expanded = expand_nav_preinstalled(nav)
+        expanded = expand_sap_preinstalled(sap)
 
         assert dict(zip(expanded["Item"], expanded["Qty(+)"])) == {
             "TEST-PARENT": 3.0,
@@ -128,7 +128,7 @@ def test_configured_shipping_model_group_uses_item_quantity_multiplier() -> None
 
 
 def test_nru_161_ns_expands_core_and_description_peripherals() -> None:
-    nav = pd.DataFrame(
+    sap = pd.DataFrame(
         [
             {
                 "QB Num": "POD-261017",
@@ -145,7 +145,7 @@ def test_nru_161_ns_expands_core_and_description_peripherals() -> None:
         ]
     )
 
-    expanded = expand_nav_preinstalled(nav)
+    expanded = expand_sap_preinstalled(sap)
 
     assert dict(zip(expanded["Item"], expanded["Qty(+)"])) == {
         "NRU-161V-AWP": 1.0,
@@ -158,7 +158,7 @@ def test_nru_161_ns_expands_core_and_description_peripherals() -> None:
 
 
 def test_pod_260978_flyc_300_group_parses_into_ledger_items() -> None:
-    nav = pd.DataFrame(
+    sap = pd.DataFrame(
         [
             {
                 "QB Num": "POD-260978",
@@ -174,7 +174,7 @@ def test_pod_260978_flyc_300_group_parses_into_ledger_items() -> None:
         ]
     )
 
-    expanded = expand_nav_preinstalled(nav)
+    expanded = expand_sap_preinstalled(sap)
 
     assert expanded[["QB Num", "Parent_Item", "Item", "Qty_per_parent", "Qty(+)", "IsParent"]].to_dict("records") == [
         {
