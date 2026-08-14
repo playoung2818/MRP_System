@@ -76,3 +76,372 @@ Press CTRL+C to quit
  * Debugger PIN: 139-528-078
  * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\Webpage\\ui.py', reloading
  * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.110 - - [13/Aug/2026 17:39:35] "GET /api/global_suggest?q=SSD-4TB-TLC5WT-TD1 HTTP/1.1" 200 -
+192.168.60.110 - - [13/Aug/2026 17:39:36] "GET /quotation_lookup?item=SSD-4TB-TLC5WT-TD1 HTTP/1.1" 200 -
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\encodings\\unicode_escape.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.110 - - [13/Aug/2026 17:39:43] "GET / HTTP/1.1" 200 -
+192.168.60.110 - - [13/Aug/2026 17:39:43] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 304 -
+192.168.60.110 - - [13/Aug/2026 17:39:44] "GET /api/global_suggest?q=20261060 HTTP/1.1" 200 -
+192.168.60.110 - - [13/Aug/2026 17:39:45] "GET /?so=SO-20261060 HTTP/1.1" 200 -
+192.168.60.110 - - [13/Aug/2026 17:39:45] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 304 -
+192.168.60.110 - - [13/Aug/2026 17:39:51] "GET /api/item_overview?item=SSD-4TB-TLC5WT-TD1 HTTP/1.1" 200 -
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\argparse.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.63.37 - - [14/Aug/2026 09:36:01] "GET /inventory_count?so=&item=DDR5-16GB-56WT-SM HTTP/1.1" 200 -
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\encodings\\unicode_escape.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.63.31 - - [14/Aug/2026 10:02:20] "GET / HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 10:02:20] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 304 -
+192.168.63.31 - - [14/Aug/2026 10:02:20] "GET /static/favicon.ico HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 10:02:21] "GET /quotation_lookup HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 10:02:23] "GET /api/quotation_item_suggest?q=2278ge HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 10:02:25] "GET /quotation_lookup?item=E-2278GE HTTP/1.1" 200 -
+192.168.63.25 - - [14/Aug/2026 10:24:14] "GET / HTTP/1.1" 200 -
+192.168.63.25 - - [14/Aug/2026 10:24:14] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 304 -
+192.168.63.25 - - [14/Aug/2026 10:24:16] "GET /inventory_count HTTP/1.1" 200 -
+192.168.63.25 - - [14/Aug/2026 10:24:18] "GET /api/item_suggest?q=i9 HTTP/1.1" 200 -
+192.168.63.25 - - [14/Aug/2026 10:24:19] "GET /api/item_suggest?q=i9- HTTP/1.1" 200 -
+192.168.63.25 - - [14/Aug/2026 10:24:20] "GET /api/item_suggest?q=i9-14900 HTTP/1.1" 200 -
+192.168.63.25 - - [14/Aug/2026 10:24:22] "GET /inventory_count?so=&item=i9-14900 HTTP/1.1" 200 -
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\sales_order.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\io_ops.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\normalize\\erp_normalize.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\Webpage\\server.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\structured.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\events.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\_helpers.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_shipping_parse_description.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\inventory.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\ledger.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\atp.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\assignment_readiness.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.149 - - [14/Aug/2026 11:12:48] "GET / HTTP/1.1" 200 -
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\encodings\\unicode_escape.py', reloading
+192.168.60.149 - - [14/Aug/2026 11:12:48] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 200 -
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.149 - - [14/Aug/2026 11:12:56] "GET /api/global_suggest?q=i HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:12:56] "GET /api/global_suggest?q=i7 HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:12:57] "GET /api/global_suggest?q=i7- HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:12:57] "GET /api/global_suggest?q=i7-14 HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:12:58] "GET /api/global_suggest?q=i7-1470 HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:12:58] "GET /api/global_suggest?q=i7-14700 HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:12:58] "GET /api/global_suggest?q=i7-147000 HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:12:59] "GET /api/global_suggest?q=i7-14700 HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:13:02] "GET /global_search?q=i7-14700 HTTP/1.1" 302 -
+192.168.60.149 - - [14/Aug/2026 11:13:02] "GET /quotation_lookup?item=i7-14700 HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:32:08] "GET /quotation_lookup?item=I7-14700 HTTP/1.1" 200 -
+192.168.60.149 - - [14/Aug/2026 11:32:10] "GET /quotation_lookup?reload=1 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 11:52:56] "GET /quotation_lookup?item=DDR5-32GB-56-SM HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 11:52:56] "GET /static/favicon.ico HTTP/1.1" 304 -
+192.168.60.110 - - [14/Aug/2026 11:52:58] "GET / HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 11:52:58] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 304 -
+192.168.60.110 - - [14/Aug/2026 11:53:05] "GET /production_planning HTTP/1.1" 200 -
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\pathlib\\_abc.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\site-packages\\pip\\_vendor\\packaging\\direct_url.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\site-packages\\pip\\_vendor\\packaging\\tags.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\site-packages\\pip\\_vendor\\requests\\_internal_utils.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\site-packages\\pip\\_vendor\\urllib3\\exceptions.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\site-packages\\pip\\_vendor\\requests\\hooks.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\site-packages\\pip\\_internal\\locations\\__init__.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\logging\\handlers.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\site-packages\\pip\\_vendor\\packaging\\_tokenizer.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\optparse.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\argparse.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\unittest\\case.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\site-packages\\pip\\_internal\\cli\\base_command.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\multiprocessing\\popen_fork.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\site-packages\\pip\\_vendor\\requests\\adapters.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\logging\\config.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\encodings\\cp437.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\Webpage\\server.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_shipping_parse_description.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\events.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\normalize\\erp_normalize.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\_helpers.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\io_ops.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\sales_order.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\structured.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\llm_cli.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\contracts\\schemas.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\contracts\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\sources.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\assignment_readiness.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\atp.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\ledger.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\llm_backend.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\normalize\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\config.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\constants.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\db_config.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\paths.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\policies.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\common.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\inventory.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\pod.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\shipping.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\__init__.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_assignment_readiness.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_contracts_schema_validation.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_ledger_so_bundle_split.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_runtime_paths.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\shipping.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\shipping.py.tmp.8964.f1af54be2281', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\events.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\events.py.tmp.8964.63f51c0c725c', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py.tmp.8964.d3fb317e8a51', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py.tmp.8964.43be51960123', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_shipping_parse_description.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_shipping_parse_description.py.tmp.8964.6f8067627c57', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\webbrowser.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\shlex.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\__init__.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\simple_server.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\handlers.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\util.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\headers.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\argparse.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\encodings\\latin_1.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\shipping.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\shipping.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\shipping.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.143 - - [14/Aug/2026 13:53:52] "GET / HTTP/1.1" 200 -
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\encodings\\unicode_escape.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.143 - - [14/Aug/2026 13:53:56] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 304 -
+192.168.60.143 - - [14/Aug/2026 13:53:57] "GET /inventory_count HTTP/1.1" 200 -
+192.168.60.143 - - [14/Aug/2026 13:54:02] "GET /api/item_suggest?q=DDR5-32GB-56WT-SM HTTP/1.1" 200 -
+192.168.60.143 - - [14/Aug/2026 13:54:03] "GET /inventory_count?so=&item=DDR5-32GB-56WT-SM HTTP/1.1" 200 -
+192.168.60.143 - - [14/Aug/2026 13:55:42] "GET /api/item_suggest?q=i7 HTTP/1.1" 200 -
+192.168.60.143 - - [14/Aug/2026 13:55:42] "GET /api/item_suggest?q=i7- HTTP/1.1" 200 -
+192.168.60.143 - - [14/Aug/2026 13:55:43] "GET /api/item_suggest?q=i7-14700 HTTP/1.1" 200 -
+192.168.60.143 - - [14/Aug/2026 13:55:45] "GET /inventory_count?so=&item=i7-14700 HTTP/1.1" 200 -
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\sales_order.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\io_ops.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\normalize\\erp_normalize.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\_helpers.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\events.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\structured.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_shipping_parse_description.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\shipping.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\llm_cli.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\contracts\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\contracts\\schemas.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\common.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\pod.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\inventory.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_assignment_readiness.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_contracts_schema_validation.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_ledger_so_bundle_split.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\llm_backend.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\constants.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\config.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\db_config.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\paths.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\ledger.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\atp.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\assignment_readiness.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\normalize\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\policies.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_runtime_paths.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\sources.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\__init__.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.110 - - [14/Aug/2026 15:21:24] "GET /quotation_lookup HTTP/1.1" 200 -
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\encodings\\unicode_escape.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.110 - - [14/Aug/2026 15:21:29] "GET /api/quotation_item_suggest?q=ddr HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:29] "GET /api/quotation_item_suggest?q=ddr5 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:29] "GET /api/quotation_item_suggest?q=ddr5- HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:30] "GET /api/quotation_item_suggest?q=ddr5-16 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:32] "GET /api/quotation_item_suggest?q=ddr5-16gb HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:33] "GET /api/quotation_item_suggest?q=ddr5-16gb- HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:34] "GET /api/quotation_item_suggest?q=ddr5-16gb-5 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:34] "GET /api/quotation_item_suggest?q=ddr5-16gb-56 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:34] "GET /api/quotation_item_suggest?q=ddr5-16gb-56w HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:35] "GET /api/quotation_item_suggest?q=ddr5-16gb-56wt HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:38] "GET /quotation_lookup?item=DDR5-16GB-56WT-SM HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:55] "GET /api/quotation_item_suggest?q=9 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:56] "GET /api/quotation_item_suggest?q=900 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:21:56] "GET /api/quotation_item_suggest?q=9002 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 15:22:06] "GET /quotation_lookup?item=Nuvo-9002E HTTP/1.1" 200 -
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\paths.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\paths.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\paths.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\webbrowser.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\shlex.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\__init__.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\simple_server.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\handlers.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\util.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\headers.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.110 - - [14/Aug/2026 16:04:26] "GET /api/quotation_item_suggest?q=nru HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 16:04:26] "GET /api/quotation_item_suggest?q=nru- HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 16:04:27] "GET /api/quotation_item_suggest?q=nru-220s HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 16:04:27] "GET /quotation_lookup?item=nru-220s HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 16:07:28] "GET / HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 16:07:28] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 304 -
+192.168.63.31 - - [14/Aug/2026 16:07:29] "GET /quotation_lookup HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 16:07:32] "GET /api/quotation_item_suggest?q=G HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 16:07:32] "GET /api/quotation_item_suggest?q=GC HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 16:07:32] "GET /api/quotation_item_suggest?q=GC- HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 16:07:33] "GET /api/quotation_item_suggest?q=GC-J HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 16:07:34] "GET /api/quotation_item_suggest?q=GC-Jetson HTTP/1.1" 200 -
+192.168.63.31 - - [14/Aug/2026 16:07:39] "GET /quotation_lookup?item=GC-Jetson-NX16G-Orin-Nvidia HTTP/1.1" 200 -
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\sales_order.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\_helpers.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\io_ops.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\structured.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\events.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\shipping.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_shipping_parse_description.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\Webpage\\server.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\paths.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\normalize\\erp_normalize.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.110 - - [14/Aug/2026 16:57:36] "GET / HTTP/1.1" 200 -
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\encodings\\unicode_escape.py', reloading
+192.168.60.110 - - [14/Aug/2026 16:57:36] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 304 -
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+192.168.60.110 - - [14/Aug/2026 16:57:42] "GET /api/global_suggest?q=20261192 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 16:57:42] "GET /global_search?q=20261192 HTTP/1.1" 302 -
+192.168.60.110 - - [14/Aug/2026 16:57:42] "GET /?so=20261192 HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 16:57:42] "GET /static/snoopy-figure-transparent.png HTTP/1.1" 304 -
+192.168.60.110 - - [14/Aug/2026 16:57:47] "GET /api/item_overview?item=SEMIL-2048GC HTTP/1.1" 200 -
+192.168.60.110 - - [14/Aug/2026 16:58:47] "GET /pdfid/2839 HTTP/1.1" 302 -
