@@ -3,6 +3,26 @@ from __future__ import annotations
 import pandas as pd
 
 
+def backward_cumulative_min(values: list[float]) -> list[float]:
+    """
+    Walk `values` backward, tracking a running minimum, and return that
+    running minimum stamped onto each position -- i.e. out[i] is the smallest
+    value at or after position i. NaN entries don't update the minimum, they
+    just inherit whatever it currently is.
+
+    This is the shared FutureMin_NAV calculation used by both build_atp_view()
+    and assignment_readiness.py's per-SO ATP recomputation.
+    """
+    out: list[float] = [0.0] * len(values)
+    current_min = float("inf")
+    for idx in range(len(values) - 1, -1, -1):
+        value = values[idx]
+        if pd.notna(value):
+            current_min = min(current_min, float(value))
+        out[idx] = current_min
+    return out
+
+
 def build_atp_view(ledger: pd.DataFrame) -> pd.DataFrame:
     """
     Build an ATP-ready view from the ledger.
@@ -47,18 +67,8 @@ def build_atp_view(ledger: pd.DataFrame) -> pd.DataFrame:
     # Sort ascending by date, then compute backward cumulative min per item
     df.sort_values(["Item", "Date"], inplace=True)
 
-    # Reverse within each item, run cumulative min, then flip back
     def _future_min(group: pd.DataFrame) -> pd.Series:
-        vals = group["Projected_NAV"].values[::-1]
-        out = []
-        current_min = float("inf")
-        for v in vals:
-            if pd.isna(v):
-                current_min = min(current_min, float("inf"))
-            else:
-                current_min = min(current_min, float(v))
-            out.append(current_min)
-        out = out[::-1]
+        out = backward_cumulative_min(group["Projected_NAV"].tolist())
         return pd.Series(out, index=group.index)
 
     df["FutureMin_NAV"] = df.groupby("Item", group_keys=False).apply(_future_min)
