@@ -22,9 +22,9 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 
 ## Remark
 - expand_sap_preinstalled() checks, in order:
-- 1. fixed_group   — all rows, before Pre/Bare split
-- 2. core_group    — Pre rows only, inside expand_preinstalled_row
-- 3. nuvo_group    — all rows, final catch-all pass
+1. fixed_group   — all rows, before Pre/Bare split
+2. core_group    — Pre rows only, inside expand_preinstalled_row
+3. nuvo_group    — all rows, final catch-all pass
 
 
 
