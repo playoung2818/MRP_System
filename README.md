@@ -21,11 +21,13 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 - Outputs: inventory_status, structured sales orders, POD, shipping, ledger, item summary, ATP, and Not_assigned_SO exports; pushed to DB and Sheets when configured.
 
 ## Remark
+
+``` text
 - expand_sap_preinstalled() checks, in order:
 1. fixed_group   — all rows, before Pre/Bare split
 2. core_group    — Pre rows only, inside expand_preinstalled_row
 3. nuvo_group    — all rows, final catch-all pass
-
+```
 
 
 ## Potential Improvement
