@@ -19,7 +19,7 @@ from erp_system.ingest.sources import (
 )
 from erp_system.ledger.atp import build_atp_view
 from erp_system.ledger.assignment_readiness import build_assignment_run_tables
-from erp_system.ledger.events import _order_events, build_events, expand_sap_preinstalled
+from erp_system.ledger.events import _order_events, build_events
 from erp_system.ledger.ledger import build_ledger_from_events
 from erp_system.normalize.erp_normalize import refresh_pod_site
 from erp_system.runtime.config import (
@@ -44,7 +44,7 @@ from erp_system.runtime.policies import (
 from erp_system.transform.inventory import add_onhand_minus_wip, build_wip_lookup, transform_inventory
 from erp_system.transform.pod import enrich_pod_with_shipping_audit, transform_pod
 from erp_system.transform.sales_order import transform_sales_order
-from erp_system.transform.shipping import transform_shipping
+from erp_system.transform.shipping import expand_sap_preinstalled, transform_shipping
 from erp_system.transform.structured import build_structured_df, prepare_erp_view
 
 
