@@ -4,10 +4,6 @@
 
 I rebuilt QuickBooks operational views into a unified analytics pipeline, blending inventory, sales orders, purchase orders, picking signals, and shipping data to drive lead-time decisions and sales order visibility.
 
-## Highlights
-- ETL: normalize and join Inventory Status, Open Sales Orders, POD, shipping schedule, Word pick logs, and PDF WO references.
-- Metrics: compute WIP (QB Num list) and WIP quantities, On Hand - WIP, structured ERP views, event/ledger timelines, ATP, and Not-assigned SO exports.
-- Delivery: publish to Postgres and Google Sheets for visualization and downstream reporting.
 
 ## Data inputs
 - Inventory Status (warehouse snapshot)
@@ -20,19 +16,16 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 ## Run the ETL
 - Install deps from `requirements.txt`.
 - Configure DB DSN in `db_config.py` (or environment).
-- Update file paths in `ERP_System 2.0/config.py`.
-- Run `erp.bat` or `python "ERP_System 2.0/etl.py"`.
+- Update file paths in `ERP_System 3.0/config.py`.
+- Run `erp.bat` or `python "ERP_System 3.0/etl.py"`.
 - Outputs: inventory_status, structured sales orders, POD, shipping, ledger, item summary, ATP, and Not_assigned_SO exports; pushed to DB and Sheets when configured.
 
-## Migrate Supabase -> DuckDB
-- Install new DB deps:
-  - `pip install duckdb duckdb-engine`
-- Run migration script (copies all `public` tables by default):
-  - `python "ERP_System 2.0/scripts/migrate_supabase_to_duckdb.py" --source-dsn "<your_supabase_postgres_dsn>" --duckdb-path "C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb"`
-- Point app/ETL to DuckDB:
-  - Option A: `set DATABASE_DSN=duckdb:///C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb`
-  - Option B: `set DUCKDB_PATH=C:/Users/Admin/Desktop/ERP_System/data/erp.duckdb`
-- Then run ETL/web as usual; `db_config.py` will use DuckDB automatically.
+## Remark
+- expand_sap_preinstalled() checks, in order:
+- 1. fixed_group   — all rows, before Pre/Bare split
+- 2. core_group    — Pre rows only, inside expand_preinstalled_row
+- 3. nuvo_group    — all rows, final catch-all pass
+
 
 
 ## Potential Improvement

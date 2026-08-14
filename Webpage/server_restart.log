@@ -8,3 +8,71 @@ Press CTRL+C to quit
  * Restarting with watchdog (windowsapi)
  * Debugger is active!
  * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\paths.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\pod.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\webbrowser.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\shlex.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\__init__.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\simple_server.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\handlers.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\util.py', reloading
+ * Detected change in 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\wsgiref\\headers.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\io_ops.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\__init__.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_assignment_readiness.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_runtime_paths.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_ledger_so_bundle_split.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_contracts_schema_validation.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\ledger.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\db_config.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\constants.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\config.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\runtime\\policies.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\normalize\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\llm_backend.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\contracts\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\contracts\\schemas.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\shipping.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\inventory.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\atp.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\common.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\transform\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\llm_cli.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\assignment_readiness.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\__init__.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\sources.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ingest\\_helpers.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\ledger\\events.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\Webpage\\server.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\cli\\etl.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\erp_system\\normalize\\erp_normalize.py', reloading
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\ERP_System 3.0\\tests\\test_shipping_parse_description.py', reloading
+ * Restarting with watchdog (windowsapi)
+ * Debugger is active!
+ * Debugger PIN: 139-528-078
+ * Detected change in 'C:\\Users\\Admin\\Desktop\\ERP_System\\Webpage\\ui.py', reloading
+ * Restarting with watchdog (windowsapi)
