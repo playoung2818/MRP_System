@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from erp_system.contracts import TABLE_CONTRACTS, ensure_contract_columns
-from erp_system.ledger.atp import earliest_atp_strict
+from erp_system.ledger.atp import backward_cumulative_min, earliest_atp_strict
 from erp_system.normalize.erp_normalize import normalize_item
 from erp_system.runtime.constants import PLACEHOLDER_DATE
 from erp_system.transform.common import _norm_key
@@ -85,13 +85,7 @@ def _build_adjusted_item_atp(
     adjusted = adjusted.sort_values("Date", kind="mergesort").reset_index(drop=True)
     adjusted["Projected_NAV"] = opening + adjusted["Delta"].cumsum()
     projected = pd.to_numeric(adjusted["Projected_NAV"], errors="coerce").tolist()
-    future_min: list[float] = [0.0] * len(projected)
-    current_min = float("inf")
-    for idx in range(len(projected) - 1, -1, -1):
-        value = projected[idx]
-        if pd.notna(value):
-            current_min = min(current_min, float(value))
-        future_min[idx] = current_min
+    future_min = backward_cumulative_min(projected)
 
     item_name = str(adjusted["Item"].iloc[0])
     return pd.DataFrame(
@@ -129,14 +123,7 @@ def _earliest_assignment_date_for_mode(
     scoped["Date"] = pd.to_datetime(scoped["Date"], errors="coerce")
     scoped["Projected_NAV"] = pd.to_numeric(scoped["Projected_NAV"], errors="coerce")
     projected = scoped["Projected_NAV"].tolist()
-    future_min: list[float] = [0.0] * len(projected)
-    current_min = float("inf")
-    for idx in range(len(projected) - 1, -1, -1):
-        value = projected[idx]
-        if pd.notna(value):
-            current_min = min(current_min, float(value))
-        future_min[idx] = current_min
-    scoped["FutureMin_NAV"] = future_min
+    scoped["FutureMin_NAV"] = backward_cumulative_min(projected)
 
     candidates = scoped.loc[scoped["Date"] < cutoff].copy()
     if candidates.empty:
