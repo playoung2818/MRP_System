@@ -41,7 +41,7 @@ from erp_system.runtime.policies import (
     NOT_ASSIGNED_SO_EXPORT_PATH,
     WORD_FILE_API_URLS,
 )
-from erp_system.transform.inventory import add_onhand_minus_wip, build_wip_lookup, transform_inventory
+from erp_system.transform.inventory import build_wip_lookup, transform_inventory
 from erp_system.transform.pod import enrich_pod_with_shipping_audit, transform_pod
 from erp_system.transform.sales_order import transform_sales_order
 from erp_system.transform.shipping import expand_sap_preinstalled, transform_shipping
@@ -206,7 +206,6 @@ def main() -> None:
     pod = enrich_pod_with_shipping_audit(pod, ship)
 
     structured, final_sales_order = build_structured_df(so_full, word_files_df, inv, pdf_orders_df, pod)
-    inv = add_onhand_minus_wip(inv, structured)
 
     sap_exp = expand_sap_preinstalled(ship)
     events_all = _order_events(build_events(structured, sap_exp, pod))
