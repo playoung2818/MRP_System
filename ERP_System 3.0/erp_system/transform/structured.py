@@ -88,15 +88,8 @@ def build_structured_df(
     mask_partial = df_order_picked["Picked_Flag"] & df_order_picked["partial"]
     df_order_picked.loc[mask_partial, "Picked"] = "Partial"
 
-    picked_parts = (
-        df_order_picked.loc[df_order_picked["Picked"].eq("Picked")]
-        .groupby("Item", as_index=False)["Qty"]
-        .sum()
-        .rename(columns={"Item": "Part_Number", "Qty": "Picked_Qty"})
-    )
-
-    inv_plus = inventory_df.merge(picked_parts, on="Part_Number", how="left")
-    for c in ["On Hand", "On Sales Order", "On PO", "Picked_Qty", "Reorder Pt (Min)", "Sales/Week", "Available"]:
+    inv_plus = inventory_df.copy()
+    for c in ["On Hand", "On Sales Order", "On PO", "Reorder Pt (Min)", "Sales/Week", "Available"]:
         if c in inv_plus.columns:
             inv_plus[c] = pd.to_numeric(inv_plus[c], errors="coerce").fillna(0)
 
@@ -115,7 +108,10 @@ def build_structured_df(
     not_dummy = structured_df["Lead Time"] != PLACEHOLDER_DATE
     structured_df["Assigned Q'ty"] = structured_df["Qty"].where(not_dummy, 0).groupby(structured_df["Item"]).transform("sum")
 
-    structured_df["Picked_Qty"] = pd.to_numeric(structured_df.get("Picked_Qty", 0), errors="coerce").fillna(0)
+    # WIP (picked, not yet shipped) is computed once in build_wip_lookup(), already scoped to
+    # WH01S-NTA, and merged in above via inv_plus as "WIP_Qty" — just look it up here rather
+    # than recomputing it from df_order_picked a second time with its own site filter.
+    structured_df["Picked_Qty"] = pd.to_numeric(structured_df.get("WIP_Qty", 0), errors="coerce").fillna(0)
     structured_df["On Hand"] = pd.to_numeric(structured_df.get("On Hand", 0), errors="coerce").fillna(0)
     structured_df["On Hand - WIP"] = (structured_df["On Hand"] - structured_df["Picked_Qty"]).clip(lower=0)
 
