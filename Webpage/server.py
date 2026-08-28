@@ -1047,6 +1047,7 @@ def _build_final_sales_order_from_db() -> pd.DataFrame:
         "Item": "Item",
         "Qty(-)": "Qty",
         "Ship Date": "Lead Time",
+        "Inventory Site": "Inventory Site",
     }
     for src in list(needed_cols.keys()):
         if src not in df_sales_order.columns:
@@ -1055,6 +1056,13 @@ def _build_final_sales_order_from_db() -> pd.DataFrame:
     df_out = (
         df_sales_order.rename(columns=needed_cols)[list(needed_cols.values())].copy()
     )
+
+    # open_sales_orders spans every site (kept that way for the Google Sheet export).
+    # Production Planning schedules WH01S/WH01X work orders only — a Drop Ship WO never
+    # gets picked/built here, so it shouldn't show up on the calendar.
+    if "Inventory Site" in df_out.columns:
+        site_text = df_out["Inventory Site"].astype(str).str.strip().str.casefold()
+        df_out = df_out.loc[~site_text.eq("drop ship")].copy()
 
     df_out["WO"] = ""
     for alt in ["WO", "WO_Number", "NTA Order ID", "SO Number"]:
