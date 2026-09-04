@@ -90,6 +90,7 @@ LABOR_HOURS_PER_UNIT = {
     "NRU": 1.0,
     "SEMIL": 1.0,
     "F": 1.0,
+    "INFICON": 1.0,
 }
 LABOR_FAMILY_LABELS = {
     "NUVO": "Nuvo",
@@ -97,6 +98,7 @@ LABOR_FAMILY_LABELS = {
     "NRU": "NRU",
     "SEMIL": "SEMIL",
     "F": "F",
+    "INFICON": "Inficon",
 }
 
 # =========================
@@ -198,9 +200,41 @@ def _build_first_wo_item_map(structured_df: pd.DataFrame | None) -> dict[str, di
     if work.empty:
         return {}
 
-    qty_col = "Qty(-)" if "Qty(-)" in work.columns else None
+    # SO_INV (wo_structured) uses "Qty(-)"/"Name"; FINAL_SO (open_sales_orders, rebuilt for
+    # Production Planning) uses "Qty"/"Customer" instead. Accept either caller's schema.
+    qty_col = "Qty(-)" if "Qty(-)" in work.columns else ("Qty" if "Qty" in work.columns else None)
+    name_col = "Name" if "Name" in work.columns else ("Customer" if "Customer" in work.columns else None)
     first_map: dict[str, dict[str, object]] = {}
     for qb_num, group in work.groupby("QB Num", sort=False):
+        # Inficon WOs' line items don't follow the NUVO-/NRU-/SEMIL-/POC- naming the family
+        # classifier relies on, so it was falling through to "unrecognized" and defaulting to
+        # whatever line happened to be first — normally the cable, not the actual unit. Every
+        # Inficon WO's first line item is reliably the cable at 1-per-unit, so its qty is a
+        # reliable stand-in for the true unit count; treat every unit as 1 labor hour.
+        customer_name = str(group.iloc[0].get(name_col) or "").strip().lower() if name_col else ""
+        if "inficon" in customer_name:
+            first_row = group.iloc[0]
+            first_item = first_row.get("Item") or ""
+            first_qty = 0.0
+            if qty_col is not None:
+                first_qty = _parse_float(first_row.get(qty_col), 0.0) or 0.0
+            first_qty = max(first_qty, 0.0)
+            first_map[str(qb_num).strip()] = {
+                "item": first_item,
+                "qty": first_qty,
+                "unit_rows": [
+                    {
+                        "item": first_item,
+                        "qty": first_qty,
+                        "family": LABOR_FAMILY_LABELS["INFICON"],
+                        "hours_per_unit": LABOR_HOURS_PER_UNIT["INFICON"],
+                        "position": 0,
+                    }
+                ],
+                "base_labor_hours": first_qty * LABOR_HOURS_PER_UNIT["INFICON"],
+            }
+            continue
+
         unit_rows: list[dict[str, object]] = []
         for pos, (_, row) in enumerate(group.iterrows()):
             item = row.get("Item") or ""
@@ -2811,7 +2845,10 @@ def production_planning():
     df["lead_date_str"] = df["Lead Time"].dt.strftime("%Y-%m-%d")
     production_schedule_overrides = _load_production_schedule_overrides()
     finished_goods_overrides = _load_finished_goods_overrides()
-    unassigned_lt_orders = _build_unassigned_lt_orders(df, SO_INV)
+    # SO_INV (wo_structured) is WH01S-NTA-only by design; Production Planning covers
+    # WH01S + WH01X (Drop Ship excluded), so labor classification must read FINAL_SO
+    # (already scoped that way) instead — SO_INV silently dropped every WH01X-NTA WO here.
+    unassigned_lt_orders = _build_unassigned_lt_orders(df, FINAL_SO)
     unassigned_lt_orders = [
         row for row in unassigned_lt_orders
         if str(row.get("qb_num") or "").strip() not in production_schedule_overrides
@@ -2821,7 +2858,7 @@ def production_planning():
 
     wo_status_map = _wo_status_by_qb_num()
     picked_qty_overrides = _load_wo_picked_qty_overrides()
-    labor_item_map = _build_first_wo_item_map(SO_INV)
+    labor_item_map = _build_first_wo_item_map(FINAL_SO)
     df["__qb_key"] = df["QB Num"].astype(str).str.strip()
     df["production_date_str"] = df["__qb_key"].map(production_schedule_overrides).fillna("")
     df["__is_finished_goods"] = df["__qb_key"].isin(finished_goods_overrides)
@@ -2833,7 +2870,7 @@ def production_planning():
     capacity_df = df.loc[df["production_date_str"].ne("") & ~df["__is_finished_goods"]].copy()
     capacity_df["Lead Time"] = pd.to_datetime(capacity_df["production_date_str"], errors="coerce")
     capacity_df = capacity_df.loc[capacity_df["Lead Time"].ge(today) & capacity_df["Lead Time"].dt.weekday.lt(5)].copy()
-    capacity_weeks = _build_weekly_labor_capacity(capacity_df, SO_INV)
+    capacity_weeks = _build_weekly_labor_capacity(capacity_df, FINAL_SO)
     date_groups: list[dict] = []
     scheduled_df = df.loc[df["production_date_str"].ne("")].copy()
     scheduled_df["__production_date"] = pd.to_datetime(scheduled_df["production_date_str"], errors="coerce")
