@@ -133,6 +133,9 @@ INDEX_TPL = """
     .global-suggest-type{ flex:0 0 auto; font-size:.72rem; font-weight:800; color:#0d6efd; background:#e7f0ff; border:1px solid #cfe0ff; border-radius:999px; padding:.14rem .5rem; }
     .section-title{ font-size:1rem; font-weight:700; margin-bottom:12px; }
     .metric-card{ padding:22px; margin-bottom:24px; position:relative; overflow:hidden; }
+    .metric-link{ display:block; color:inherit; text-decoration:none; }
+    .metric-link:hover{ color:inherit; background:#f8fbff; box-shadow:0 6px 18px rgba(13,110,253,.15); }
+    .metric-link:focus-visible{ outline:3px solid #0d6efd; outline-offset:3px; }
     .metric-card::after{
       content:""; position:absolute; inset:auto -40px -40px auto; width:140px; height:140px;
       background:radial-gradient(circle, rgba(13,110,253,.12), rgba(13,110,253,0));
@@ -215,11 +218,11 @@ INDEX_TPL = """
 
         <div class="row g-4">
           <div class="col-12 col-xl-4">
-            <div class="card-lite metric-card">
+            <a class="card-lite metric-card metric-link" href="/production_planning#unassigned-lt-orders">
               <div class="metric-value">{{ lt_unassigned_count or 0 }}</div>
               <div class="metric-label">Sales Order Not Assigned LT</div>
               <div class="metric-note">Placeholder ship date: 2099-12-31</div>
-            </div>
+            </a>
           </div>
         </div>
 
@@ -1570,7 +1573,7 @@ PRODUCTION_TPL = """
   {% endif %}
 
   {% if unassigned_lt_orders %}
-    <div class="capacity-card unassigned-lt-card mt-4">
+    <div id="unassigned-lt-orders" class="capacity-card unassigned-lt-card mt-4">
       <div class="capacity-head mb-2">
         <div>
           <div class="capacity-week">Unassigned L/T SO</div>
