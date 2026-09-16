@@ -210,7 +210,7 @@ def _build_first_wo_item_map(structured_df: pd.DataFrame | None) -> dict[str, di
         # classifier relies on, so it was falling through to "unrecognized" and defaulting to
         # whatever line happened to be first — normally the cable, not the actual unit. Every
         # Inficon WO's first line item is reliably the cable at 1-per-unit, so its qty is a
-        # reliable stand-in for the true unit count; treat every unit as 1 labor hour.
+        # reliable stand-in for the true unit count; count these units as Nuvo at 1 labor hour each.
         customer_name = str(group.iloc[0].get(name_col) or "").strip().lower() if name_col else ""
         if "inficon" in customer_name:
             first_row = group.iloc[0]
@@ -226,7 +226,7 @@ def _build_first_wo_item_map(structured_df: pd.DataFrame | None) -> dict[str, di
                     {
                         "item": first_item,
                         "qty": first_qty,
-                        "family": LABOR_FAMILY_LABELS["INFICON"],
+                        "family": LABOR_FAMILY_LABELS["NUVO"],
                         "hours_per_unit": LABOR_HOURS_PER_UNIT["INFICON"],
                         "position": 0,
                     }
@@ -2661,7 +2661,7 @@ def item_info():
 
     q = (request.values.get("q") or "").strip()
     rows: list[dict] = []
-    display_columns = ["Part Name", "Description", "Preferred Vendor", "Original MPN", "Location", "Photo File", "Notes"]
+    display_columns = ["Part Name", "Preferred Vendor", "Original MPN", "Location", "Photo File", "Notes", "HS code", "HTS code", "Country of Origin", "Description"]
     columns = [col for col in display_columns if df is not None and col in df.columns]
     count = 0
 
