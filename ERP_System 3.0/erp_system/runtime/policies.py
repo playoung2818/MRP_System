@@ -1,7 +1,6 @@
 WORD_FILE_API_URLS = (
-    "http://127.0.0.1:5001/api/word-files",
-    "http://localhost:5001/api/word-files",
-    "http://192.168.60.133:5001/api/word-files",
+    "http://192.168.60.215:5000/api/word-files",
+    "http://localhost:5000/api/word-files",
 )
 
 GOOGLE_SHEET_SPREADSHEET = "PDF_WO"
