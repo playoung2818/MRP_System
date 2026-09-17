@@ -3006,6 +3006,8 @@ def api_production_schedule():
         production_date = pd.to_datetime(production_date_raw, errors="coerce")
         if pd.isna(production_date):
             return jsonify({"ok": False, "error": "Production date must be a valid date."}), 400
+        if production_date.normalize() < pd.Timestamp.today().normalize():
+            return jsonify({"ok": False, "error": "Production date cannot be before today."}), 400
         if production_date.weekday() >= 5:
             return jsonify({"ok": False, "error": "Production date cannot be a weekend."}), 400
         parsed_assignments.append(

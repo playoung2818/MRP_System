@@ -1292,15 +1292,11 @@ PRODUCTION_TPL = """
     body{ padding:28px; }
     .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); background:var(--card); }
     .day-card{ border-left:4px solid #0d6efd; transition:border-color .15s ease, box-shadow .15s ease; }
-    .day-card.drag-over{ border-color:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.18), 0 10px 22px rgba(0,0,0,.06); }
-    .order-list.drag-over{ outline:2px dashed #16a34a; outline-offset:3px; border-radius:8px; }
     .day-header{ font-weight:600; font-size:1rem; }
     .day-summary{ display:flex; gap:.6rem; flex-wrap:wrap; color:var(--muted); font-size:.82rem; font-weight:700; }
     .day-summary strong{ color:var(--ink); }
-    .order-list{ min-height:2.2rem; }
-    .order-line{ display:flex; justify-content:space-between; align-items:center; padding:.4rem .6rem; border-radius:10px; cursor:grab; }
-    .order-line:active{ cursor:grabbing; }
-    .order-line.is-dragging{ opacity:.5; }
+    .order-list{ }
+    .order-line{ display:flex; justify-content:space-between; align-items:center; padding:.4rem .6rem; border-radius:10px; flex-wrap:wrap; gap:.4rem; }
     .order-line:nth-child(odd){ background:#f9fafb; }
     .order-line:nth-child(even){ background:#eef2ff; }
     .order-line.lt-same-day{ background:#fee2e2; border:1px solid #fca5a5; color:#7f1d1d; }
@@ -1360,6 +1356,9 @@ PRODUCTION_TPL = """
     .unassigned-lt-main{ font-weight:800; font-size:.9rem; }
     .unassigned-lt-meta{ color:var(--muted); font-size:.78rem; line-height:1.25; }
     .schedule-save-msg{ min-width:5rem; color:var(--muted); font-size:.82rem; font-weight:700; align-self:center; }
+    .production-date-control{ display:flex; align-items:center; flex-wrap:wrap; gap:.4rem; width:100%; font-size:.8rem; }
+    .production-date-input{ width:10rem; padding:.3rem .5rem; border:1px solid #cbd5e1; border-radius:4px; background:#fff; color:var(--ink); }
+    .production-date-msg{ color:var(--muted); }
     .schedule-unsaved{ outline:2px solid rgba(245,158,11,.45); outline-offset:1px; }
   </style>
 </head>
@@ -1378,6 +1377,7 @@ PRODUCTION_TPL = """
     </div>
   </div>
 
+  <p class="text-muted small">Choose a production date for each WO, then click Save Schedule. Orders and capacity refresh after saving.</p>
   {% if capacity_weeks or passed_lt_orders %}
     <div class="mb-4">
       <div class="d-flex justify-content-between align-items-end mb-2">
@@ -1486,7 +1486,7 @@ PRODUCTION_TPL = """
             </div>
             <div class="unassigned-lt-grid order-list" data-target-area="finished_goods">
               {% for o in passed_lt_orders %}
-                <div class="order-line" draggable="true" data-wo="{{ o.qb_num }}" data-ship-date="{{ o.ship_date }}" data-schedule-units="{{ o.remaining_units_str }}" data-schedule-hours="{{ o.labor_hours if o.labor_hours is not none else '' }}">
+                <div class="order-line" data-wo="{{ o.qb_num }}" data-return-production-date="{{ o.production_date }}" data-ship-date="{{ o.ship_date }}" data-schedule-units="{{ o.remaining_units_str }}" data-schedule-hours="{{ o.labor_hours if o.labor_hours is not none else '' }}">
                   <div class="me-2">
                     <div class="order-main">
                       {{ o.qb_num }}{% if o.customer %} | {{ o.customer }}{% endif %}{% if o.terms %} | <span class="order-terms">{{ o.terms }}</span>{% endif %}
@@ -1523,7 +1523,7 @@ PRODUCTION_TPL = """
     <div class="alert alert-info">No production data available.</div>
   {% else %}
     <div class="row g-3">
-      {% for group in date_groups %}
+      {% for group in date_groups if group.orders %}
         <div class="col-12 col-md-6 col-xl-4">
           <div class="card-lite day-card p-3 h-100">
             <div class="day-header mb-2">{{ group.date }}</div>
@@ -1535,7 +1535,7 @@ PRODUCTION_TPL = """
             {% if group.orders %}
               <div class="order-list d-flex flex-column gap-1" data-production-date="{{ group.date }}">
                 {% for o in group.orders %}
-                  <div class="order-line {% if o.lt_matches_production_date %}lt-same-day{% endif %}" draggable="true" data-wo="{{ o.qb_num }}" data-production-date="{{ group.date }}" data-ship-date="{{ o.ship_date }}" data-schedule-units="{{ o.remaining_units_str }}" data-schedule-hours="{{ o.labor_hours if o.labor_hours is not none else '' }}">
+                  <div class="order-line {% if o.lt_matches_production_date %}lt-same-day{% endif %}" data-wo="{{ o.qb_num }}" data-production-date="{{ group.date }}" data-ship-date="{{ o.ship_date }}" data-schedule-units="{{ o.remaining_units_str }}" data-schedule-hours="{{ o.labor_hours if o.labor_hours is not none else '' }}">
                     <div class="me-2">
                       <div class="order-main">
                         {{ o.qb_num }}{% if o.customer %} | {{ o.customer }}{% endif %}{% if o.terms %} | <span class="order-terms">{{ o.terms }}</span>{% endif %}
@@ -1599,7 +1599,7 @@ PRODUCTION_TPL = """
       </div>
       <div class="unassigned-lt-grid">
         {% for o in unassigned_lt_orders %}
-          <div class="unassigned-lt-row order-line" draggable="true" data-wo="{{ o.qb_num }}" data-ship-date="{{ o.lead_time }}" data-schedule-units="{{ o.remaining_qty_str }}" data-schedule-hours="{{ o.labor_hours if o.labor_hours is not none else '' }}">
+          <div class="unassigned-lt-row order-line" data-wo="{{ o.qb_num }}" data-ship-date="{{ o.lead_time }}" data-schedule-units="{{ o.remaining_qty_str }}" data-schedule-hours="{{ o.labor_hours if o.labor_hours is not none else '' }}">
             <div>
               <div class="unassigned-lt-main">
                 {{ o.qb_num }}{% if o.customer %} | {{ o.customer }}{% endif %}{% if o.terms %} | <span class="order-terms">{{ o.terms }}</span>{% endif %}
@@ -1701,115 +1701,100 @@ PRODUCTION_TPL = """
       }
     }
 
-    function formatScheduleNumber(value){
-      if (!Number.isFinite(value)) {
-        return "0";
+    document.querySelectorAll(".order-line[data-wo]").forEach(function(row){
+      var woNumber = row.getAttribute("data-wo");
+      var originalDate = row.getAttribute("data-production-date") || "";
+      var originalArea = row.closest("[data-target-area='finished_goods']") ? "finished_goods" : "schedule";
+      var currentArea = originalArea;
+      var returnDate = originalDate || row.getAttribute("data-return-production-date") || "";
+      function productionReturnDate(){
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var date = returnDate ? new Date(returnDate + "T00:00:00") : today;
+        if (isNaN(date.getTime()) || date < today) date = today;
+        while (date.getDay() === 0 || date.getDay() === 6) date.setDate(date.getDate() + 1);
+        return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
       }
-      if (Math.abs(value - Math.round(value)) < 0.000001) {
-        return String(Math.round(value));
+      var control = document.createElement("div");
+      control.className = "production-date-control";
+      var label = document.createElement("label");
+      label.textContent = "Production date ";
+      var input = document.createElement("input");
+      input.type = "date";
+      input.className = "production-date-input";
+      function refreshMinimumDate(){
+        var now = new Date();
+        input.min = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
       }
-      return value.toFixed(1).replace(/[.]0$/, "");
-    }
+      refreshMinimumDate();
+      input.addEventListener("focus", refreshMinimumDate);
+      input.value = originalDate;
+      input.setAttribute("aria-label", "Production date for " + woNumber);
+      label.appendChild(input);
+      control.appendChild(label);
+      var finishButton = document.createElement("button");
+      finishButton.type = "button";
+      finishButton.className = "btn btn-sm btn-outline-secondary";
+      function updateFinishButton(){
+        finishButton.textContent = currentArea === "finished_goods" ? "It's not Finished!" : "It's finished";
+      }
+      updateFinishButton();
+      control.appendChild(finishButton);
+      var message = document.createElement("span");
+      message.className = "production-date-msg";
+      message.setAttribute("role", "status");
+      control.appendChild(message);
+      row.appendChild(control);
 
-    function recalcDaySummaries(){
-      document.querySelectorAll(".day-card").forEach(function(card){
-        var rows = card.querySelectorAll(".order-list .order-line");
-        var units = 0;
-        var hours = 0;
-        var review = 0;
-        rows.forEach(function(row){
-          var rowUnits = parseFloat(row.getAttribute("data-schedule-units") || "0");
-          if (Number.isFinite(rowUnits)) {
-            units += rowUnits;
+      function stage(area, date){
+        currentArea = area;
+        if (area === "schedule" && date) returnDate = date;
+        updateFinishButton();
+        var changed = area !== originalArea || date !== originalDate;
+        if (changed) {
+          pendingScheduleChanges[woNumber] = {target_area: area, production_date: date};
+        } else {
+          delete pendingScheduleChanges[woNumber];
+        }
+        row.classList.toggle("schedule-unsaved", changed);
+        message.textContent = changed ? (area === "finished_goods" ? "Unsaved: Finish Goods" : "Unsaved: " + date) : "";
+        updateScheduleSaveState();
+      }
+      input.addEventListener("change", function(){
+        input.setCustomValidity("");
+        refreshMinimumDate();
+        var date = input.value;
+        if (date) {
+          var day = new Date(date + "T00:00:00").getDay();
+          if (date < input.min || day === 0 || day === 6) {
+            input.setCustomValidity(date < input.min ? "Choose today or a future weekday for production." : "Choose a weekday for production.");
+            input.reportValidity();
+            var previous = pendingScheduleChanges[woNumber];
+            input.value = previous ? previous.production_date : originalDate;
+            input.setCustomValidity("");
+            return;
           }
-          var rowHoursRaw = row.getAttribute("data-schedule-hours") || "";
-          var rowHours = parseFloat(rowHoursRaw);
-          if (rowHoursRaw === "" || !Number.isFinite(rowHours)) {
-            review += 1;
-          } else {
-            hours += rowHours;
-          }
-        });
-        var countEl = card.querySelector(".day-order-count");
-        var unitsEl = card.querySelector(".day-unit-total");
-        var hoursEl = card.querySelector(".day-hour-total");
-        var reviewEl = card.querySelector(".day-review-count");
-        if (countEl) {
-          countEl.textContent = String(rows.length);
-        }
-        if (unitsEl) {
-          unitsEl.textContent = formatScheduleNumber(units);
-        }
-        if (hoursEl) {
-          hoursEl.textContent = formatScheduleNumber(hours);
-        }
-        if (reviewEl) {
-          reviewEl.textContent = review ? " + " + review + " review" : "";
+          stage("schedule", date);
+        } else {
+          input.value = originalDate;
+          stage(originalArea, originalDate);
         }
       });
-    }
-
-    document.querySelectorAll(".order-line[draggable='true']").forEach(function(row){
-      row.addEventListener("dragstart", function(event){
-        row.classList.add("is-dragging");
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", row.getAttribute("data-wo") || "");
-      });
-      row.addEventListener("dragend", function(){
-        row.classList.remove("is-dragging");
+      finishButton.addEventListener("click", function(){
+        if (currentArea === "finished_goods") {
+          input.value = productionReturnDate();
+          stage("schedule", input.value);
+        } else {
+          input.value = "";
+          stage("finished_goods", "");
+        }
       });
     });
-
-    document.querySelectorAll(".day-card, .order-list[data-target-area='finished_goods']").forEach(function(target){
-      var dropList = target.matches(".order-list") ? target : target.querySelector(".order-list");
-      if (!dropList) {
-        return;
+    window.addEventListener("beforeunload", function(event){
+      if (Object.keys(pendingScheduleChanges).length) {
+        event.preventDefault();
+        event.returnValue = "";
       }
-      target.addEventListener("dragover", function(event){
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
-        target.classList.add("drag-over");
-      });
-      target.addEventListener("dragleave", function(event){
-        if (!target.contains(event.relatedTarget)) {
-          target.classList.remove("drag-over");
-        }
-      });
-      target.addEventListener("drop", function(event){
-        event.preventDefault();
-        target.classList.remove("drag-over");
-        var woNumber = event.dataTransfer.getData("text/plain") || "";
-        var targetArea = dropList.getAttribute("data-target-area") || "schedule";
-        var productionDate = dropList.getAttribute("data-production-date") || "";
-        if (!woNumber || (targetArea !== "finished_goods" && !productionDate)) {
-          return;
-        }
-        var draggedRow = document.querySelector(".order-line.is-dragging") || document.querySelector(".order-line[data-wo='" + woNumber.replace(/'/g, "\\'") + "']");
-        if (draggedRow && dropList) {
-          if (dropList.classList.contains("text-muted")) {
-            dropList.classList.remove("text-muted", "small");
-            dropList.textContent = "";
-            dropList.classList.add("d-flex", "flex-column", "gap-1");
-          }
-          dropList.appendChild(draggedRow);
-          if (targetArea === "finished_goods") {
-            draggedRow.removeAttribute("data-production-date");
-            draggedRow.classList.remove("lt-same-day");
-          } else {
-            draggedRow.setAttribute("data-production-date", productionDate);
-            var shipDateValue = draggedRow.getAttribute("data-ship-date") || "";
-            if (shipDateValue && Date.parse(shipDateValue) <= Date.parse(productionDate)) {
-              draggedRow.classList.add("lt-same-day");
-            } else {
-              draggedRow.classList.remove("lt-same-day");
-            }
-          }
-          draggedRow.classList.add("schedule-unsaved");
-        }
-        pendingScheduleChanges[woNumber] = {target_area: targetArea, production_date: productionDate};
-        recalcDaySummaries();
-        updateScheduleSaveState();
-      });
     });
 
     if (scheduleSaveButton) {
@@ -1825,6 +1810,7 @@ PRODUCTION_TPL = """
         if (!assignments.length) {
           return;
         }
+        document.querySelectorAll(".production-date-control input, .production-date-control button").forEach(function(el){ el.disabled = true; });
         scheduleSaveButton.disabled = true;
         scheduleSaveButton.textContent = "Saving";
         setScheduleSaveMessage("", false);
@@ -1847,10 +1833,12 @@ PRODUCTION_TPL = """
             scheduleSaveButton.textContent = "Save Schedule";
             updateScheduleSaveState();
             setScheduleSaveMessage("Saved", false);
+            window.location.reload();
           })
           .catch(function(err){
             scheduleSaveButton.disabled = false;
             scheduleSaveButton.textContent = "Save Schedule";
+            document.querySelectorAll(".production-date-control input, .production-date-control button").forEach(function(el){ el.disabled = false; });
             setScheduleSaveMessage(err.message || "Schedule save failed", true);
           });
       });
