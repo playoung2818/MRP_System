@@ -25,7 +25,7 @@ def build_ledger_from_events(
     today = pd.Timestamp.today().normalize()
     open_df = pd.DataFrame(
         {
-            "Date": [today] * len(stock),
+            "Date": today,
             "Item": stock["Item"].values,
             "Delta": 0.0,
             "Kind": "OPEN",

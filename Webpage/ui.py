@@ -1736,7 +1736,7 @@ PRODUCTION_TPL = """
       finishButton.type = "button";
       finishButton.className = "btn btn-sm btn-outline-secondary";
       function updateFinishButton(){
-        finishButton.textContent = currentArea === "finished_goods" ? "It's not Finished!" : "It's finished";
+        finishButton.textContent = currentArea === "finished_goods" ? "It's not Finished!" : "Move to FG";
       }
       updateFinishButton();
       control.appendChild(finishButton);
