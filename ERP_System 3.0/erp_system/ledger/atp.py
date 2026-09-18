@@ -67,11 +67,9 @@ def build_atp_view(ledger: pd.DataFrame) -> pd.DataFrame:
     # Sort ascending by date, then compute backward cumulative min per item
     df.sort_values(["Item", "Date"], inplace=True)
 
-    def _future_min(group: pd.DataFrame) -> pd.Series:
-        out = backward_cumulative_min(group["Projected_NAV"].tolist())
-        return pd.Series(out, index=group.index)
-
-    df["FutureMin_NAV"] = df.groupby("Item", group_keys=False).apply(_future_min)
+    df["FutureMin_NAV"] = df.groupby("Item")["Projected_NAV"].transform(
+        lambda values: backward_cumulative_min(values.tolist())
+    )
 
     # Final column selection / ordering
     atp_view = df.loc[:, ["Item", "Date", "Projected_NAV", "FutureMin_NAV"]].copy()

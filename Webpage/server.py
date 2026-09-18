@@ -1,4 +1,4 @@
-﻿# server.py
+# server.py
 import os
 import sys
 import json
@@ -30,17 +30,11 @@ ERP_MODULE_DIR = REPO_ROOT / "ERP_System 3.0"
 if str(ERP_MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(ERP_MODULE_DIR))
 
-# Default LLM runtime for web chat if not explicitly set in shell/.env.
-os.environ.setdefault("LLM_PROVIDER", "ollama")
-os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434")
-os.environ.setdefault("OLLAMA_MODEL", "llama3.1")
-
 from erp_system.normalize.erp_normalize import normalize_item
 from erp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from erp_system.runtime.db_config import get_engine, DATABASE_DSN
 from erp_system.runtime.constants import PLACEHOLDER_DATE
 from erp_system.runtime.paths import PERIPHERAL_STATUS_FILE
-from erp_system.llm_backend import DataCache as LLMDataCache, answer_question as llm_answer_question
 
 app = Flask(__name__)
 
@@ -63,7 +57,6 @@ RECEIVING_LOG: pd.DataFrame | None = None
 ITEM_INFO: pd.DataFrame | None = None
 _LAST_LOAD_ERR: str | None = None
 _LAST_LOADED_AT: datetime | None = None
-LLM_CACHE: LLMDataCache | None = None
 ITEM_SUGGEST_CACHE: list[str] = []
 GLOBAL_SEARCH_INDEX: list[dict[str, str]] = []
 ITEM_INFO_SUGGEST_CACHE: list[str] = []
@@ -77,7 +70,6 @@ INDEX_VIEW_CACHE: dict[tuple[str, str], dict] = {}
 QUOTATION_VIEW_CACHE: dict[tuple[str, int], dict] = {}
 PERIPHERAL_STATUS_CACHE: dict | None = None
 PERIPHERAL_STATUS_CACHE_KEY: tuple[str, int, int] | None = None
-CHAT_LOG_FILE = REPO_ROOT / "Webpage" / "chatbox.log"
 READY_ASSIGN_CACHE: list[dict] | None = None
 RECENT_HOME_SEARCHES: list[dict[str, str]] = []
 WEEKLY_LABOR_CAPACITY_HOURS = 90.0
@@ -1399,12 +1391,6 @@ def _load_from_db(force: bool = False):
             sap = _read_table("public", "NT Shipping Schedule")
             open_po = _read_table("public", "Open_Purchase_Orders")
             ledger = _read_table("public", "ledger_analytics")
-            # item_atp is optional; if missing, fall back to empty frame
-            try:
-                item_atp = _read_table("public", "item_atp")
-            except Exception:
-                item_atp = pd.DataFrame(columns=["Item", "Date", "Projected_NAV", "FutureMin_NAV"])
-
             for c in ("Ship Date", "Order Date"):
                 _safe_date_col(so, c)
                 _safe_date_col(sap, c)
@@ -1417,7 +1403,7 @@ def _load_from_db(force: bool = False):
             SO_INV, INVENTORY_STATUS, SAP, OPEN_PO = so, inventory, sap, open_po
             FINAL_SO = _build_final_sales_order_from_db()
             LEDGER = ledger
-            ITEM_ATP = item_atp
+            ITEM_ATP = build_atp_view(ledger)
             SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX = _build_runtime_indexes(so, ledger)
             suggest_items: list[str] = []
             if "Item" in so.columns:
@@ -1470,32 +1456,6 @@ def _ensure_loaded():
         _load_from_db(force=True)
     # Load PDF map on demand as well
     _load_pdf_map()
-
-
-def _ensure_llm_cache() -> LLMDataCache:
-    global LLM_CACHE
-    if LLM_CACHE is None:
-        LLM_CACHE = LLMDataCache()
-    LLM_CACHE.ensure_loaded()
-    return LLM_CACHE
-
-
-def _append_chat_log(role: str, content: str, *, ok: bool | None = None, trace: list[str] | None = None) -> None:
-    try:
-        record = {
-            "ts": datetime.now().isoformat(),
-            "role": str(role),
-            "content": str(content),
-        }
-        if ok is not None:
-            record["ok"] = bool(ok)
-        if trace:
-            record["trace"] = list(trace)
-        with CHAT_LOG_FILE.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except Exception:
-        # Logging must not break chat responses.
-        pass
 
 
 def _ready_to_assign_rows() -> list[dict]:
@@ -1785,71 +1745,14 @@ def _resolve_ledger_item_key(item: str) -> str:
 
 
 def _lookup_earliest_atp_date(item: str, qty: float = 1.0) -> datetime | None:
-    """
-    Best-effort ATP lookup.
-
-    Preferred source: precomputed item_atp (faster, computed in ETL).
-    Fallback: derive from ledger_analytics for the specific item when
-    item_atp is missing or empty.
-    """
-    today = datetime.today().date()
-    from_date = pd.Timestamp(today)
-
-    # -------- primary: use precomputed item_atp (faster, computed in ETL) --------
-    if ITEM_ATP is not None and not ITEM_ATP.empty:
-        atp_df = ITEM_ATP
-        if "Item_raw" in atp_df.columns:
-            atp_df = atp_df.copy()
-            atp_df["Item"] = atp_df["Item_raw"]
-        atp_dt = earliest_atp_strict(atp_df, item, qty, from_date=from_date, allow_zero=True)
-        if atp_dt is not None:
-            return atp_dt.to_pydatetime()
-
-    # -------- fallback: compute from ledger (exclude placeholder dates) --------
-    if LEDGER is None or LEDGER.empty:
+    """Look up ATP in the view rebuilt from the ledger during data loading."""
+    if ITEM_ATP is None or ITEM_ATP.empty:
         return None
-
-    df_ledger = LEDGER.copy()
-    atp_view = build_atp_view(df_ledger)
-
-    # Ensure a "today" row exists for this item so ATP can be today
-    if not atp_view.empty and "Date" in atp_view.columns:
-        today_ts = pd.Timestamp(today)
-        item_mask = atp_view["Item"].astype(str) == str(item)
-        has_today = False
-        if item_mask.any():
-            has_today = atp_view.loc[item_mask, "Date"].dt.normalize().eq(today_ts).any()
-        if item_mask.any() and not has_today:
-            df_item = df_ledger.loc[df_ledger["Item"].astype(str) == str(item)].copy()
-            df_item["Date"] = pd.to_datetime(df_item["Date"], errors="coerce")
-            df_item = df_item.loc[df_item["Date"].notna()]
-            if not df_item.empty and "Projected_NAV" in df_item.columns:
-                df_item.sort_values("Date", inplace=True)
-                past = df_item.loc[df_item["Date"] <= today_ts]
-                if not past.empty:
-                    proj_nav = past.iloc[-1]["Projected_NAV"]
-                else:
-                    proj_nav = df_item.iloc[0]["Projected_NAV"]
-                if pd.notna(proj_nav):
-                    future_min = proj_nav
-                    future_rows = atp_view.loc[item_mask & (atp_view["Date"] >= today_ts), "FutureMin_NAV"]
-                    future_rows = pd.to_numeric(future_rows, errors="coerce").dropna()
-                    if not future_rows.empty:
-                        future_min = min(float(proj_nav), float(future_rows.min()))
-                    add_row = pd.DataFrame(
-                        {
-                            "Item": [item],
-                            "Date": [today_ts],
-                            "Projected_NAV": [proj_nav],
-                            "FutureMin_NAV": [future_min],
-                        }
-                    )
-                    atp_view = pd.concat([add_row, atp_view], ignore_index=True, sort=False)
-    atp_dt = earliest_atp_strict(atp_view, item, qty, from_date=from_date, allow_zero=True)
-    if atp_dt is None:
-        return None
-    return atp_dt.to_pydatetime()
-
+    atp_dt = earliest_atp_strict(
+        ITEM_ATP, item, qty,
+        from_date=pd.Timestamp.today().normalize(), allow_zero=True,
+    )
+    return None if atp_dt is None else atp_dt.to_pydatetime()
 
 
 def _find_pdf_url_for_so(so_num: str, po_num: str | None = None) -> str | None:
@@ -2524,40 +2427,6 @@ def api_item_overview():
         }
     )
 
-
-@app.route("/api/llm_chat", methods=["POST"])
-def api_llm_chat():
-    payload = request.get_json(silent=True) or {}
-    message = str(payload.get("message") or "").strip()
-    if not message:
-        return jsonify({"ok": False, "answer": "Missing message.", "trace": ["api: empty_message"]}), 400
-    _append_chat_log("user", message)
-
-    try:
-        cache = _ensure_llm_cache()
-        result = llm_answer_question(cache, message)
-        _append_chat_log(
-            "assistant",
-            str(result.get("answer") or ""),
-            ok=bool(result.get("ok")),
-            trace=result.get("trace") or [],
-        )
-        return jsonify(
-            {
-                "ok": bool(result.get("ok")),
-                "answer": str(result.get("answer") or ""),
-                "trace": result.get("trace") or [],
-            }
-        )
-    except Exception as exc:
-        _append_chat_log("assistant", f"Chat request failed: {exc}", ok=False, trace=["api: exception"])
-        return jsonify(
-            {
-                "ok": False,
-                "answer": f"Chat request failed: {exc}",
-                "trace": ["api: exception"],
-            }
-        ), 500
 
 @app.route("/so_lines")
 def so_lines():
