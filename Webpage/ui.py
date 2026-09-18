@@ -1,4 +1,4 @@
-﻿# Webpage/ui.py
+# Webpage/ui.py
 ERR_TPL = """
 <!doctype html>
 <html>
@@ -588,79 +588,7 @@ INDEX_TPL = """
     });
   })();
   </script>
-  <script>
-  (function () {
-    var toggle = document.getElementById("erp-chat-toggle");
-    var box = document.getElementById("erp-chatbox");
-    var closeBtn = document.getElementById("erp-chat-close");
-    var form = document.getElementById("erp-chat-form");
-    var input = document.getElementById("erp-chat-input");
-    var sendBtn = document.getElementById("erp-chat-send");
-    var body = document.getElementById("erp-chat-body");
-    if (!toggle || !box || !closeBtn || !form || !input || !sendBtn || !body) return;
 
-    function setOpen(open) {
-      box.classList.toggle("open", !!open);
-      box.setAttribute("aria-hidden", open ? "false" : "true");
-      if (open) input.focus();
-    }
-
-    function pushMsg(role, text) {
-      var row = document.createElement("div");
-      row.className = "chat-msg" + (role === "user" ? " user" : "");
-      var bubble = document.createElement("div");
-      bubble.className = "chat-bubble";
-      bubble.textContent = text || "";
-      row.appendChild(bubble);
-      body.appendChild(row);
-      body.scrollTop = body.scrollHeight;
-      return bubble;
-    }
-
-    toggle.addEventListener("click", function () {
-      setOpen(!box.classList.contains("open"));
-    });
-    closeBtn.addEventListener("click", function () {
-      setOpen(false);
-    });
-
-    form.addEventListener("submit", function (event) {
-      event.preventDefault();
-      var msg = input.value.trim();
-      if (!msg) return;
-
-      pushMsg("user", msg);
-      input.value = "";
-      input.disabled = true;
-      sendBtn.disabled = true;
-      var pending = pushMsg("assistant", "Thinking...");
-
-      fetch("/api/llm_chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg })
-      })
-        .then(function (resp) {
-          return resp.json().then(function (json) {
-            return { status: resp.status, ok: resp.ok, json: json };
-          });
-        })
-        .then(function (res) {
-          var data = res.json || {};
-          if (!res.ok) throw new Error(data.answer || data.error || ("Server error (" + res.status + ")"));
-          pending.textContent = data.answer || "No answer.";
-        })
-        .catch(function (err) {
-          pending.textContent = "Error: " + err.message;
-        })
-        .finally(function () {
-          input.disabled = false;
-          sendBtn.disabled = false;
-          input.focus();
-        });
-    });
-  })();
-  </script>
 
 </body>
 </html>
@@ -1969,7 +1897,7 @@ QUOTE_TPL = """
           </tbody>
         </table>
       </div>
-      <div class="text-muted small">Source: public.ledger_analytics and public.item_atp</div>
+      <div class="text-muted small">Source: public.ledger_analytics</div>
     </div>
   </div>
 

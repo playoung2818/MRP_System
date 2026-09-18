@@ -179,7 +179,7 @@ QUOTE_TPL = """
           </tbody>
         </table>
       </div>
-      <div class="text-muted small">Source: public.ledger_analytics and public.item_atp</div>
+      <div class="text-muted small">Source: public.ledger_analytics</div>
     </div>
   </div>
 
