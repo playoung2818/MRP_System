@@ -81,7 +81,7 @@ def build_structured_df(
         .rename(columns={"partial": "partial_flag"})
     )
     df_order_picked = df_order_picked.merge(partial_map, on=["QB Num", "Item"], how="left")
-    df_order_picked["partial"] = df_order_picked["partial_flag"].fillna(False).astype(bool)
+    df_order_picked["partial"] = df_order_picked["partial_flag"].astype("boolean").fillna(False).astype(bool)
     df_order_picked.drop(columns=["partial_flag"], inplace=True)
 
     df_order_picked["Picked"] = np.where(df_order_picked["Picked_Flag"], "Picked", "No")

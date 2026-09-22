@@ -118,6 +118,8 @@ POD_SITE: dict[str, str] = {
     "POD-260888": "WH01X-NTA",
     "POD-260889": "WH01X-NTA",
     "POD-260981": "WH01X-NTA",
+    "POD-261019": "WH01X-NTA",
+    "POD-261020": "WH01X-NTA",
     "POD-261057": "Drop Ship",
     "POD-261068": "WH01X-NTA",
     "POD-261069": "WH01X-NTA",
@@ -160,6 +162,11 @@ POD_SITE: dict[str, str] = {
     "POD-261424": "Drop Ship",
     "POD-261429": "Drop Ship",
     "POD-261440": "Drop Ship",
+    "POD-261442": "WH01X-NTA",
+    "POD-261454": "WH10Parts- NTA",
+    "POD-261455": "Drop Ship",
+    "POD-261456": "Drop Ship",
+    "POD-261461": "Drop Ship",
 }
 
 
