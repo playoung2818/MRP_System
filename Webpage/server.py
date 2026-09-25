@@ -33,6 +33,7 @@ if str(ERP_MODULE_DIR) not in sys.path:
 from erp_system.normalize.erp_normalize import normalize_item
 from erp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from erp_system.runtime.db_config import get_engine, DATABASE_DSN
+from erp_system import production_overrides
 from erp_system.runtime.constants import PLACEHOLDER_DATE
 from erp_system.runtime.paths import PERIPHERAL_STATUS_FILE
 
@@ -74,8 +75,6 @@ READY_ASSIGN_CACHE: list[dict] | None = None
 RECENT_HOME_SEARCHES: list[dict[str, str]] = []
 WEEKLY_LABOR_CAPACITY_HOURS = 90.0
 WO_PICKED_QTY_OVERRIDES_TABLE = "wo_picked_qty_overrides"
-PRODUCTION_SCHEDULE_OVERRIDES_TABLE = "production_schedule_overrides"
-FINISHED_GOODS_OVERRIDES_TABLE = "production_finished_goods_overrides"
 LABOR_HOURS_PER_UNIT = {
     "NUVO": 1.0,
     "POC": 0.5,
@@ -371,39 +370,8 @@ def _save_wo_picked_qty_override(wo_number: str, picked_qty: float, updated_by: 
             )
 
 
-def _ensure_production_schedule_overrides_table() -> None:
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                f"""
-                CREATE TABLE IF NOT EXISTS public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE} (
-                    wo_number TEXT PRIMARY KEY,
-                    production_date DATE NOT NULL,
-                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_by TEXT
-                )
-                """
-            )
-        )
-
-
 def _load_production_schedule_overrides() -> dict[str, str]:
-    try:
-        _ensure_production_schedule_overrides_table()
-        rows = pd.read_sql_query(
-            text(f"SELECT wo_number, production_date FROM public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE}"),
-            con=engine,
-        )
-    except Exception:
-        return {}
-
-    overrides: dict[str, str] = {}
-    for _, row in rows.iterrows():
-        key = str(row.get("wo_number") or "").strip()
-        date_val = pd.to_datetime(row.get("production_date"), errors="coerce")
-        if key and pd.notnull(date_val):
-            overrides[key] = date_val.strftime("%Y-%m-%d")
-    return overrides
+    return production_overrides.load_schedule(engine)
 
 
 def _save_production_schedule_override(
@@ -411,123 +379,15 @@ def _save_production_schedule_override(
     production_date: str,
     updated_by: str | None = None,
 ) -> None:
-    _ensure_production_schedule_overrides_table()
-    dialect = engine.dialect.name
-    updated_by = updated_by or None
-    with engine.begin() as conn:
-        if dialect == "postgresql":
-            conn.execute(
-                text(
-                    f"""
-                    INSERT INTO public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE}
-                        (wo_number, production_date, updated_at, updated_by)
-                    VALUES (:wo_number, :production_date, CURRENT_TIMESTAMP, :updated_by)
-                    ON CONFLICT (wo_number)
-                    DO UPDATE SET
-                        production_date = EXCLUDED.production_date,
-                        updated_at = CURRENT_TIMESTAMP,
-                        updated_by = EXCLUDED.updated_by
-                    """
-                ),
-                {"wo_number": wo_number, "production_date": production_date, "updated_by": updated_by},
-            )
-        else:
-            conn.execute(
-                text(
-                    f"DELETE FROM public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE} "
-                    "WHERE wo_number = :wo_number"
-                ),
-                {"wo_number": wo_number},
-            )
-            conn.execute(
-                text(
-                    f"""
-                    INSERT INTO public.{PRODUCTION_SCHEDULE_OVERRIDES_TABLE}
-                        (wo_number, production_date, updated_at, updated_by)
-                    VALUES (:wo_number, :production_date, CURRENT_TIMESTAMP, :updated_by)
-                    """
-                ),
-                {"wo_number": wo_number, "production_date": production_date, "updated_by": updated_by},
-            )
-
-
-def _ensure_finished_goods_overrides_table() -> None:
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                f"""
-                CREATE TABLE IF NOT EXISTS public.{FINISHED_GOODS_OVERRIDES_TABLE} (
-                    wo_number TEXT PRIMARY KEY,
-                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_by TEXT
-                )
-                """
-            )
-        )
+    production_overrides.save_schedule(engine, wo_number, production_date, updated_by)
 
 
 def _load_finished_goods_overrides() -> set[str]:
-    try:
-        _ensure_finished_goods_overrides_table()
-        rows = pd.read_sql_query(
-            text(f"SELECT wo_number FROM public.{FINISHED_GOODS_OVERRIDES_TABLE}"),
-            con=engine,
-        )
-    except Exception:
-        return set()
-    return {str(row.get("wo_number") or "").strip() for _, row in rows.iterrows() if str(row.get("wo_number") or "").strip()}
+    return production_overrides.load_finished_goods(engine)
 
 
 def _save_finished_goods_override(wo_number: str, updated_by: str | None = None) -> None:
-    _ensure_finished_goods_overrides_table()
-    dialect = engine.dialect.name
-    updated_by = updated_by or None
-    with engine.begin() as conn:
-        if dialect == "postgresql":
-            conn.execute(
-                text(
-                    f"""
-                    INSERT INTO public.{FINISHED_GOODS_OVERRIDES_TABLE}
-                        (wo_number, updated_at, updated_by)
-                    VALUES (:wo_number, CURRENT_TIMESTAMP, :updated_by)
-                    ON CONFLICT (wo_number)
-                    DO UPDATE SET
-                        updated_at = CURRENT_TIMESTAMP,
-                        updated_by = EXCLUDED.updated_by
-                    """
-                ),
-                {"wo_number": wo_number, "updated_by": updated_by},
-            )
-        else:
-            conn.execute(
-                text(
-                    f"DELETE FROM public.{FINISHED_GOODS_OVERRIDES_TABLE} "
-                    "WHERE wo_number = :wo_number"
-                ),
-                {"wo_number": wo_number},
-            )
-            conn.execute(
-                text(
-                    f"""
-                    INSERT INTO public.{FINISHED_GOODS_OVERRIDES_TABLE}
-                        (wo_number, updated_at, updated_by)
-                    VALUES (:wo_number, CURRENT_TIMESTAMP, :updated_by)
-                    """
-                ),
-                {"wo_number": wo_number, "updated_by": updated_by},
-            )
-
-
-def _delete_finished_goods_override(wo_number: str) -> None:
-    _ensure_finished_goods_overrides_table()
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                f"DELETE FROM public.{FINISHED_GOODS_OVERRIDES_TABLE} "
-                "WHERE wo_number = :wo_number"
-            ),
-            {"wo_number": wo_number},
-        )
+    production_overrides.save_finished_goods(engine, wo_number, updated_by)
 
 
 def _picked_qty_for_wo(
@@ -2898,7 +2758,6 @@ def api_production_schedule():
                     assignment["production_date"],
                     updated_by=updated_by,
                 )
-                _delete_finished_goods_override(assignment["wo_number"])
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
