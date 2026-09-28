@@ -34,6 +34,7 @@ from erp_system.normalize.erp_normalize import normalize_item
 from erp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from erp_system.runtime.db_config import get_engine, DATABASE_DSN
 from erp_system import production_overrides
+from erp_system.quotation_cards import load_item_cards
 from erp_system.runtime.constants import PLACEHOLDER_DATE
 from erp_system.runtime.paths import PERIPHERAL_STATUS_FILE
 
@@ -1088,6 +1089,9 @@ def _build_quote_item_summaries(
     inv = inventory_src.copy()
     inv["Part_Number"] = inv["Part_Number"].astype(str).str.strip()
     inv = inv.loc[inv["Part_Number"].ne("")].copy()
+    if "On Hand" not in inv.columns:
+        inv["On Hand"] = pd.NA
+    inv["On Hand"] = pd.to_numeric(inv["On Hand"], errors="coerce")
     if "Available" not in inv.columns:
         inv["Available"] = 0.0
     if "Max" not in inv.columns:
@@ -1095,44 +1099,12 @@ def _build_quote_item_summaries(
     inv["Available"] = pd.to_numeric(inv["Available"], errors="coerce")
     inv["Max"] = pd.to_numeric(inv["Max"], errors="coerce")
     inv_summary = (
-        inv.groupby("Part_Number", as_index=False)[["Available", "Max"]]
+        inv.groupby("Part_Number", as_index=False)[["On Hand", "Available", "Max"]]
         .first()
-        .rename(columns={"Part_Number": "item", "Available": "available", "Max": "max_flag"})
+        .rename(columns={"Part_Number": "item", "On Hand": "on_hand", "Available": "available", "Max": "max_flag"})
     )
 
-    if ledger_src is None or ledger_src.empty:
-        inv_summary["min_regular"] = pd.NA
-        inv_summary["min_2099"] = pd.NA
-        return inv_summary.sort_values("item", kind="mergesort").to_dict(orient="records")
-
-    led = ledger_src.copy()
-    item_col = "Item" if "Item" in led.columns else ("Item_raw" if "Item_raw" in led.columns else None)
-    if item_col is None or "Date" not in led.columns or "Projected_NAV" not in led.columns:
-        inv_summary["min_regular"] = pd.NA
-        inv_summary["min_2099"] = pd.NA
-        return inv_summary.sort_values("item", kind="mergesort").to_dict(orient="records")
-
-    led["item"] = led[item_col].astype(str).str.strip()
-    led["Date"] = pd.to_datetime(led["Date"], errors="coerce").dt.normalize()
-    led["Projected_NAV"] = pd.to_numeric(led["Projected_NAV"], errors="coerce")
-    led = led.loc[led["item"].ne("") & led["Date"].notna() & led["Projected_NAV"].notna()].copy()
-
-    placeholder_date = PLACEHOLDER_DATE
-    led_regular = (
-        led.loc[led["Date"].ne(placeholder_date)]
-        .groupby("item", as_index=False)["Projected_NAV"]
-        .min()
-        .rename(columns={"Projected_NAV": "min_regular"})
-    )
-    led_2099 = (
-        led.loc[led["Date"] <= placeholder_date]
-        .groupby("item", as_index=False)["Projected_NAV"]
-        .min()
-        .rename(columns={"Projected_NAV": "min_2099"})
-    )
-
-    merged = inv_summary.merge(led_regular, on="item", how="left").merge(led_2099, on="item", how="left")
-    records = merged.sort_values("item", kind="mergesort").to_dict(orient="records")
+    records = inv_summary.sort_values("item", kind="mergesort").to_dict(orient="records")
     cleaned: list[dict[str, object]] = []
     for rec in records:
         out: dict[str, object] = {}
@@ -3029,6 +3001,7 @@ def quotation_lookup():
 
     item_input = (request.values.get("item") or "").strip()
     item_lookup = _resolve_ledger_item_key(item_input)
+    item_cards, companion_error = load_item_cards(item_lookup or item_input, QUOTE_ITEM_SUGGEST_ROWS)
     qty_val = 1
 
     ledger_columns: list[str] = []
@@ -3044,6 +3017,8 @@ def quotation_lookup():
         earliest_atp = cached.get("earliest_atp")
         return render_template_string(
             QUOTE_TPL,
+            item_cards=item_cards,
+            companion_error=companion_error,
             item_val=item_input,
             opening_qty=opening_qty,
             earliest_atp=earliest_atp,
@@ -3166,6 +3141,8 @@ def quotation_lookup():
 
     return render_template_string(
         QUOTE_TPL,
+        item_cards=item_cards,
+        companion_error=companion_error,
         item_val=item_lookup or item_input,
         opening_qty=opening_qty,
         earliest_atp=earliest_atp,

@@ -11,17 +11,20 @@ QUOTE_TPL = """
     html,body{ background:var(--bg); color:var(--ink); }
     body{ padding:28px; }
     .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); }
-    .summary{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; }
-    .metric{ border:1px solid #e2e8f0; border-radius:12px; padding:1rem; background:#fff; }
+    .summary{ display:grid; grid-template-columns:minmax(180px,1fr) minmax(0,3fr); gap:.65rem; }
+    .companion-list{ display:flex; flex-wrap:wrap; gap:.35rem 1rem; margin:.35rem 0 0; padding:0; list-style:none; font-size:.85rem; }
+    .companion-list a{ overflow-wrap:anywhere; }
+    @media (max-width:575.98px){ .summary{ grid-template-columns:1fr; } }
+    .metric{ border:1px solid #e2e8f0; border-radius:10px; padding:.65rem .8rem; background:#fff; min-width:0; }
     .metric .label{ text-transform:uppercase; font-size:.75rem; letter-spacing:.08em; color:var(--muted); font-weight:600; }
-    .metric .value{ font-size:1.3rem; font-weight:700; }
+    .metric .value{ font-size:1rem; font-weight:600; }
     .table-responsive{ max-height:70vh; overflow:auto; }
     .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); }
     .th-projected{ background:#dcfce7 !important; }
     .cell-projected-min{ background:#bbf7d0 !important; font-weight:700; }
     .suggest-head, .suggest-row{
       display:grid;
-      grid-template-columns:minmax(220px, 2.2fr) minmax(90px, .8fr) minmax(130px, 1fr) minmax(130px, 1fr);
+      grid-template-columns:minmax(0, 2.2fr) minmax(90px, .8fr) minmax(90px, .8fr);
       gap:.75rem;
       align-items:center;
     }
@@ -110,9 +113,8 @@ QUOTE_TPL = """
         <div id="quote-suggest-head" class="suggest-head"
              style="position:absolute; top:62px; left:0; right:0; z-index:1001; display:none;">
           <div>Item</div>
+          <div class="text-end">On Hand</div>
           <div class="text-end">Available</div>
-          <div class="text-end">ATP (Exclude Unassigned SO)</div>
-          <div class="text-end">ATP (All SO)</div>
         </div>
         <div id="quote-suggest" class="list-group"
              style="position:absolute; top:96px; left:0; right:0; z-index:1000; display:none; max-height:280px; overflow:auto;"></div>
@@ -125,32 +127,27 @@ QUOTE_TPL = """
     <span><span class="swatch swatch-green"></span>green = Max 99</span>
   </div>
 
-  <div class="summary mb-4">
-    <div class="metric">
-      <div class="label">Item</div>
-      <div class="value">{{ item_val or '-' }}</div>
+  {% if companion_error %}
+    <div class="alert alert-warning" role="alert">{{ companion_error }}</div>
+  {% endif %}
+  {% if item_cards %}
+  <div class="summary mb-3">
+    <div class="metric border-primary">
+      <div class="label">Searched item</div>
+      <div class="value" style="overflow-wrap:anywhere;">{{ item_cards[0].item }}</div>
     </div>
     <div class="metric">
-      <div class="label">Opening (On Hand snapshot)</div>
-      <div class="value">
-        {% if opening_qty is not none %}
-          {{ opening_qty }}
+      <div class="label">Top 5 companion items</div>
+      <ul class="companion-list">
+        {% for card in item_cards[1:6] %}
+        <li><a href="{{ url_for('quotation_lookup', item=card.item) }}" class="text-decoration-none">{{ card.item }}</a></li>
         {% else %}
-          ---
-        {% endif %}
-      </div>
-    </div>
-    <div class="metric">
-      <div class="label">Earliest ATP Date (Qty 1)</div>
-      <div class="value">
-        {% if earliest_atp %}
-          {{ earliest_atp }}
-        {% else %}
-          ---
-        {% endif %}
-      </div>
+        <li class="text-muted">{{ 'Companion items unavailable.' if companion_error else 'No companion items saved.' }}</li>
+        {% endfor %}
+      </ul>
     </div>
   </div>
+  {% endif %}
 
   <div class="card-lite bg-white">
     <div class="card-header fw-bold">Ledger Timeline</div>
@@ -205,9 +202,8 @@ QUOTE_TPL = """
         return '<button type="button" class="list-group-item list-group-item-action' + extraClass + '">' +
                '<div class="suggest-row">' +
                '<div>' + esc(it.item) + '</div>' +
+               '<div class="col-num">' + esc(it.on_hand) + '</div>' +
                '<div class="col-num">' + esc(it.available) + '</div>' +
-               '<div class="col-num">' + esc(it.min_regular) + '</div>' +
-               '<div class="col-num">' + esc(it.min_2099) + '</div>' +
                '</div>' +
                '</button>';
       }).join('');
