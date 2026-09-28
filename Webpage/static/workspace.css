@@ -1,0 +1,90 @@
+/* Shared presentation for Quotations, Inventory Count and Item Info only.
+   Semantic row/cell backgrounds and existing highlight rules stay in their templates. */
+body.workspace-page {
+  --ink:#253346; --muted:#65768a; --bg:#f5f7fa; --hdr:#f6f8fb;
+  --workspace-line:#dfe5ec; --workspace-blue:#246bc3;
+  margin:0; padding:0; background:var(--bg); color:var(--ink);
+  font:15px/1.45 "Segoe UI",Arial,sans-serif;
+}
+.workspace-page .workspace-nav{background:#fff;border-bottom:1px solid var(--workspace-line)}
+.workspace-page .workspace-nav-inner{max-width:1760px;margin:auto;display:flex;align-items:center;gap:36px;padding:0 28px;min-height:64px}
+.workspace-page .workspace-brand{display:flex;align-items:center;gap:9px;color:var(--ink);text-decoration:none;flex-shrink:0}
+.workspace-page .workspace-brand-mark{display:grid;place-items:center;width:30px;height:30px;border-radius:5px;background:var(--workspace-blue);color:#fff;font-weight:700;font-size:20px}
+.workspace-page .workspace-brand strong{display:block;font-size:16px;letter-spacing:.08em}
+.workspace-page .workspace-brand small{display:block;font-size:11px;color:var(--muted);letter-spacing:.09em}
+.workspace-page .workspace-links{display:flex;align-items:center;gap:5px;align-self:stretch}
+.workspace-page .workspace-links a{min-height:64px;display:flex;align-items:center;gap:8px;color:#526479;text-decoration:none;padding:0 15px;border-bottom:2px solid transparent;font-size:14px;font-weight:500;white-space:nowrap}
+.workspace-page .workspace-links a:hover{background:#f6f9fd;color:var(--workspace-blue)}
+.workspace-page .workspace-links a[aria-current="page"]{color:var(--workspace-blue);background:#edf4fd;border-bottom-color:var(--workspace-blue);font-weight:650}
+.workspace-page .workspace-links svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.workspace-page .workspace-home{margin-left:auto;color:var(--muted);font-size:13px;text-decoration:none;white-space:nowrap}
+.workspace-page .workspace-main{max-width:1760px;margin:auto;padding:23px 28px 28px;min-width:0}
+.workspace-page .workspace-breadcrumb{font-size:12px;color:var(--muted);margin-bottom:14px;display:flex;gap:9px}
+.workspace-page .workspace-breadcrumb a{color:var(--muted);text-decoration:none}
+.workspace-page .workspace-header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:19px}
+.workspace-page .workspace-title{font-size:26px;line-height:1.25;letter-spacing:-.5px;font-weight:650;margin:0 0 5px}
+.workspace-page .workspace-description{font-size:14px;color:var(--muted);margin:0}
+.workspace-page .workspace-header-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
+.workspace-page .workspace-loaded{font-size:12px;color:var(--muted)}
+.workspace-page .btn{font-size:14px;line-height:1.5;padding:7px 12px;border-radius:5px;box-shadow:none;font-weight:600}
+.workspace-page .btn-primary{--bs-btn-bg:#246bc3;--bs-btn-border-color:#246bc3;--bs-btn-hover-bg:#1c5aa6;--bs-btn-hover-border-color:#1c5aa6;--bs-btn-active-bg:#174e92;--bs-btn-active-border-color:#174e92}
+.workspace-page .btn-outline-secondary{--bs-btn-color:#536479;--bs-btn-border-color:#cfd8e3;--bs-btn-hover-bg:#edf3fa;--bs-btn-hover-color:#253346;--bs-btn-hover-border-color:#b9c8d9;background:#fff}
+.workspace-page .form-control{height:38px;font-size:14px;padding:8px 11px;border-color:#cfd8e3;border-radius:5px;color:var(--ink)}
+.workspace-page .form-control:focus{border-color:#79a8df;box-shadow:0 0 0 3px #246bc318}
+.workspace-page .form-label{font-size:13px;font-weight:600;margin-bottom:6px;color:#4e6075}
+.workspace-page .workspace-search{background:#fff;border:1px solid var(--workspace-line);border-radius:6px;padding:15px 17px;margin:0 0 16px;position:relative;z-index:5;--bs-gutter-x:16px;--bs-gutter-y:8px}
+.workspace-page .workspace-search.row{margin-left:0;margin-right:0}
+.workspace-page .workspace-search.row>*{margin-top:0}
+.workspace-page .workspace-search .btn{min-height:38px;display:inline-flex;align-items:center;justify-content:center}
+.workspace-page .workspace-search .quote-search-control,.workspace-page .workspace-search .quote-search-action{height:38px;min-width:0;font-size:14px}
+.workspace-page .quote-search-form{gap:8px;align-items:center}
+.workspace-page .quote-legend{font-size:12px;gap:16px;margin-top:-6px;margin-bottom:16px!important}
+.workspace-page .quote-legend .swatch{width:7px;height:7px}
+.workspace-page .suggest-head{font-size:12px;padding:7px 10px;letter-spacing:.03em}
+.workspace-page .suggest-head,.workspace-page .suggest-row{grid-template-columns:minmax(0,2fr) 75px 75px;gap:10px}
+.workspace-page .suggest-row>div:first-child{overflow-wrap:anywhere;min-width:0}
+.workspace-page .list-group-item{padding:7px 10px;font-size:14px}
+.workspace-page .item-suggest,.workspace-page .item-info-suggest{top:40px;box-shadow:0 8px 20px #24364c12}
+.workspace-page .card-lite{border:1px solid var(--workspace-line);border-radius:6px;box-shadow:none;min-width:0}
+.workspace-page .card-header{background:#fff;border-bottom:1px solid var(--workspace-line);padding:11px 14px;font-size:15px;border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.workspace-page .card-body{padding:0}
+.workspace-page .card-body>.text-muted.small{padding:8px 14px;border-top:1px solid var(--workspace-line);font-size:12px}
+.workspace-page .table-responsive{max-height:65vh;border-radius:0 0 6px 6px}
+.workspace-page .table{font-size:14px;margin-bottom:0;--bs-table-border-color:#e6ebf1;font-variant-numeric:tabular-nums}
+.workspace-page .table>:not(caption)>*>*{padding:7px 11px;vertical-align:middle}
+.workspace-page .table thead th{font-size:12px;font-weight:650;letter-spacing:.02em;white-space:nowrap;text-transform:none;color:#536479;padding-top:9px;padding-bottom:9px}
+.workspace-page .table-bordered>:not(caption)>*{border-width:0 0 1px}
+.workspace-page .table-bordered>:not(caption)>*>*{border-width:0}
+.workspace-page .table tbody tr:last-child{border-bottom-width:0}
+.workspace-page .summary{gap:12px;margin-bottom:16px!important}
+.workspace-page .metric{padding:11px 14px;border-radius:5px;border-color:var(--workspace-line)}
+.workspace-page .metric .label{font-size:12px;letter-spacing:.06em;margin-bottom:4px}
+.workspace-page .metric .value{font-size:19px;font-weight:650;line-height:1.4}
+.workspace-page .companion-list{font-size:14px;gap:5px 16px;margin-top:4px}
+.workspace-page .companion-list a{color:var(--workspace-blue)}
+.workspace-page.inventory-workspace .summary{grid-template-columns:repeat(2,minmax(140px,240px))}
+.workspace-page .workspace-table-note{font-size:12px;color:var(--muted);font-weight:400}
+.workspace-page .workspace-skip{position:absolute;top:-80px;left:14px;background:#fff;padding:10px;z-index:2000}
+.workspace-page .workspace-skip:focus{top:5px}
+.workspace-page :focus-visible{outline:2px solid #246bc3;outline-offset:2px}
+@media(max-width:767.98px){
+ .workspace-page .workspace-nav-inner{padding:12px 14px 0;flex-wrap:wrap;gap:12px;min-height:0}
+ .workspace-page .workspace-brand{order:0}.workspace-page .workspace-home{order:1}
+ .workspace-page .workspace-links{order:2;width:100%;overflow-x:auto;gap:0}
+ .workspace-page .workspace-links a{min-height:40px;padding:10px 12px;font-size:13px;flex-shrink:0}
+ .workspace-page .workspace-main{padding:18px 14px}
+ .workspace-page .workspace-header{align-items:flex-start;flex-wrap:wrap;gap:10px}
+ .workspace-page .workspace-title{font-size:24px}.workspace-page .workspace-header-actions{justify-content:flex-start}
+ .workspace-page .workspace-search{padding:12px}
+ .workspace-page .workspace-search.row{row-gap:12px}
+ .workspace-page .workspace-search.row>*{margin-top:0}
+ .workspace-page .quote-search-form{grid-template-columns:1fr 1fr}
+ .workspace-page .quote-search-wrap{grid-column:1/-1}
+ .workspace-page .suggest-head,.workspace-page .suggest-row{grid-template-columns:minmax(0,1fr) 60px 65px;gap:6px}
+ .workspace-page .suggest-head{font-size:11px}.workspace-page .list-group-item{font-size:13px}
+ .workspace-page .table-responsive{max-height:65vh}
+ .workspace-page .summary{grid-template-columns:1fr}
+ .workspace-page.inventory-workspace .summary{grid-template-columns:1fr 1fr}
+ .workspace-page .card-header{flex-wrap:wrap}
+}
+@media print{.workspace-nav,.workspace-search,.workspace-header-actions,.workspace-skip{display:none!important}.workspace-page .workspace-main{padding:0}.workspace-page .table-responsive{max-height:none;overflow:visible}}

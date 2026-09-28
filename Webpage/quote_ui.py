@@ -1,9 +1,10 @@
 QUOTE_TPL = """
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quotation Lookup</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
@@ -91,33 +92,34 @@ QUOTE_TPL = """
       .quote-search-action{ width:100%; }
     }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='workspace.css') }}?v=2">
 </head>
-<body>
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <div>
-      <div class="h3 m-0">Quotation Lookup</div>
-      <div class="text-muted small">Loaded {{ loaded_at }}</div>
-    </div>
-    <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-primary" href="/quotation_lookup/peripheral_status">SSD &amp; Memory Status</a>
-      <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
-    </div>
-  </div>
+<body class="workspace-page">
+  <a class="workspace-skip" href="#workspace-content">Skip to content</a>
+  <nav class="workspace-nav" aria-label="Main navigation"><div class="workspace-nav-inner">
+    <a class="workspace-brand" href="/" aria-label="Neousys home"><span class="workspace-brand-mark">N</span><span><strong>NEOUSYS</strong><small>MRP WORKSPACE</small></span></a>
+<a class="workspace-home" href="/">Home</a></div></nav>
+  <main id="workspace-content" class="workspace-main">
+  <div class="workspace-breadcrumb"><a href="/">Workspace</a><span aria-hidden="true">/</span><span>Quotations</span></div>
+  <header class="workspace-header"><div><h1 class="workspace-title">Quotation lookup</h1><p class="workspace-description">Find a part, review its companions, and check upcoming movements.</p></div>
+    <div class="workspace-header-actions"><span class="workspace-loaded">Loaded {{ loaded_at }}</span><a class="btn btn-sm btn-outline-secondary" href="/quotation_lookup/peripheral_status">SSD &amp; Memory Status</a></div>
+  </header>
 
-  <form class="quote-search-form" method="get">
+  <form class="workspace-search quote-search-form" method="get">
       <div class="quote-search-wrap">
+        <label class="visually-hidden" for="quote-item">Item name or part number</label>
         <input id="quote-item" autocomplete="off" class="form-control form-control-lg quote-search-control"
                name="item"
                placeholder="Type item name or partial code"
                value="{{ item_val or '' }}">
         <div id="quote-suggest-head" class="suggest-head"
-             style="position:absolute; top:62px; left:0; right:0; z-index:1001; display:none;">
+             style="position:absolute; top:40px; left:0; right:0; z-index:1001; display:none;">
           <div>Item</div>
           <div class="text-end">On Hand</div>
           <div class="text-end">Available</div>
         </div>
         <div id="quote-suggest" class="list-group"
-             style="position:absolute; top:96px; left:0; right:0; z-index:1000; display:none; max-height:280px; overflow:auto;"></div>
+             style="position:absolute; top:74px; left:0; right:0; z-index:1000; display:none; max-height:280px; overflow:auto;"></div>
       </div>
     <button class="btn btn-primary px-4 quote-search-action" type="submit">Search</button>
     <a class="btn btn-outline-secondary px-4 quote-search-action d-flex align-items-center justify-content-center" href="/quotation_lookup?reload=1">Reload</a>
@@ -150,7 +152,7 @@ QUOTE_TPL = """
   {% endif %}
 
   <div class="card-lite bg-white">
-    <div class="card-header fw-bold">Ledger Timeline</div>
+    <div class="card-header fw-bold"><span>Ledger timeline</span><span class="workspace-table-note">{{ ledger_rows|length }} movements</span></div>
     <div class="card-body">
       <div class="table-responsive">
         <table class="table table-sm table-bordered table-hover align-middle">
@@ -179,6 +181,8 @@ QUOTE_TPL = """
       <div class="text-muted small">Source: public.ledger_analytics</div>
     </div>
   </div>
+
+  </main>
 
   <script>
   (function () {

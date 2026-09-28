@@ -596,10 +596,11 @@ INDEX_TPL = """
 
 INVENTORY_TPL = """
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Inventory Count</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
@@ -615,35 +616,36 @@ INVENTORY_TPL = """
     .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); }
     .item-suggest{ position:absolute; top:62px; left:0; right:0; z-index:1000; display:none; max-height:260px; overflow:auto; }
   </style>
-  </head>
-<body>
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <div>
-      <div class="h3 m-0">Inventory Count</div>
-      <div class="text-muted small">Loaded {{ loaded_at }}</div>
-    </div>
-    <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
-    </div>
-  </div>
+    <link rel="stylesheet" href="{{ url_for('static', filename='workspace.css') }}?v=2">
+</head>
+<body class="workspace-page inventory-workspace">
+  <a class="workspace-skip" href="#workspace-content">Skip to content</a>
+  <nav class="workspace-nav" aria-label="Main navigation"><div class="workspace-nav-inner">
+    <a class="workspace-brand" href="/" aria-label="Neousys home"><span class="workspace-brand-mark">N</span><span><strong>NEOUSYS</strong><small>MANUFACTURING WORKSPACE</small></span></a>
+<a class="workspace-home" href="/">Home</a></div></nav>
+  <main id="workspace-content" class="workspace-main">
+  <div class="workspace-breadcrumb"><a href="/">Workspace</a><span aria-hidden="true">/</span><span>Inventory Count</span></div>
+  <header class="workspace-header"><div><h1 class="workspace-title">Inventory count</h1><p class="workspace-description">Check stock quantities, sales orders, and recent receipts.</p></div>
+    <div class="workspace-header-actions"><span class="workspace-loaded">Loaded {{ loaded_at }}</span></div>
+  </header>
 
-  <form class="row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
+  <form class="workspace-search row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
     <div class="col-12 col-md-4">
       <label class="form-label" for="inv-so">By SO / QB</label>
-      <input id="inv-so" class="form-control form-control-lg" style="height:60px;font-size:1.05rem" name="so" placeholder="SO-20251368 or 20251368" value="{{ so_val or '' }}">
+      <input id="inv-so" class="form-control form-control-lg"  name="so" placeholder="SO-20251368 or 20251368" value="{{ so_val or '' }}">
     </div>
     <div class="col-12 col-md-4">
       <label class="form-label" for="inv-item">By Item</label>
       <div style="position:relative;">
-        <input id="inv-item" autocomplete="off" class="form-control form-control-lg" style="height:60px;font-size:1.05rem" name="item" placeholder="Item (e.g., M.280-SSD-1TB-SATA-TLC5WT-TD)" value="{{ item_val or '' }}">
+        <input id="inv-item" autocomplete="off" class="form-control form-control-lg"  name="item" placeholder="Item (e.g., M.280-SSD-1TB-SATA-TLC5WT-TD)" value="{{ item_val or '' }}">
         <div id="inv-item-suggest" class="list-group item-suggest"></div>
       </div>
     </div>
     <div class="col-6 col-md-auto">
-      <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
+      <button class="btn btn-primary px-4 w-100" >Search</button>
     </div>
     <div class="col-6 col-md-auto">
-      <a class="btn btn-outline-secondary w-100" style="height:52px;font-size:1rem;font-weight:600" href="/inventory_count?reload=1">Reload</a>
+      <a class="btn btn-outline-secondary w-100"  href="/inventory_count?reload=1">Reload</a>
     </div>
   </form>
 
@@ -755,6 +757,8 @@ INVENTORY_TPL = """
   </div>
   {% endif %}
 
+  </main>
+
   <script>
   (function () {
     var input = document.getElementById('inv-item');
@@ -812,10 +816,11 @@ INVENTORY_TPL = """
 
 ITEM_INFO_TPL = """
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Item Info</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
@@ -830,25 +835,25 @@ ITEM_INFO_TPL = """
     .suggest-item-row{ display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
     .photo-mark{ flex:0 0 auto; font-size:.72rem; font-weight:700; color:#166534; background:#dcfce7; border:1px solid #bbf7d0; border-radius:999px; padding:.12rem .45rem; }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='workspace.css') }}?v=2">
 </head>
-<body>
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-      <div class="h3 m-0">Item Info</div>
-      <div class="text-muted small">Loaded {{ loaded_at }}</div>
-    </div>
-    <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
-      <a class="btn btn-sm btn-outline-primary" href="/item_info?reload=1">Reload</a>
-    </div>
-  </div>
+<body class="workspace-page">
+  <a class="workspace-skip" href="#workspace-content">Skip to content</a>
+  <nav class="workspace-nav" aria-label="Main navigation"><div class="workspace-nav-inner">
+    <a class="workspace-brand" href="/" aria-label="Neousys home"><span class="workspace-brand-mark">N</span><span><strong>NEOUSYS</strong><small>MANUFACTURING WORKSPACE</small></span></a>
+<a class="workspace-home" href="/">Home</a></div></nav>
+  <main id="workspace-content" class="workspace-main">
+  <div class="workspace-breadcrumb"><a href="/">Workspace</a><span aria-hidden="true">/</span><span>Item Info</span></div>
+  <header class="workspace-header"><div><h1 class="workspace-title">Item info</h1><p class="workspace-description">Find part details, vendor information, and product photos.</p></div>
+    <div class="workspace-header-actions"><span class="workspace-loaded">Loaded {{ loaded_at }}</span><a class="btn btn-sm btn-outline-secondary" href="/item_info?reload=1">Reload</a></div>
+  </header>
 
-  <form class="row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
+  <form class="workspace-search row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
     <div class="col-12 col-md-7">
       <label class="form-label" for="item-info-q">Search Item</label>
       <div style="position:relative;">
         <input id="item-info-q" autocomplete="off" class="form-control form-control-lg"
-               style="height:60px;font-size:1.05rem"
+               
                name="q"
                placeholder="Type item name, part name, MPN, vendor, or description"
                value="{{ q_val or '' }}">
@@ -856,7 +861,7 @@ ITEM_INFO_TPL = """
       </div>
     </div>
     <div class="col-6 col-md-auto">
-      <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
+      <button class="btn btn-primary px-4 w-100" >Search</button>
     </div>
   </form>
 
@@ -907,6 +912,8 @@ ITEM_INFO_TPL = """
       <div class="text-muted small">Source: public.Item Info</div>
     </div>
   </div>
+
+  </main>
 
   <script>
   (function () {
