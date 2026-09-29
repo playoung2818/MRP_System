@@ -35,10 +35,12 @@ from erp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_
 from erp_system.runtime.db_config import get_engine, DATABASE_DSN
 from erp_system import production_overrides
 from erp_system.quotation_cards import load_item_cards
+from erp_system.purchase_order_lookup import purchase_orders
 from erp_system.runtime.constants import PLACEHOLDER_DATE
 from erp_system.runtime.paths import PERIPHERAL_STATUS_FILE
 
 app = Flask(__name__)
+app.register_blueprint(purchase_orders)
 
 # =========================
 # DB ENGINE

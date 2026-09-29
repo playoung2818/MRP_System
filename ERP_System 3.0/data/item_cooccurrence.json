@@ -9813,24 +9813,24 @@
     ],
     "DDR5-32GB-56-SM": [
       {
-        "item": "Cbl-PC-OW3-180CM1",
-        "frequency": 16
-      },
-      {
-        "item": "PA-600W-ENC",
-        "frequency": 11
-      },
-      {
         "item": "i9-14900",
         "frequency": 11
       },
       {
-        "item": "Cbl-YT-OW-Black-50CM1",
-        "frequency": 10
+        "item": "Nuvo-10208GC",
+        "frequency": 5
       },
       {
-        "item": "Cbl-YT-OW-Red-50CM1",
-        "frequency": 10
+        "item": "Nuvo-10108GC-10G",
+        "frequency": 3
+      },
+      {
+        "item": "Nuvo-10109GC",
+        "frequency": 3
+      },
+      {
+        "item": "Nuvo-11160GC-PoE",
+        "frequency": 3
       }
     ],
     "DDR5-32GB-56WT-SM": [
