@@ -5,7 +5,7 @@ ERR_TPL = """
 <head>
   <meta charset="utf-8">
   <title>Data Error</title>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     :root{ --ink:#1f2937; --muted:#64748b; }
@@ -32,7 +32,7 @@ INDEX_TPL = """
 <!doctype html>
 <html>
 <head>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
   <title>LT Check - Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -599,7 +599,7 @@ INVENTORY_TPL = """
 <!doctype html>
 <html lang="en">
 <head>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Inventory Count</title>
@@ -622,7 +622,7 @@ INVENTORY_TPL = """
 <body class="workspace-page inventory-workspace">
   <a class="workspace-skip" href="#workspace-content">Skip to content</a>
   <nav class="workspace-nav" aria-label="Main navigation"><div class="workspace-nav-inner">
-    <a class="workspace-brand" href="/" aria-label="Neousys home"><span class="workspace-brand-mark">N</span><span><strong>NEOUSYS</strong><small>MANUFACTURING WORKSPACE</small></span></a>
+    <a class="workspace-brand" href="/" aria-label="Neousys home"><span class="workspace-brand-mark"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-robot" aria-hidden="true" focusable="false"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M6 6a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2l0 -4" /><path d="M12 2v2" /><path d="M9 12v9" /><path d="M15 12v9" /><path d="M5 16l4 -2" /><path d="M15 14l4 2" /><path d="M9 18h6" /><path d="M10 8v.01" /><path d="M14 8v.01" /></svg></span><span><strong>NEOUSYS</strong><small>MANUFACTURING WORKSPACE</small></span></a>
 <a class="workspace-home" href="/">Home</a></div></nav>
   <main id="workspace-content" class="workspace-main">
   <div class="workspace-breadcrumb"><a href="/">Workspace</a><span aria-hidden="true">/</span><span>Inventory Count</span></div>
@@ -819,7 +819,7 @@ ITEM_INFO_TPL = """
 <!doctype html>
 <html lang="en">
 <head>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Item Info</title>
@@ -841,7 +841,7 @@ ITEM_INFO_TPL = """
 <body class="workspace-page">
   <a class="workspace-skip" href="#workspace-content">Skip to content</a>
   <nav class="workspace-nav" aria-label="Main navigation"><div class="workspace-nav-inner">
-    <a class="workspace-brand" href="/" aria-label="Neousys home"><span class="workspace-brand-mark">N</span><span><strong>NEOUSYS</strong><small>MANUFACTURING WORKSPACE</small></span></a>
+    <a class="workspace-brand" href="/" aria-label="Neousys home"><span class="workspace-brand-mark"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-robot" aria-hidden="true" focusable="false"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M6 6a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2l0 -4" /><path d="M12 2v2" /><path d="M9 12v9" /><path d="M15 12v9" /><path d="M5 16l4 -2" /><path d="M15 14l4 2" /><path d="M9 18h6" /><path d="M10 8v.01" /><path d="M14 8v.01" /></svg></span><span><strong>NEOUSYS</strong><small>MANUFACTURING WORKSPACE</small></span></a>
 <a class="workspace-home" href="/">Home</a></div></nav>
   <main id="workspace-content" class="workspace-main">
   <div class="workspace-breadcrumb"><a href="/">Workspace</a><span aria-hidden="true">/</span><span>Item Info</span></div>
@@ -979,7 +979,7 @@ SUBPAGE_TPL = """
 <!doctype html>
 <html>
 <head>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
   <title>{{ title }}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -1069,7 +1069,7 @@ ITEM_TPL = """
 <!doctype html>
 <html>
 <head>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
   <title>Item Detail — {{ item }}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -1218,7 +1218,7 @@ PRODUCTION_TPL = """
 <!doctype html>
 <html>
 <head>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
   <title>Production Planning</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -1787,7 +1787,7 @@ QUOTE_TPL = """
 <!doctype html>
 <html>
 <head>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
   <title>Quotation Lookup</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">

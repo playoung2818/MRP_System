@@ -2,7 +2,7 @@ PERIPHERAL_STATUS_TPL = """
 <!doctype html>
 <html>
 <head>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
   <title>SSD &amp; Memory Status</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">

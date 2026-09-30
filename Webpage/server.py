@@ -2078,7 +2078,7 @@ def dashboard_negative_inventory():
 <!doctype html>
 <html>
 <head>
-  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
   <title>Negative Inventory Details</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -2183,19 +2183,8 @@ def serve_pdf(order_id: str):
 
 @app.route("/favicon.ico")
 def favicon():
-    """Serve favicon from static if present, else fallback to inline SVG."""
-    static_ico = os.path.join(app.root_path, "static", "favicon.ico")
-    if os.path.isfile(static_ico):
-        return send_file(static_ico, mimetype="image/x-icon")
-    # Fallback simple SVG
-    svg = (
-        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
-        "<rect width='64' height='64' rx='12' fill='#0d6efd'/>"
-        "<text x='50%' y='52%' dominant-baseline='middle' text-anchor='middle'"
-        " font-family='Segoe UI, Roboto, Arial, sans-serif' font-size='34' fill='white'>LT</text>"
-        "</svg>"
-    )
-    return Response(svg, mimetype="image/svg+xml")
+    """Use the same robot icon for browsers requesting the conventional URL."""
+    return redirect(url_for("static", filename="robot.svg", v=1))
 
 @app.route("/pdfid/<int:pdf_id>")
 def serve_pdf_by_id(pdf_id: int):

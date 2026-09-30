@@ -156,6 +156,15 @@ POD_SITE: dict[str, str] = {
     "POD-261470": "Drop Ship",
     "POD-261472": "WH01X-NTA",
     "POD-261474": "Drop Ship",
+    "POD-261475": "Drop Ship",
+    "POD-261482": "WH01X-NTA",
+    "POD-261483": "WH01X-NTA",
+    "POD-261498": "WH01X-NTA",
+    "POD-261499": "Drop Ship",
+    "POD-261500": "Drop Ship",
+    "POD-261501": "Drop Ship",
+    "POD-261502": "Drop Ship",
+    "POD-261503": "Drop Ship",
 }
 
 
