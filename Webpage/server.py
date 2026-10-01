@@ -300,25 +300,10 @@ def _fully_picked_qb_nums(structured_df: pd.DataFrame | None) -> set[str]:
     return fully_picked
 
 
-def _ensure_wo_picked_qty_overrides_table() -> None:
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                f"""
-                CREATE TABLE IF NOT EXISTS public.{WO_PICKED_QTY_OVERRIDES_TABLE} (
-                    wo_number TEXT PRIMARY KEY,
-                    picked_qty DOUBLE PRECISION NOT NULL,
-                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_by TEXT
-                )
-                """
-            )
-        )
 
 
 def _load_wo_picked_qty_overrides() -> dict[str, float]:
     try:
-        _ensure_wo_picked_qty_overrides_table()
         rows = pd.read_sql_query(
             text(f"SELECT wo_number, picked_qty FROM public.{WO_PICKED_QTY_OVERRIDES_TABLE}"),
             con=engine,
@@ -335,62 +320,18 @@ def _load_wo_picked_qty_overrides() -> dict[str, float]:
     return overrides
 
 
-def _save_wo_picked_qty_override(wo_number: str, picked_qty: float, updated_by: str | None = None) -> None:
-    _ensure_wo_picked_qty_overrides_table()
-    dialect = engine.dialect.name
-    updated_by = updated_by or None
-    with engine.begin() as conn:
-        if dialect == "postgresql":
-            conn.execute(
-                text(
-                    f"""
-                    INSERT INTO public.{WO_PICKED_QTY_OVERRIDES_TABLE}
-                        (wo_number, picked_qty, updated_at, updated_by)
-                    VALUES (:wo_number, :picked_qty, CURRENT_TIMESTAMP, :updated_by)
-                    ON CONFLICT (wo_number)
-                    DO UPDATE SET
-                        picked_qty = EXCLUDED.picked_qty,
-                        updated_at = CURRENT_TIMESTAMP,
-                        updated_by = EXCLUDED.updated_by
-                    """
-                ),
-                {"wo_number": wo_number, "picked_qty": picked_qty, "updated_by": updated_by},
-            )
-        else:
-            conn.execute(
-                text(f"DELETE FROM public.{WO_PICKED_QTY_OVERRIDES_TABLE} WHERE wo_number = :wo_number"),
-                {"wo_number": wo_number},
-            )
-            conn.execute(
-                text(
-                    f"""
-                    INSERT INTO public.{WO_PICKED_QTY_OVERRIDES_TABLE}
-                        (wo_number, picked_qty, updated_at, updated_by)
-                    VALUES (:wo_number, :picked_qty, CURRENT_TIMESTAMP, :updated_by)
-                    """
-                ),
-                {"wo_number": wo_number, "picked_qty": picked_qty, "updated_by": updated_by},
-            )
 
 
 def _load_production_schedule_overrides() -> dict[str, str]:
     return production_overrides.load_schedule(engine)
 
 
-def _save_production_schedule_override(
-    wo_number: str,
-    production_date: str,
-    updated_by: str | None = None,
-) -> None:
-    production_overrides.save_schedule(engine, wo_number, production_date, updated_by)
 
 
 def _load_finished_goods_overrides() -> set[str]:
     return production_overrides.load_finished_goods(engine)
 
 
-def _save_finished_goods_override(wo_number: str, updated_by: str | None = None) -> None:
-    production_overrides.save_finished_goods(engine, wo_number, updated_by)
 
 
 def _picked_qty_for_wo(
@@ -2659,128 +2600,8 @@ def production_planning():
     )
 
 
-@app.route("/api/production_schedule", methods=["POST"])
-def api_production_schedule():
-    _ensure_loaded()
-    if _LAST_LOAD_ERR:
-        return jsonify({"ok": False, "error": _LAST_LOAD_ERR}), 503
-
-    payload = request.get_json(silent=True) or {}
-    assignments = payload.get("assignments")
-    if assignments is None:
-        assignments = [
-            {
-                "wo_number": payload.get("wo_number"),
-                "production_date": payload.get("production_date"),
-            }
-        ]
-    if not isinstance(assignments, list) or not assignments:
-        return jsonify({"ok": False, "error": "No schedule changes to save."}), 400
-
-    parsed_assignments: list[dict[str, str]] = []
-    for assignment in assignments:
-        if not isinstance(assignment, dict):
-            return jsonify({"ok": False, "error": "Invalid schedule assignment."}), 400
-        wo_number = str(assignment.get("wo_number") or "").strip()
-        if not wo_number:
-            return jsonify({"ok": False, "error": "Missing WO number."}), 400
-        target_area = str(assignment.get("target_area") or "schedule").strip()
-        if target_area == "finished_goods":
-            parsed_assignments.append(
-                {
-                    "wo_number": wo_number,
-                    "target_area": "finished_goods",
-                    "production_date": "",
-                }
-            )
-            continue
-        production_date_raw = str(assignment.get("production_date") or "").strip()
-        production_date = pd.to_datetime(production_date_raw, errors="coerce")
-        if pd.isna(production_date):
-            return jsonify({"ok": False, "error": "Production date must be a valid date."}), 400
-        if production_date.normalize() < pd.Timestamp.today().normalize():
-            return jsonify({"ok": False, "error": "Production date cannot be before today."}), 400
-        if production_date.weekday() >= 5:
-            return jsonify({"ok": False, "error": "Production date cannot be a weekend."}), 400
-        parsed_assignments.append(
-            {
-                "wo_number": wo_number,
-                "target_area": "schedule",
-                "production_date": production_date.strftime("%Y-%m-%d"),
-            }
-        )
-
-    try:
-        updated_by = request.headers.get("X-User") or request.remote_addr
-        for assignment in parsed_assignments:
-            if assignment["target_area"] == "finished_goods":
-                _save_finished_goods_override(assignment["wo_number"], updated_by=updated_by)
-            else:
-                _save_production_schedule_override(
-                    assignment["wo_number"],
-                    assignment["production_date"],
-                    updated_by=updated_by,
-                )
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "saved_count": len(parsed_assignments),
-            "assignments": parsed_assignments,
-        }
-    )
 
 
-@app.route("/api/wo_picked_qty", methods=["POST"])
-def api_wo_picked_qty():
-    _ensure_loaded()
-    if _LAST_LOAD_ERR:
-        return jsonify({"ok": False, "error": _LAST_LOAD_ERR}), 503
-
-    payload = request.get_json(silent=True) or {}
-    wo_number = str(payload.get("wo_number") or "").strip()
-    picked_qty = _parse_float(payload.get("picked_qty"))
-    if not wo_number:
-        return jsonify({"ok": False, "error": "Missing WO number."}), 400
-    if picked_qty is None:
-        return jsonify({"ok": False, "error": "Picked Qty must be a number."}), 400
-    if picked_qty < 0:
-        return jsonify({"ok": False, "error": "Picked Qty cannot be negative."}), 400
-
-    planned_qty = _planned_qty_for_qb_num(wo_number)
-    if planned_qty is not None and picked_qty > planned_qty:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": f"Picked Qty cannot be greater than WO qty ({_format_num(planned_qty)}).",
-                }
-            ),
-            400,
-        )
-
-    try:
-        _save_wo_picked_qty_override(
-            wo_number,
-            picked_qty,
-            updated_by=request.headers.get("X-User") or request.remote_addr,
-        )
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-    remaining_qty = None if planned_qty is None else max(planned_qty - picked_qty, 0.0)
-    return jsonify(
-        {
-            "ok": True,
-            "wo_number": wo_number,
-            "picked_qty": picked_qty,
-            "picked_qty_str": _format_num(picked_qty),
-            "remaining_qty": remaining_qty,
-            "remaining_qty_str": _format_num(remaining_qty) if remaining_qty is not None else "",
-        }
-    )
 
 
 

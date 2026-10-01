@@ -1247,11 +1247,6 @@ PRODUCTION_TPL = """
     .status-na{ background:#fef3c7; color:#92400e; }
     .picked-qty-control{ display:inline-flex; align-items:center; gap:.3rem; margin-left:.45rem; text-transform:none; letter-spacing:0; }
     .picked-qty-label{ color:var(--muted); font-size:.75rem; font-weight:700; text-transform:uppercase; }
-    .picked-qty-input{ width:4.75rem; height:1.65rem; padding:.1rem .35rem; border:1px solid #cbd5e1; border-radius:6px; font-size:.78rem; }
-    .picked-qty-save{ display:none; height:1.65rem; padding:.1rem .45rem; border:1px solid #0d6efd; border-radius:6px; background:#0d6efd; color:#fff; font-size:.74rem; font-weight:700; line-height:1; }
-    .picked-qty-control.is-dirty .picked-qty-save{ display:inline-block; }
-    .picked-qty-save:disabled{ opacity:.7; }
-    .picked-qty-msg{ min-width:2.5rem; color:var(--muted); font-size:.72rem; font-weight:600; }
     .order-sub{ font-size:.85rem; color:var(--muted); }
     .order-link{ text-decoration:none; color:#0d6efd; font-size:.85rem; }
     .order-link:hover{ text-decoration:underline; }
@@ -1291,11 +1286,8 @@ PRODUCTION_TPL = """
     .unassigned-lt-row{ display:flex; justify-content:space-between; gap:.75rem; padding:.55rem .65rem; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb; }
     .unassigned-lt-main{ font-weight:800; font-size:.9rem; }
     .unassigned-lt-meta{ color:var(--muted); font-size:.78rem; line-height:1.25; }
-    .schedule-save-msg{ min-width:5rem; color:var(--muted); font-size:.82rem; font-weight:700; align-self:center; }
     .production-date-control{ display:flex; align-items:center; flex-wrap:wrap; gap:.4rem; width:100%; font-size:.8rem; }
-    .production-date-input{ width:10rem; padding:.3rem .5rem; border:1px solid #cbd5e1; border-radius:4px; background:#fff; color:var(--ink); }
     .production-date-msg{ color:var(--muted); }
-    .schedule-unsaved{ outline:2px solid rgba(245,158,11,.45); outline-offset:1px; }
   </style>
 </head>
 <body>
@@ -1305,8 +1297,7 @@ PRODUCTION_TPL = """
       <div class="text-muted small">Loaded {{ loaded_at }}</div>
     </div>
     <div class="d-flex gap-2">
-      <button id="schedule-save" class="btn btn-sm btn-primary" type="button" disabled>Save Schedule</button>
-      <span id="schedule-save-msg" class="schedule-save-msg"></span>
+      <span class="badge bg-secondary">Read-only</span>
       <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
       <a class="btn btn-sm btn-outline-success" href="/production_planning">Recalculate Labor</a>
       <a class="btn btn-sm btn-outline-primary" href="/production_planning?reload=1">Reload</a>
@@ -1434,9 +1425,7 @@ PRODUCTION_TPL = """
                       </span>
                       <span class="picked-qty-control" data-wo="{{ o.qb_num }}">
                         <span class="picked-qty-label">Picked Qty</span>
-                        <input class="picked-qty-input" type="number" min="0" step="1" value="{{ o.picked_qty_str }}" data-planned-qty="{{ o.qty_str }}" aria-label="Picked Qty for {{ o.qb_num }}">
-                        <button class="picked-qty-save" type="button">Save</button>
-                        <span class="picked-qty-msg">{% if o.picked_qty_saved %}Saved{% endif %}</span>
+                        <strong>{{ o.picked_qty_str }}</strong>
                       </span>
                     </div>
                     <div class="order-sub">
@@ -1483,9 +1472,7 @@ PRODUCTION_TPL = """
                         </span>
                         <span class="picked-qty-control" data-wo="{{ o.qb_num }}">
                           <span class="picked-qty-label">Picked Qty</span>
-                          <input class="picked-qty-input" type="number" min="0" step="1" value="{{ o.picked_qty_str }}" data-planned-qty="{{ o.qty_str }}" aria-label="Picked Qty for {{ o.qb_num }}">
-                          <button class="picked-qty-save" type="button">Save</button>
-                          <span class="picked-qty-msg">{% if o.picked_qty_saved %}Saved{% endif %}</span>
+                          <strong>{{ o.picked_qty_str }}</strong>
                         </span>
                       </div>
                       <div class="order-sub">
@@ -1554,231 +1541,7 @@ PRODUCTION_TPL = """
       </div>
     </div>
   {% endif %}
-  <script>
-    document.querySelectorAll(".picked-qty-control").forEach(function(control){
-      var input = control.querySelector(".picked-qty-input");
-      var button = control.querySelector(".picked-qty-save");
-      var msg = control.querySelector(".picked-qty-msg");
-      var originalValue = input.value;
 
-      function setMessage(text, isError){
-        msg.textContent = text || "";
-        msg.style.color = isError ? "#b91c1c" : "#6b7280";
-      }
-
-      function updateDirtyState(){
-        var isDirty = input.value !== originalValue;
-        control.classList.toggle("is-dirty", isDirty);
-        if (isDirty) {
-          setMessage("Unsaved", false);
-        } else if (msg.textContent === "Unsaved") {
-          setMessage("", false);
-        }
-      }
-
-      input.addEventListener("input", function(){
-        updateDirtyState();
-      });
-
-      button.addEventListener("click", function(){
-        var woNumber = control.getAttribute("data-wo") || "";
-        var pickedQty = input.value;
-        button.disabled = true;
-        button.textContent = "Saving";
-        setMessage("", false);
-
-        fetch("/api/wo_picked_qty", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({wo_number: woNumber, picked_qty: pickedQty})
-        })
-          .then(function(resp){
-            return resp.json().then(function(data){ return {ok: resp.ok, data: data}; });
-          })
-          .then(function(result){
-            if (!result.ok || !result.data.ok) {
-              throw new Error(result.data.error || "Save failed");
-            }
-            input.value = result.data.picked_qty_str;
-            originalValue = input.value;
-            control.classList.remove("is-dirty");
-            setMessage("Saved", false);
-          })
-          .catch(function(err){
-            setMessage(err.message || "Save failed", true);
-            button.disabled = false;
-            button.textContent = "Save";
-          });
-      });
-    });
-
-    var pendingScheduleChanges = {};
-    var scheduleSaveButton = document.getElementById("schedule-save");
-    var scheduleSaveMsg = document.getElementById("schedule-save-msg");
-
-    function setScheduleSaveMessage(text, isError){
-      if (!scheduleSaveMsg) {
-        return;
-      }
-      scheduleSaveMsg.textContent = text || "";
-      scheduleSaveMsg.style.color = isError ? "#b91c1c" : "#6b7280";
-    }
-
-    function updateScheduleSaveState(){
-      var count = Object.keys(pendingScheduleChanges).length;
-      if (scheduleSaveButton) {
-        scheduleSaveButton.disabled = count === 0;
-      }
-      if (count > 0) {
-        setScheduleSaveMessage(count + " unsaved", false);
-      } else {
-        setScheduleSaveMessage("", false);
-      }
-    }
-
-    document.querySelectorAll(".order-line[data-wo]").forEach(function(row){
-      var woNumber = row.getAttribute("data-wo");
-      var originalDate = row.getAttribute("data-production-date") || "";
-      var originalArea = row.closest("[data-target-area='finished_goods']") ? "finished_goods" : "schedule";
-      var currentArea = originalArea;
-      var returnDate = originalDate || row.getAttribute("data-return-production-date") || "";
-      function productionReturnDate(){
-        var today = new Date();
-        today.setHours(0, 0, 0, 0);
-        var date = returnDate ? new Date(returnDate + "T00:00:00") : today;
-        if (isNaN(date.getTime()) || date < today) date = today;
-        while (date.getDay() === 0 || date.getDay() === 6) date.setDate(date.getDate() + 1);
-        return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
-      }
-      var control = document.createElement("div");
-      control.className = "production-date-control";
-      var label = document.createElement("label");
-      label.textContent = "Production date ";
-      var input = document.createElement("input");
-      input.type = "date";
-      input.className = "production-date-input";
-      function refreshMinimumDate(){
-        var now = new Date();
-        input.min = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
-      }
-      refreshMinimumDate();
-      input.addEventListener("focus", refreshMinimumDate);
-      input.value = originalDate;
-      input.setAttribute("aria-label", "Production date for " + woNumber);
-      label.appendChild(input);
-      control.appendChild(label);
-      var finishButton = document.createElement("button");
-      finishButton.type = "button";
-      finishButton.className = "btn btn-sm btn-outline-secondary";
-      function updateFinishButton(){
-        finishButton.textContent = currentArea === "finished_goods" ? "It's not Finished!" : "Move to FG";
-      }
-      updateFinishButton();
-      control.appendChild(finishButton);
-      var message = document.createElement("span");
-      message.className = "production-date-msg";
-      message.setAttribute("role", "status");
-      control.appendChild(message);
-      row.appendChild(control);
-
-      function stage(area, date){
-        currentArea = area;
-        if (area === "schedule" && date) returnDate = date;
-        updateFinishButton();
-        var changed = area !== originalArea || date !== originalDate;
-        if (changed) {
-          pendingScheduleChanges[woNumber] = {target_area: area, production_date: date};
-        } else {
-          delete pendingScheduleChanges[woNumber];
-        }
-        row.classList.toggle("schedule-unsaved", changed);
-        message.textContent = changed ? (area === "finished_goods" ? "Unsaved: Finish Goods" : "Unsaved: " + date) : "";
-        updateScheduleSaveState();
-      }
-      input.addEventListener("change", function(){
-        input.setCustomValidity("");
-        refreshMinimumDate();
-        var date = input.value;
-        if (date) {
-          var day = new Date(date + "T00:00:00").getDay();
-          if (date < input.min || day === 0 || day === 6) {
-            input.setCustomValidity(date < input.min ? "Choose today or a future weekday for production." : "Choose a weekday for production.");
-            input.reportValidity();
-            var previous = pendingScheduleChanges[woNumber];
-            input.value = previous ? previous.production_date : originalDate;
-            input.setCustomValidity("");
-            return;
-          }
-          stage("schedule", date);
-        } else {
-          input.value = originalDate;
-          stage(originalArea, originalDate);
-        }
-      });
-      finishButton.addEventListener("click", function(){
-        if (currentArea === "finished_goods") {
-          input.value = productionReturnDate();
-          stage("schedule", input.value);
-        } else {
-          input.value = "";
-          stage("finished_goods", "");
-        }
-      });
-    });
-    window.addEventListener("beforeunload", function(event){
-      if (Object.keys(pendingScheduleChanges).length) {
-        event.preventDefault();
-        event.returnValue = "";
-      }
-    });
-
-    if (scheduleSaveButton) {
-      scheduleSaveButton.addEventListener("click", function(){
-        var assignments = Object.keys(pendingScheduleChanges).map(function(woNumber){
-          var change = pendingScheduleChanges[woNumber] || {};
-          return {
-            wo_number: woNumber,
-            target_area: change.target_area || "schedule",
-            production_date: change.production_date || ""
-          };
-        });
-        if (!assignments.length) {
-          return;
-        }
-        document.querySelectorAll(".production-date-control input, .production-date-control button").forEach(function(el){ el.disabled = true; });
-        scheduleSaveButton.disabled = true;
-        scheduleSaveButton.textContent = "Saving";
-        setScheduleSaveMessage("", false);
-        fetch("/api/production_schedule", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({assignments: assignments})
-        })
-          .then(function(resp){
-            return resp.json().then(function(data){ return {ok: resp.ok, data: data}; });
-          })
-          .then(function(result){
-            if (!result.ok || !result.data.ok) {
-              throw new Error(result.data.error || "Schedule save failed");
-            }
-            pendingScheduleChanges = {};
-            document.querySelectorAll(".schedule-unsaved").forEach(function(row){
-              row.classList.remove("schedule-unsaved");
-            });
-            scheduleSaveButton.textContent = "Save Schedule";
-            updateScheduleSaveState();
-            setScheduleSaveMessage("Saved", false);
-            window.location.reload();
-          })
-          .catch(function(err){
-            scheduleSaveButton.disabled = false;
-            scheduleSaveButton.textContent = "Save Schedule";
-            document.querySelectorAll(".production-date-control input, .production-date-control button").forEach(function(el){ el.disabled = false; });
-            setScheduleSaveMessage(err.message || "Schedule save failed", true);
-          });
-      });
-    }
-  </script>
 </body>
 </html>
 """

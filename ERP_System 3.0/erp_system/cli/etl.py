@@ -19,6 +19,7 @@ from erp_system.ingest.sources import (
 )
 from erp_system.ledger.events import _order_events, build_events
 from erp_system.ledger.ledger import build_ledger_from_events
+from erp_system.ledger.material_readiness import refresh_material_readiness
 from erp_system.normalize.erp_normalize import refresh_pod_site
 from erp_system.runtime.config import (
     DB_SCHEMA,
@@ -232,6 +233,10 @@ def main() -> None:
     write_to_db(pod, schema=DB_SCHEMA, table=TBL_POD)
     write_to_db(ship, schema=DB_SCHEMA, table=TBL_Shipping)
     write_to_db(ledger, schema=DB_SCHEMA, table=TBL_LEDGER)
+    try:
+        logging.info("Material readiness refreshed: %s", refresh_material_readiness())
+    except Exception:
+        logging.exception("Material readiness refresh failed; check calculated_at before using the previous snapshot.")
 
     print(
         f"Loaded: {DB_SCHEMA}.{TBL_SALES_ORDER}={len(so_full)}; "
