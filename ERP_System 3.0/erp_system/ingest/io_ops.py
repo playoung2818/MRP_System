@@ -91,6 +91,8 @@ def write_final_sales_order_to_gsheet(
         client = gspread.authorize(creds)
         sh = client.open(spreadsheet_name)
         export_df = df.copy()
+        if "P. O. #" in export_df.columns:
+            export_df["P. O. #"] = export_df["P. O. #"].astype("string").fillna("")
         if "Inventory Site" in export_df.columns:
             site_raw = export_df["Inventory Site"]
             site_text = site_raw.astype(str).str.strip().str.casefold()
@@ -128,6 +130,19 @@ def write_final_sales_order_to_gsheet(
             ws = sh.add_worksheet(title=worksheet_name, rows=100, cols=26)
         _reset_gsheet_user_format(ws)
         set_with_dataframe(ws, export_df, include_index=False, include_column_header=True, resize=True)
+        if "P. O. #" in export_df.columns and not export_df.empty:
+            po_col = export_df.columns.get_loc("P. O. #") + 1
+            po_range = (
+                f"{gspread.utils.rowcol_to_a1(2, po_col)}:"
+                f"{gspread.utils.rowcol_to_a1(len(export_df) + 1, po_col)}"
+            )
+            ws.batch_format([{"range": po_range, "format": {"numberFormat": {"type": "TEXT"}}}])
+            # RAW keeps identifiers as strings, including leading zeros and '=' prefixes.
+            ws.update(
+                range_name=po_range,
+                values=[[value] for value in export_df["P. O. #"]],
+                value_input_option="RAW",
+            )
         try:
             ws.freeze(rows=1)
         except Exception:
