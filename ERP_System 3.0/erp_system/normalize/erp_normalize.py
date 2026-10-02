@@ -106,7 +106,6 @@ PATTERN_MAPPINGS = [
 ]
 
 POD_SITE: dict[str, str] = {
-    "POD-251229": "WH02D-NTA",
     "POD-260290": "WH01X-NTA",
     "POD-260291": "WH01X-NTA",
     "POD-260339": "Drop Ship",
@@ -115,13 +114,9 @@ POD_SITE: dict[str, str] = {
     "POD-260887": "WH01X-NTA",
     "POD-260888": "WH01X-NTA",
     "POD-260889": "WH01X-NTA",
-    "POD-260981": "WH01X-NTA",
     "POD-261019": "WH01X-NTA",
     "POD-261020": "WH01X-NTA",
-    "POD-261068": "WH01X-NTA",
-    "POD-261069": "WH01X-NTA",
     "POD-261070": "WH01X-NTA",
-    "POD-261073": "WH01X-NTA",
     "POD-261171": "Drop Ship",
     "POD-261217": "WH01X-NTA",
     "POD-261259": "Drop Ship",
@@ -136,7 +131,6 @@ POD_SITE: dict[str, str] = {
     "POD-261369": "Drop Ship",
     "POD-261381": "Drop Ship",
     "POD-261392": "Drop Ship",
-    "POD-261417": "WH01DK-NTA",
     "POD-261423": "Drop Ship",
     "POD-261424": "Drop Ship",
     "POD-261429": "Drop Ship",
@@ -148,7 +142,6 @@ POD_SITE: dict[str, str] = {
     "POD-261461": "Drop Ship",
     "POD-261466": "Drop Ship",
     "POD-261470": "Drop Ship",
-    "POD-261472": "WH01X-NTA",
     "POD-261474": "Drop Ship",
     "POD-261475": "Drop Ship",
     "POD-261482": "WH01X-NTA",

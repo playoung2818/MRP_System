@@ -4,3 +4,19 @@
 # Excel outputs
 *.xlsx
 
+# Python build and test caches
+__pycache__/
+pycache/
+*.pyc
+.pytest_cache/
+
+# Generated data and ETL state
+/Item Listing.CSV
+/data/review_test/
+/ERP_System 3.0/.etl_state/
+/ERP_System 3.0/reports/.last_violation_report.csv
+/ERP_System 3.0/data/item_cooccurrence.json
+
+# Runtime logs
+*.log
+

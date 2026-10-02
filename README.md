@@ -4,6 +4,10 @@
 
 I rebuilt QuickBooks operational views into a unified analytics pipeline, blending inventory, sales orders, purchase orders, picking signals, and shipping data to drive lead-time decisions and sales order visibility.
 
+## Script
+
+- Run `python -m erp_system.cli.etl` to run the ETL and update the System
+
 
 ## Data inputs
 - Inventory Status (warehouse snapshot)
