@@ -3,138 +3,14 @@ from __future__ import annotations
 import pandas as pd
 
 from erp_system.contracts import TABLE_CONTRACTS, ensure_contract_columns
-from erp_system.ledger.atp import backward_cumulative_min, earliest_atp_strict
-from erp_system.normalize.erp_normalize import normalize_item
+from erp_system.ledger.atp import earliest_assignment_date
 from erp_system.runtime.constants import PLACEHOLDER_DATE
-from erp_system.transform.common import _norm_key
-
-
-def _normalize_item_key(item: str) -> str:
-    series = pd.Series([item], dtype="string").map(normalize_item)
-    return str(_norm_key(series).iloc[0])
 
 
 def _assignment_cutoff_dates(cutoff_date: str | None = None) -> set[pd.Timestamp]:
     if cutoff_date:
         return {pd.Timestamp(cutoff_date).normalize()}
     return {PLACEHOLDER_DATE.normalize()}
-
-
-def _build_adjusted_item_atp(
-    ledger: pd.DataFrame,
-    *,
-    qb_num: str,
-    item: str,
-    from_date: pd.Timestamp,
-) -> pd.DataFrame:
-    """
-    Build an ATP view for an existing SO item by removing that SO's own demand
-    rows from the ledger first, then recomputing projected NAV.
-    """
-    led = ledger.copy()
-    if led.empty or "Delta" not in led.columns or "Date" not in led.columns:
-        return pd.DataFrame(columns=["Item", "Date", "Projected_NAV", "FutureMin_NAV"])
-
-    normalized_item = _normalize_item_key(item)
-    if "Item" not in led.columns:
-        raise ValueError("Required column 'Item' is missing from led")
-
-    mask_item = _norm_key(led["Item"]).astype(str) == normalized_item
-    item_df = led.loc[mask_item].copy()
-    if item_df.empty:
-        return pd.DataFrame(columns=["Item", "Date", "Projected_NAV", "FutureMin_NAV"])
-
-    opening_series = pd.to_numeric(item_df.get("Opening"), errors="coerce").dropna()
-    opening = float(opening_series.iloc[0]) if not opening_series.empty else 0.0
-
-    so_col = item_df.get("QB Num", pd.Series("", index=item_df.index)).astype(str)
-    kind_col = item_df.get("Kind", pd.Series("", index=item_df.index)).astype(str)
-    remove_mask = so_col.eq(str(qb_num)) & kind_col.eq("OUT")
-
-    adjusted = item_df.loc[~remove_mask].copy()
-    if adjusted.empty:
-        base = pd.DataFrame(
-            {
-                "Item_raw": [item],
-                "Item": [item],
-                "Date": [from_date],
-                "Projected_NAV": [opening],
-            }
-        )
-        base["FutureMin_NAV"] = base["Projected_NAV"]
-        return base[["Item", "Date", "Projected_NAV", "FutureMin_NAV"]]
-
-    adjusted["Date"] = pd.to_datetime(adjusted["Date"], errors="coerce")
-    adjusted["Delta"] = pd.to_numeric(adjusted["Delta"], errors="coerce").fillna(0.0)
-    adjusted = adjusted.loc[adjusted["Date"].notna()].copy()
-    kind_col = adjusted.get("Kind", pd.Series("", index=adjusted.index)).astype(str)
-    invalid_inbound = kind_col.eq("IN") & adjusted["Date"].ge(PLACEHOLDER_DATE)
-    adjusted = adjusted.loc[~invalid_inbound].copy()
-    if adjusted.empty:
-        base = pd.DataFrame(
-            {
-                "Item_raw": [item],
-                "Item": [item],
-                "Date": [from_date],
-                "Projected_NAV": [opening],
-            }
-        )
-        base["FutureMin_NAV"] = base["Projected_NAV"]
-        return base[["Item", "Date", "Projected_NAV", "FutureMin_NAV"]]
-
-    adjusted = adjusted.sort_values("Date", kind="mergesort").reset_index(drop=True)
-    adjusted["Projected_NAV"] = opening + adjusted["Delta"].cumsum()
-    projected = pd.to_numeric(adjusted["Projected_NAV"], errors="coerce").tolist()
-    future_min = backward_cumulative_min(projected)
-
-    item_name = str(adjusted["Item"].iloc[0])
-    return pd.DataFrame(
-        {
-            "Item": item_name,
-            "Date": adjusted["Date"].tolist(),
-            "Projected_NAV": projected,
-            "FutureMin_NAV": future_min,
-        }
-    )
-
-
-def _earliest_assignment_date_for_mode(
-    ledger: pd.DataFrame,
-    *,
-    qb_num: str,
-    item: str,
-    qty: float,
-    from_date: pd.Timestamp,
-    cutoff: pd.Timestamp,
-    include_cutoff_in_check: bool,
-) -> pd.Timestamp | None:
-    adj_atp = _build_adjusted_item_atp(ledger, qb_num=qb_num, item=item, from_date=from_date)
-    if adj_atp.empty:
-        return None
-
-    date_series = pd.to_datetime(adj_atp["Date"], errors="coerce")
-    if include_cutoff_in_check:
-        scoped = adj_atp.loc[date_series <= cutoff].copy()
-    else:
-        scoped = adj_atp.loc[date_series < cutoff].copy()
-    if scoped.empty:
-        return None
-
-    scoped["Date"] = pd.to_datetime(scoped["Date"], errors="coerce")
-    scoped["Projected_NAV"] = pd.to_numeric(scoped["Projected_NAV"], errors="coerce")
-    projected = scoped["Projected_NAV"].tolist()
-    scoped["FutureMin_NAV"] = backward_cumulative_min(projected)
-
-    candidates = scoped.loc[scoped["Date"] < cutoff].copy()
-    if candidates.empty:
-        return None
-    return earliest_atp_strict(
-        candidates[["Item", "Date", "Projected_NAV", "FutureMin_NAV"]],
-        _normalize_item_key(item),
-        qty,
-        from_date=from_date,
-        allow_zero=True,
-    )
 
 
 def _build_assignment_readiness_for_mode(
@@ -213,7 +89,7 @@ def _build_assignment_readiness_for_mode(
 
         item_dates: dict[str, pd.Timestamp] = {}
         for item, qty in demand_map.items():
-            dt = _earliest_assignment_date_for_mode(
+            dt = earliest_assignment_date(
                 ledger,
                 qb_num=str(qb_num),
                 item=item,

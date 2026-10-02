@@ -1548,10 +1548,11 @@ PRODUCTION_TPL = """
 
 QUOTE_TPL = """
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quotation Lookup</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
@@ -1559,105 +1560,163 @@ QUOTE_TPL = """
     html,body{ background:var(--bg); color:var(--ink); }
     body{ padding:28px; }
     .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); }
-    .summary{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; }
-    .metric{ border:1px solid #e2e8f0; border-radius:12px; padding:1rem; background:#fff; }
+    .summary{ display:grid; grid-template-columns:minmax(180px,1fr) minmax(0,3fr); gap:.65rem; }
+    .companion-list{ display:flex; flex-wrap:wrap; gap:.35rem 1rem; margin:.35rem 0 0; padding:0; list-style:none; font-size:.85rem; }
+    .companion-list a{ overflow-wrap:anywhere; }
+    @media (max-width:575.98px){ .summary{ grid-template-columns:1fr; } }
+    .metric{ border:1px solid #e2e8f0; border-radius:10px; padding:.65rem .8rem; background:#fff; min-width:0; }
     .metric .label{ text-transform:uppercase; font-size:.75rem; letter-spacing:.08em; color:var(--muted); font-weight:600; }
-    .metric .value{ font-size:1.3rem; font-weight:700; }
+    .metric .value{ font-size:1rem; font-weight:600; }
     .table-responsive{ max-height:70vh; overflow:auto; }
     .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); }
+    .th-projected{ background:#dcfce7 !important; }
+    .cell-projected-min{ background:#bbf7d0 !important; font-weight:700; }
+    .suggest-head, .suggest-row{
+      display:grid;
+      grid-template-columns:minmax(0, 2.2fr) minmax(90px, .8fr) minmax(90px, .8fr);
+      gap:.75rem;
+      align-items:center;
+    }
+    .suggest-head{
+      padding:.5rem .75rem;
+      font-size:.72rem;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      color:var(--muted);
+      background:#f8fafc;
+      border:1px solid #dee2e6;
+      border-bottom:none;
+      border-radius:.5rem .5rem 0 0;
+    }
+    .suggest-row .col-num{ text-align:right; font-variant-numeric:tabular-nums; }
+    .list-group-item.suggest-red{
+      background:#fff1f2;
+      border-color:#fecdd3;
+    }
+    .list-group-item.suggest-red:hover{
+      background:#ffe4e6;
+    }
+    .list-group-item.suggest-green{
+      background:#f0fdf4;
+      border-color:#bbf7d0;
+    }
+    .list-group-item.suggest-green:hover{
+      background:#dcfce7;
+    }
+    .suggest-empty{ padding:.75rem; color:var(--muted); background:#fff; border:1px solid #dee2e6; border-radius:.5rem; }
+    .quote-legend{
+      display:flex;
+      gap:1rem;
+      align-items:center;
+      flex-wrap:wrap;
+      font-size:.82rem;
+      color:var(--muted);
+      margin-top:.45rem;
+    }
+    .quote-legend .swatch{
+      width:.8rem;
+      height:.8rem;
+      border-radius:999px;
+      display:inline-block;
+      margin-right:.35rem;
+      vertical-align:middle;
+      border:1px solid rgba(15,23,42,.08);
+    }
+    .quote-legend .swatch-red{ background:#fecdd3; }
+    .quote-legend .swatch-green{ background:#bbf7d0; }
+    .quote-search-form{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto auto;
+      align-items:start;
+      gap:12px;
+      margin:1.5rem 0 .55rem;
+    }
+    .quote-search-wrap{ position:relative; min-width:0; }
+    .quote-search-control{ height:60px; font-size:1.05rem; }
+    .quote-search-action{ height:60px; min-width:108px; font-size:1rem; font-weight:600; }
+    @media (max-width:767.98px){
+      .quote-search-form{ grid-template-columns:1fr 1fr; }
+      .quote-search-wrap{ grid-column:1 / -1; }
+      .quote-search-action{ width:100%; }
+    }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='workspace.css') }}?v=2">
 </head>
-<body>
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <div>
-      <div class="h3 m-0">Quotation Lookup</div>
-      <div class="text-muted small">Loaded {{ loaded_at }}</div>
-    </div>
-    <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
-    </div>
-  </div>
+<body class="workspace-page">
+  <a class="workspace-skip" href="#workspace-content">Skip to content</a>
+  <nav class="workspace-nav" aria-label="Main navigation"><div class="workspace-nav-inner">
+    <a class="workspace-brand" href="/" aria-label="Neousys home"><span class="workspace-brand-mark"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-robot" aria-hidden="true" focusable="false"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M6 6a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2l0 -4" /><path d="M12 2v2" /><path d="M9 12v9" /><path d="M15 12v9" /><path d="M5 16l4 -2" /><path d="M15 14l4 2" /><path d="M9 18h6" /><path d="M10 8v.01" /><path d="M14 8v.01" /></svg></span><span><strong>NEOUSYS</strong><small>MRP WORKSPACE</small></span></a>
+<a class="workspace-home" href="/">Home</a></div></nav>
+  <main id="workspace-content" class="workspace-main">
+  <div class="workspace-breadcrumb"><a href="/">Workspace</a><span aria-hidden="true">/</span><span>Quotations</span></div>
+  <header class="workspace-header"><div><h1 class="workspace-title">Quotation lookup</h1><p class="workspace-description">Find a part, review its companions, and check upcoming movements.</p></div>
+    <div class="workspace-header-actions"><span class="workspace-loaded">Loaded {{ loaded_at }}</span><a class="btn btn-sm btn-outline-secondary" href="/quotation_lookup/peripheral_status">SSD &amp; Memory Status</a></div>
+  </header>
 
-  <form class="row gy-3 gx-4 align-items-end justify-content-start mb-4" method="get">
-    <div class="col-12 col-md-6">
-      <div style="position:relative;">
-        <input id="quote-item" autocomplete="off" class="form-control form-control-lg"
-               style="height:60px;font-size:1.05rem"
+  <form class="workspace-search quote-search-form" method="get">
+      <div class="quote-search-wrap">
+        <label class="visually-hidden" for="quote-item">Item name or part number</label>
+        <input id="quote-item" autocomplete="off" class="form-control form-control-lg quote-search-control"
                name="item"
                placeholder="Type item name or partial code"
                value="{{ item_val or '' }}">
+        <div id="quote-suggest-head" class="suggest-head"
+             style="position:absolute; top:40px; left:0; right:0; z-index:1001; display:none;">
+          <div>Item</div>
+          <div class="text-end">On Hand</div>
+          <div class="text-end">Available</div>
+        </div>
         <div id="quote-suggest" class="list-group"
-             style="position:absolute; top:62px; left:0; right:0; z-index:1000; display:none; max-height:240px; overflow:auto;"></div>
+             style="position:absolute; top:74px; left:0; right:0; z-index:1000; display:none; max-height:280px; overflow:auto;"></div>
       </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <label class="form-label" for="quote-qty">Requested Qty</label>
-      <input id="quote-qty"
-             class="form-control form-control-lg"
-             style="height:60px;font-size:1.05rem"
-             type="number"
-             min="1"
-             step="1"
-             name="qty"
-             value="{{ qty_val or 1 }}">
-    </div>
-    <div class="col-6 col-md-auto">
-      <button class="btn btn-primary px-4 w-100" style="height:52px;font-size:1rem;font-weight:600">Search</button>
-    </div>
-    <div class="col-6 col-md-auto">
-      <a class="btn btn-outline-secondary w-100" style="height:52px;font-size:1rem;font-weight:600" href="/quotation_lookup?reload=1">Reload</a>
-    </div>
+    <button class="btn btn-primary px-4 quote-search-action" type="submit">Search</button>
+    <a class="btn btn-outline-secondary px-4 quote-search-action d-flex align-items-center justify-content-center" href="/quotation_lookup?reload=1">Reload</a>
   </form>
-
-  <div class="summary mb-4">
-    <div class="metric">
-      <div class="label">Item</div>
-      <div class="value">{{ item_val or '-' }}</div>
-    </div>
-    <div class="metric">
-      <div class="label">Requested Qty</div>
-      <div class="value">{{ qty_val or 1 }}</div>
-    </div>
-    <div class="metric">
-      <div class="label">Opening (On Hand snapshot)</div>
-      <div class="value">
-        {% if opening_qty is not none %}
-          {{ opening_qty }}
-        {% else %}
-          ���?"
-        {% endif %}
-      </div>
-    </div>
-    <div class="metric">
-      <div class="label">Earliest ATP (1 unit)</div>
-      <div class="value">
-        {% if earliest_atp %}
-          {{ earliest_atp }}
-        {% else %}
-          ���?"
-        {% endif %}
-      </div>
-    </div>
+  <div class="quote-legend mb-4">
+    <span><span class="swatch swatch-red"></span>red = Max 0</span>
+    <span><span class="swatch swatch-green"></span>green = Max 99</span>
   </div>
 
+  {% if companion_error %}
+    <div class="alert alert-warning" role="alert">{{ companion_error }}</div>
+  {% endif %}
+  {% if item_cards %}
+  <div class="summary mb-3">
+    <div class="metric border-primary">
+      <div class="label">Searched item</div>
+      <div class="value" style="overflow-wrap:anywhere;">{{ item_cards[0].item }}</div>
+    </div>
+    <div class="metric">
+      <div class="label">Top 5 companion items</div>
+      <ul class="companion-list">
+        {% for card in item_cards[1:6] %}
+        <li><a href="{{ url_for('quotation_lookup', item=card.item) }}" class="text-decoration-none">{{ card.item }}</a></li>
+        {% else %}
+        <li class="text-muted">{{ 'Companion items unavailable.' if companion_error else 'No companion items saved.' }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="card-lite bg-white">
-    <div class="card-header fw-bold">Ledger Timeline</div>
+    <div class="card-header fw-bold"><span>Ledger timeline</span><span class="workspace-table-note">{{ ledger_rows|length }} movements</span></div>
     <div class="card-body">
       <div class="table-responsive">
         <table class="table table-sm table-bordered table-hover align-middle">
           <thead class="table-light text-uppercase small text-muted">
             <tr>
               {% for c in ledger_columns %}
-                <th>{{ c }}</th>
+                <th class="{% if c == 'Projected_Qty' %}th-projected{% endif %}">{{ 'Projected_OnHand' if c == 'Projected_Qty' else c }}</th>
               {% endfor %}
             </tr>
           </thead>
           <tbody>
             {% if ledger_rows %}
               {% for r in ledger_rows %}
-                <tr>
+                <tr class="{% if r['Date'] == 'Lead Time Pending' %}table-warning{% elif r['_is_min_nav'] and (not r['Date'].startswith('2099')) %}table-warning{% endif %}">
                   {% for c in ledger_columns %}
-                    <td>{{ r[c] }}</td>
+                    <td class="{% if c == 'Projected_Qty' and r['_is_min_nav'] %}cell-projected-min{% endif %}">{{ r[c] }}</td>
                   {% endfor %}
                 </tr>
               {% endfor %}
@@ -1671,18 +1730,36 @@ QUOTE_TPL = """
     </div>
   </div>
 
+  </main>
+
   <script>
   (function () {
     var input = document.getElementById('quote-item');
     var list = document.getElementById('quote-suggest');
+    var head = document.getElementById('quote-suggest-head');
     var suggestTimer;
-    function hideList(){ list.style.display = 'none'; list.innerHTML=''; }
+    function esc(value){
+      if (value === null || value === undefined || value === '') return '---';
+      return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    }
+    function hideList(){
+      list.style.display = 'none';
+      list.innerHTML='';
+      if (head) head.style.display = 'none';
+    }
     function showList(items){
       if (!items || !items.length) { hideList(); return; }
       list.innerHTML = items.map(function (it){
-        return '<button type="button" class="list-group-item list-group-item-action">' +
-               it.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</button>';
+        var extraClass = it.highlight === 'red' ? ' suggest-red' : (it.highlight === 'green' ? ' suggest-green' : '');
+        return '<button type="button" class="list-group-item list-group-item-action' + extraClass + '">' +
+               '<div class="suggest-row">' +
+               '<div>' + esc(it.item) + '</div>' +
+               '<div class="col-num">' + esc(it.on_hand) + '</div>' +
+               '<div class="col-num">' + esc(it.available) + '</div>' +
+               '</div>' +
+               '</button>';
       }).join('');
+      if (head) head.style.display = 'grid';
       list.style.display = 'block';
     }
     if (input && list){
@@ -1691,7 +1768,7 @@ QUOTE_TPL = """
         if (suggestTimer) clearTimeout(suggestTimer);
         if (!q){ hideList(); return; }
         suggestTimer = setTimeout(function(){
-          fetch('/api/item_suggest?q=' + encodeURIComponent(q))
+          fetch('/api/quotation_item_suggest?q=' + encodeURIComponent(q))
             .then(function(r){ return r.json(); })
             .then(function(j){ if (j && j.ok) showList(j.items); else hideList(); })
             .catch(function(){ hideList(); });
@@ -1700,13 +1777,115 @@ QUOTE_TPL = """
       list.addEventListener('click', function(e){
         var t = e.target.closest('.list-group-item');
         if (!t) return;
-        input.value = t.textContent.trim();
+        var row = t.querySelector('.suggest-row > div');
+        input.value = row ? row.textContent.trim() : t.textContent.trim();
         hideList();
       });
       document.addEventListener('click', function(e){
         if (!e.target.closest || (!e.target.closest('#quote-suggest') && !e.target.closest('#quote-item'))) hideList();
       });
     }
+  })();
+  </script>
+</body>
+</html>
+"""
+
+PERIPHERAL_STATUS_TPL = """
+<!doctype html>
+<html>
+<head>
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
+  <meta charset="utf-8">
+  <title>SSD &amp; Memory Status</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root{--ink:#0f172a;--muted:#64748b;--bg:#f7fafc;--hdr:#f8fafc;}
+    html,body{background:var(--bg);color:var(--ink)} body{padding:28px}
+    .card-lite{border-radius:14px;box-shadow:0 10px 22px rgba(0,0,0,.06)}
+    .table-wrap{max-height:72vh;overflow:auto;border:1px solid #e2e8f0;border-radius:10px}
+    table{white-space:nowrap;margin-bottom:0!important}
+    .table thead th{position:sticky;top:0;z-index:3;background:var(--hdr);vertical-align:bottom}
+    .model-recommended{background:#fff2a8!important;font-weight:700}
+    .model-do-not-use{background:#f8b4b4!important;font-weight:700}
+    .legend-swatch{display:inline-block;width:.85rem;height:.85rem;border:1px solid #cbd5e1;border-radius:3px;margin-right:.35rem;vertical-align:-.08rem}
+    .swatch-yellow{background:#fff2a8}.swatch-red{background:#f8b4b4}
+    .sheet-pane[hidden]{display:none!important}.muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h1 class="h3 mb-1">SSD &amp; Memory Status</h1>
+      <div class="small muted">Read-only view of the SSD and DDR workbook sheets{% if loaded_at %} · Loaded {{ loaded_at }}{% endif %}</div>
+      {% if workbook_name %}<div class="small muted">Source: {{ workbook_name }}</div>{% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="/quotation_lookup">Quotation Lookup</a>
+      <a class="btn btn-sm btn-outline-primary" href="/quotation_lookup/peripheral_status?reload=1">Reload workbook</a>
+      <a class="btn btn-sm btn-outline-secondary" href="/">Home</a>
+    </div>
+  </div>
+
+  {% if error %}
+    <div class="alert alert-warning"><strong>Workbook unavailable.</strong> {{ error }}</div>
+  {% else %}
+    {% if warnings %}<div class="alert alert-warning py-2">{{ warnings|join(' ') }}</div>{% endif %}
+    <div class="card-lite bg-white p-3">
+      <div class="d-flex flex-wrap align-items-end gap-3 mb-3">
+        <div>
+          <label for="sheet-select" class="form-label small fw-semibold mb-1">Sheet</label>
+          <select id="sheet-select" class="form-select">
+            {% for sheet in sheets %}<option value="sheet-{{ loop.index0 }}">{{ sheet.label }} ({{ sheet.rows|length }})</option>{% endfor %}
+          </select>
+        </div>
+        <div class="flex-grow-1" style="min-width:260px">
+          <label for="table-search" class="form-label small fw-semibold mb-1">Search this sheet</label>
+          <input id="table-search" class="form-control" type="search" placeholder="Search model name, status, or any displayed value">
+        </div>
+        <div class="small muted pb-2">
+          <span class="me-3"><span class="legend-swatch swatch-yellow"></span>Recommended to use</span>
+          <span><span class="legend-swatch swatch-red"></span>Do not use</span>
+        </div>
+      </div>
+
+      {% for sheet in sheets %}
+      <section id="sheet-{{ loop.index0 }}" class="sheet-pane" {% if not loop.first %}hidden{% endif %}>
+        <div class="small muted mb-2"><span class="visible-count">{{ sheet.rows|length }}</span> of {{ sheet.rows|length }} rows shown</div>
+        <div class="table-wrap">
+          <table class="table table-sm table-bordered table-hover align-middle">
+            <thead><tr>{% for header in sheet.headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+            <tbody>
+              {% for row in sheet.rows %}
+              <tr data-search="{{ row.search_text }}">
+                {% for cell in row.cells %}<td{% if loop.index0 == row.model_display_index and row.model_class %} class="{{ row.model_class }}"{% endif %}>{{ cell }}</td>{% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <script>
+  (function(){
+    var select=document.getElementById('sheet-select'), search=document.getElementById('table-search');
+    if(!select||!search) return;
+    function active(){return document.getElementById(select.value)}
+    function filter(){
+      var pane=active(), q=search.value.trim().toLowerCase(), shown=0;
+      pane.querySelectorAll('tbody tr').forEach(function(row){
+        var visible=!q || (row.getAttribute('data-search')||'').indexOf(q)!==-1;
+        row.hidden=!visible; if(visible) shown++;
+      });
+      pane.querySelector('.visible-count').textContent=shown;
+    }
+    select.addEventListener('change',function(){
+      document.querySelectorAll('.sheet-pane').forEach(function(p){p.hidden=p.id!==select.value}); filter();
+    });
+    search.addEventListener('input',filter);
   })();
   </script>
 </body>

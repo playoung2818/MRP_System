@@ -17,7 +17,7 @@ from erp_system.ingest.sources import (
     fetch_word_files_df,
     validate_input_tables,
 )
-from erp_system.ledger.events import _order_events, build_events
+from erp_system.ledger.events import build_events
 from erp_system.ledger.ledger import build_ledger_from_events
 from erp_system.ledger.material_readiness import refresh_material_readiness
 from erp_system.normalize.erp_normalize import refresh_pod_site
@@ -49,7 +49,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 VIOLATION_REPORT_COLUMNS = ["Date", "Item", "Item_raw", "Projected_NAV", "Name", "QB Num"]
 VIOLATION_DIFF_KEY_COLUMNS = ["Date", "Item", "Item_raw", "QB Num"]
 REPORT_DIR = Path("reports")
-NEGATIVE_PROJECTED_QTY_REPORT_PATH = REPORT_DIR / "negative_projected_qty.xlsx"
 VIOLATION_SNAPSHOT_PATH = REPORT_DIR / ".last_violation_report.csv"
 
 
@@ -105,13 +104,6 @@ def _normalize_violation_report(df: pd.DataFrame) -> pd.DataFrame:
         out[col] = out[col].fillna("").astype(str)
     out["Projected_NAV"] = pd.to_numeric(out["Projected_NAV"], errors="coerce")
     return out
-
-
-def _write_negative_projected_qty_report(current: pd.DataFrame) -> None:
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    current = _normalize_violation_report(current)
-    current.to_excel(NEGATIVE_PROJECTED_QTY_REPORT_PATH, index=False)
-    print(f"Negative projected qty report written to {NEGATIVE_PROJECTED_QTY_REPORT_PATH}")
 
 
 def _print_violation_diff(current: pd.DataFrame) -> None:
@@ -186,7 +178,7 @@ def main() -> None:
     try:
         updated_site_map = refresh_pod_site(pod_raw)
         logging.info(
-            "POD_SITE refreshed with %d entries (source file updated; takes effect on the next run).",
+            "POD_SITE refreshed with %d entries (JSON snapshot saved; applied to this run).",
             len(updated_site_map),
         )
     except Exception as exc:
@@ -204,12 +196,11 @@ def main() -> None:
     structured, final_sales_order = build_structured_df(so_full, word_files_df, inv, pdf_orders_df, pod)
 
     sap_exp = expand_sap_preinstalled(ship)
-    events_all = _order_events(build_events(structured, sap_exp, pod))
+    events_all = build_events(structured, sap_exp, pod)
     ledger, violations = build_ledger_from_events(structured, events_all, inv)
 
     violation_report = _prepare_violation_report(violations)
     _print_violation_overview(violation_report)
-    _write_negative_projected_qty_report(violation_report)
     _print_violation_diff(violation_report)
 
     inv, structured, pod, ship, ledger = _validate_outputs(inv, structured, pod, ship, ledger)

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -105,54 +108,30 @@ PATTERN_MAPPINGS = [
     ),
 ]
 
-POD_SITE: dict[str, str] = {
-    "POD-260290": "WH01X-NTA",
-    "POD-260291": "WH01X-NTA",
-    "POD-260339": "Drop Ship",
-    "POD-260340": "Drop Ship",
-    "POD-260798": "Drop Ship",
-    "POD-260887": "WH01X-NTA",
-    "POD-260888": "WH01X-NTA",
-    "POD-260889": "WH01X-NTA",
-    "POD-261019": "WH01X-NTA",
-    "POD-261020": "WH01X-NTA",
-    "POD-261070": "WH01X-NTA",
-    "POD-261171": "Drop Ship",
-    "POD-261217": "WH01X-NTA",
-    "POD-261259": "Drop Ship",
-    "POD-261271": "Drop Ship",
-    "POD-261280": "Drop Ship",
-    "POD-261281": "Drop Ship",
-    "POD-261287": "Drop Ship",
-    "POD-261344": "Drop Ship",
-    "POD-261349": "Drop Ship",
-    "POD-261354": "Drop Ship",
-    "POD-261355": "Drop Ship",
-    "POD-261369": "Drop Ship",
-    "POD-261381": "Drop Ship",
-    "POD-261392": "Drop Ship",
-    "POD-261423": "Drop Ship",
-    "POD-261424": "Drop Ship",
-    "POD-261429": "Drop Ship",
-    "POD-261440": "Drop Ship",
-    "POD-261442": "WH01X-NTA",
-    "POD-261454": "WH10Parts- NTA",
-    "POD-261455": "Drop Ship",
-    "POD-261456": "Drop Ship",
-    "POD-261461": "Drop Ship",
-    "POD-261466": "Drop Ship",
-    "POD-261470": "Drop Ship",
-    "POD-261474": "Drop Ship",
-    "POD-261475": "Drop Ship",
-    "POD-261482": "WH01X-NTA",
-    "POD-261483": "WH01X-NTA",
-    "POD-261498": "WH01X-NTA",
-    "POD-261499": "Drop Ship",
-    "POD-261500": "Drop Ship",
-    "POD-261501": "Drop Ship",
-    "POD-261502": "Drop Ship",
-    "POD-261503": "Drop Ship",
-}
+# Generated runtime data, never Python source. Override for deployed installs.
+POD_SITE_PATH = Path(os.environ.get("POD_SITE_PATH") or (
+    Path(__file__).resolve().parents[2] / "data" / "pod_site.json"
+))
+
+
+def load_pod_site(path: Path | None = None) -> dict[str, str]:
+    """Load the last snapshot; a fresh installation starts with an empty map."""
+    target = Path(path) if path is not None else POD_SITE_PATH
+    try:
+        with target.open(encoding="utf-8") as handle:
+            site_map = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    if not isinstance(site_map, dict) or any(
+        not isinstance(key, str) or not isinstance(value, str)
+        for key, value in site_map.items()
+    ):
+        raise ValueError(f"POD site snapshot must be a JSON object of strings: {target}")
+    return site_map
+
+
+# Keep this dictionary's identity stable for consumers importing POD_SITE.
+POD_SITE: dict[str, str] = load_pod_site()
 
 
 def detect_pod_site(df_pod: pd.DataFrame, *, include_site: str = "WH01S-NTA") -> dict[str, str]:
@@ -191,7 +170,7 @@ def detect_pod_site(df_pod: pd.DataFrame, *, include_site: str = "WH01S-NTA") ->
 
 def format_pod_site_entries(site_map: dict[str, str]) -> str:
     """
-    Format POD site mappings as dictionary lines matching POD_SITE style.
+    Format POD site mappings for display (not for source-file persistence).
     """
     if not site_map:
         return ""
@@ -199,37 +178,33 @@ def format_pod_site_entries(site_map: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-_POD_SITE_BLOCK_RE = re.compile(
-    r"POD_SITE: dict\[str, str\] = \{\n.*?\n\}",
-    re.DOTALL,
-)
-
-
-def _build_pod_site_block(site_map: dict[str, str]) -> str:
-    lines = format_pod_site_entries(site_map)
-    if lines:
-        return f"POD_SITE: dict[str, str] = {{\n{lines}\n}}"
-    return "POD_SITE: dict[str, str] = {\n}"
-
-
 def refresh_pod_site(df_pod: pd.DataFrame) -> dict[str, str]:
-    """
-    Recompute POD_SITE from a raw POD dataframe (same shape as detect_pod_site
-    expects) and rewrite the POD_SITE block in this file on disk.
+    """Persist detected sites atomically and apply them to the current ETL run.
 
-    This edits the source file in place, so it takes effect starting the next
-    process run -- the POD_SITE already imported into memory for the run that
-    calls this is unchanged.
+    The existing POD_SITE object is mutated so imports in ledger.events see
+    fresh exclusions immediately. A failed write leaves the previous snapshot
+    and in-memory mapping intact.
     """
     site_map = detect_pod_site(df_pod)
-
-    target = Path(__file__).resolve()
-    text = target.read_text(encoding="utf-8")
-    new_block = _build_pod_site_block(site_map)
-    updated_text, count = _POD_SITE_BLOCK_RE.subn(new_block, text, count=1)
-    if count != 1:
-        raise RuntimeError("Could not find POD_SITE block in erp_normalize.py")
-    target.write_text(updated_text, encoding="utf-8")
+    target = POD_SITE_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=target.parent,
+            prefix=f".{target.name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(site_map, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    POD_SITE.clear()
+    POD_SITE.update(site_map)
     return site_map
 
 
@@ -264,17 +239,13 @@ def normalize_item(value: Any) -> Any:
     return name
 
 
-def normalize_series(series: pd.Series) -> pd.Series:
-    """Vectorized helper to normalize a pandas Series of item names."""
-    return series.apply(normalize_item)
-
-
 __all__ = [
     "normalize_item",
-    "normalize_series",
     "ITEM_MAPPINGS",
     "PATTERN_MAPPINGS",
     "POD_SITE",
+    "POD_SITE_PATH",
+    "load_pod_site",
     "detect_pod_site",
     "format_pod_site_entries",
     "refresh_pod_site",

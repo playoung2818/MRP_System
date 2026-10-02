@@ -1,5 +1,7 @@
 # To Do
 
+- Fix per-SO material readiness: remove the SO's own outbound demand; exclude other unassigned/placeholder-dated outbound demand; keep other assigned orders' dated demand; exclude unknown-date inbound supply; recalculate balances and future minimums; and find when every component can be supplied without breaking dated commitments.
+
 ## Skill.md Module Candidates
 
 ### Best candidates

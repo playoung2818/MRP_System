@@ -24,6 +24,16 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 - Run `erp.bat` or `python "ERP_System 3.0/etl.py"`.
 - Outputs: inventory_status, structured sales orders, POD, shipping, ledger, item summary, ATP, and Not_assigned_SO exports; pushed to DB and Sheets when configured.
 
+### POD inventory-site snapshot
+
+ETL derives non-default POD inventory sites from the current POD export and saves
+an atomic JSON snapshot to `ERP_System 3.0/data/pod_site.json`. This generated
+file is ignored by Git; normalization source code is never rewritten. Set the
+`POD_SITE_PATH` environment variable to use a different writable location.
+A missing snapshot starts empty and is populated by ETL. Refresh updates ledger
+exclusions in the same process, so the current run uses the current POD sites.
+Standalone ledger callers load the last saved snapshot when the module imports.
+
 ## Remark
 
 ``` text

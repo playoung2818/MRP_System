@@ -3,12 +3,6 @@ from __future__ import annotations
 import pandas as pd
 
 
-def enforce_column_order(df: pd.DataFrame, order: list[str]) -> pd.DataFrame:
-    front = [c for c in order if c in df.columns]
-    back = [c for c in df.columns if c not in front]
-    return df.loc[:, front + back]
-
-
 def _norm_cols(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for c in ("Ship Date", "Order Date", "Arrive Date", "Date"):
@@ -27,4 +21,4 @@ def _norm_key(s: pd.Series) -> pd.Series:
     return s.str.strip().str.upper()
 
 
-__all__ = ["_norm_cols", "_norm_key", "enforce_column_order"]
+__all__ = ["_norm_cols", "_norm_key"]

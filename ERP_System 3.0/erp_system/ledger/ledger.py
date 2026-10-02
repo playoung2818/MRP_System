@@ -14,6 +14,7 @@ def build_ledger_from_events(
     events: pd.DataFrame,
     inventory: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Add opening stock, normalize/order once, then calculate running balances."""
     so = _norm_cols(so)
     stock = build_opening_stock(so, inventory)
 
@@ -52,44 +53,6 @@ def build_ledger_from_events(
         & ~ledger["Item"].fillna("").str.startswith("Total ")
     )
     violations = ledger.loc[mask].sort_values(by="Date").copy()
-    ledger.sort_values(["Item", "Date", "Kind"], inplace=True, kind="mergesort")
     return ledger, violations
 
-
-def earliest_atp_by_projected_nav(
-    ledger: pd.DataFrame,
-    item: str,
-    qty: float,
-    from_date: pd.Timestamp | None = None,
-) -> pd.Timestamp | None:
-    if ledger is None or ledger.empty:
-        return None
-    from_date = pd.Timestamp.today().normalize() if from_date is None else pd.to_datetime(from_date).normalize()
-    qty_val = pd.to_numeric(qty, errors="coerce")
-    if pd.isna(qty_val):
-        return None
-    qty_val = int(qty_val)
-    if not {"Item", "Date", "Projected_NAV"}.issubset(ledger.columns):
-        return None
-    df = ledger.loc[ledger["Item"].astype(str) == str(item)].copy()
-    if df.empty:
-        return None
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.loc[df["Date"].notna()]
-    if df.empty:
-        return None
-    df = df.loc[df["Date"].ne(PLACEHOLDER_DATE)]
-    if df.empty:
-        return None
-    df["Projected_NAV"] = pd.to_numeric(df["Projected_NAV"], errors="coerce")
-    df = df.loc[df["Projected_NAV"].notna()]
-    if df.empty:
-        return None
-    df = df.loc[df["Date"] >= from_date].sort_values("Date")
-    if df.empty:
-        return None
-    candidates = df.loc[df["Projected_NAV"] >= qty_val, "Date"]
-    return None if candidates.empty else candidates.min()
-
-
-__all__ = ["build_ledger_from_events", "earliest_atp_by_projected_nav"]
+__all__ = ["build_ledger_from_events"]

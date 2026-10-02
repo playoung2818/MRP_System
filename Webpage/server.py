@@ -21,9 +21,9 @@ from ui import (
     INVENTORY_TPL,
     ITEM_INFO_TPL,
     PRODUCTION_TPL,
+    QUOTE_TPL,
+    PERIPHERAL_STATUS_TPL,
 )
-from quote_ui import QUOTE_TPL
-from peripheral_status_ui import PERIPHERAL_STATUS_TPL
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ERP_MODULE_DIR = REPO_ROOT / "ERP_System 3.0"

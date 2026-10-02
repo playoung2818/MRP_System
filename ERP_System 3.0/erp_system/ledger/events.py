@@ -52,6 +52,7 @@ def _order_events(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_events(so: pd.DataFrame, sap_exp: pd.DataFrame, pod: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Assemble movements and exclusions; ledger construction cleans/orders them."""
     so = _norm_cols(so)
     sap = _norm_cols(sap_exp)
 
@@ -100,58 +101,11 @@ def build_events(so: pd.DataFrame, sap_exp: pd.DataFrame, pod: pd.DataFrame | No
         event_pod_no = event_pod_no.mask(blank_mask, events["P. O. #"].fillna("").astype(str).str.strip())
         inbound_mask = events["Kind"].astype(str).eq("IN")
         events = events.loc[~(inbound_mask & event_pod_no.isin(excluded_pods))].copy()
-    return _order_events(events)
-
-
-def build_reconcile_events(
-    inv_db: pd.DataFrame,
-    inv_wh: pd.DataFrame,
-    *,
-    as_of: pd.Timestamp | None = None,
-    item_col_db: str = "Part_Number",
-    item_col_wh: str = "Part_Number",
-    onhand_col: str = "On Hand",
-    mappings: dict | None = None,
-    min_abs_delta: float = 0.0,
-) -> pd.DataFrame:
-    as_of = (as_of or pd.Timestamp.today()).normalize()
-    adj_date = as_of - pd.Timedelta(days=1)
-    db = inv_db.copy()
-    wh = inv_wh.copy()
-    if item_col_db not in db.columns:
-        raise ValueError(f"inv_db missing column: {item_col_db}")
-    if item_col_wh not in wh.columns:
-        raise ValueError(f"inv_wh missing column: {item_col_wh}")
-
-    def _apply_normalizer(val: str) -> str:
-        base = normalize_item(val)
-        return mappings.get(base, base) if mappings else base
-
-    db["Item"] = db[item_col_db].astype(str).str.strip().map(_apply_normalizer)
-    wh["Item"] = wh[item_col_wh].astype(str).str.strip().map(_apply_normalizer)
-    db[onhand_col] = pd.to_numeric(db.get(onhand_col, 0), errors="coerce").fillna(0.0)
-    wh[onhand_col] = pd.to_numeric(wh.get(onhand_col, 0), errors="coerce").fillna(0.0)
-    db_agg = db.groupby("Item", as_index=False, sort=False)[onhand_col].sum().rename(columns={onhand_col: "OnHand_DB"})
-    wh_agg = wh.groupby("Item", as_index=False, sort=False)[onhand_col].sum().rename(columns={onhand_col: "OnHand_WH"})
-    merged = db_agg.merge(wh_agg, on="Item", how="outer", validate="1:1")
-    merged["OnHand_DB"] = pd.to_numeric(merged["OnHand_DB"], errors="coerce").fillna(0.0)
-    merged["OnHand_WH"] = pd.to_numeric(merged["OnHand_WH"], errors="coerce").fillna(0.0)
-    merged["Delta"] = merged["OnHand_WH"] - merged["OnHand_DB"]
-    if min_abs_delta > 0:
-        merged = merged.loc[merged["Delta"].abs() >= float(min_abs_delta)]
-    if merged.empty:
-        return pd.DataFrame(columns=["Date", "Item", "Delta", "Kind", "Source", "Notes"])
-    out = merged.loc[:, ["Item", "Delta", "OnHand_DB", "OnHand_WH"]].copy()
-    out.insert(0, "Date", adj_date)
-    out["Kind"] = "ADJ"
-    out["Source"] = "Reconcile"
-    out["Notes"] = "InvRecon: WH(" + out["OnHand_WH"].astype(str) + ") - DB(" + out["OnHand_DB"].astype(str) + ") = " + out["Delta"].astype(str)
-    return out.loc[:, ["Date", "Item", "Delta", "Kind", "Source", "Notes"]]
+    return events
 
 
 __all__ = [
     "_order_events",
     "build_events",
     "build_opening_stock",
-    "build_reconcile_events",
 ]
