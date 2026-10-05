@@ -6,7 +6,7 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 
 ## Script
 
-- Run `python -m erp_system.cli.etl` to run the ETL and update the System
+- From `MRP_System 3.0`, run `python -m mrp_system.cli.etl` to run the ETL and update the system.
 
 
 ## Data inputs
@@ -19,15 +19,16 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 
 ## Run the ETL
 - Install deps from `requirements.txt`.
-- Configure DB DSN in `db_config.py` (or environment).
-- Update file paths in `ERP_System 3.0/config.py`.
-- Run `erp.bat` or `python "ERP_System 3.0/etl.py"`.
+- Configure `DATABASE_DSN` in the environment or `MRP_System 3.0/.env`.
+- Update input file paths in `MRP_System 3.0/mrp_system/runtime/paths.py`.
+- From `MRP_System 3.0`, run `python -m mrp_system.cli.etl`.
+- The Not_assigned_SO export defaults to the repository root; set `NOT_ASSIGNED_SO_EXPORT_PATH` to override it.
 - Outputs: inventory_status, structured sales orders, POD, shipping, ledger, item summary, ATP, and Not_assigned_SO exports; pushed to DB and Sheets when configured.
 
 ### POD inventory-site snapshot
 
 ETL derives non-default POD inventory sites from the current POD export and saves
-an atomic JSON snapshot to `ERP_System 3.0/data/pod_site.json`. This generated
+an atomic JSON snapshot to `MRP_System 3.0/data/pod_site.json`. This generated
 file is ignored by Git; normalization source code is never rewritten. Set the
 `POD_SITE_PATH` environment variable to use a different writable location.
 A missing snapshot starts empty and is populated by ETL. Refresh updates ledger

@@ -17,7 +17,7 @@ ERP suites, since the UI/accounting/HR layers in those aren't relevant here:
 - **[mrpSolver](https://github.com/twoldstad/mrpSolver)** — small, standalone
   Python module computing an MRP order-release schedule and ATP from an item
   master + master production schedule + BOM. Closest direct analog to
-  `erp_system/ledger/ledger.py` / `atp.py` — small enough to read start to
+  `mrp_system/ledger/ledger.py` / `atp.py` — small enough to read start to
   finish.
 - **[ERPNext](https://github.com/frappe/erpnext)** `erpnext/stock` specifically
   — full ERP (Python/Frappe/MariaDB), too big to use wholesale, but its Stock

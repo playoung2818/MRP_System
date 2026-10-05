@@ -13,11 +13,11 @@ pycache/
 # Generated data and ETL state
 /Item Listing.CSV
 /data/review_test/
-/ERP_System 3.0/.etl_state/
-/ERP_System 3.0/reports/.last_violation_report.csv
-/ERP_System 3.0/data/item_cooccurrence.json
-/ERP_System 3.0/data/pod_site.json
-/ERP_System 3.0/data/.pod_site.json.*.tmp
+/MRP_System 3.0/.etl_state/
+/MRP_System 3.0/reports/.last_violation_report.csv
+/MRP_System 3.0/data/item_cooccurrence.json
+/MRP_System 3.0/data/pod_site.json
+/MRP_System 3.0/data/.pod_site.json.*.tmp
 
 # Runtime logs
 *.log

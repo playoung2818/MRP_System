@@ -26,18 +26,18 @@ from ui import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ERP_MODULE_DIR = REPO_ROOT / "ERP_System 3.0"
-if str(ERP_MODULE_DIR) not in sys.path:
-    sys.path.insert(0, str(ERP_MODULE_DIR))
+MRP_MODULE_DIR = REPO_ROOT / "MRP_System 3.0"
+if str(MRP_MODULE_DIR) not in sys.path:
+    sys.path.insert(0, str(MRP_MODULE_DIR))
 
-from erp_system.normalize.erp_normalize import normalize_item
-from erp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
-from erp_system.runtime.db_config import get_engine, DATABASE_DSN
-from erp_system import production_overrides
-from erp_system.quotation_cards import load_item_cards
-from erp_system.purchase_order_lookup import purchase_orders
-from erp_system.runtime.constants import PLACEHOLDER_DATE
-from erp_system.runtime.paths import PERIPHERAL_STATUS_FILE
+from mrp_system.normalize.mrp_normalize import normalize_item
+from mrp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
+from mrp_system.runtime.db_config import get_engine, DATABASE_DSN
+from mrp_system import production_overrides
+from mrp_system.quotation_cards import load_item_cards
+from mrp_system.purchase_order_lookup import purchase_orders
+from mrp_system.runtime.constants import PLACEHOLDER_DATE
+from mrp_system.runtime.paths import PERIPHERAL_STATUS_FILE
 
 app = Flask(__name__)
 app.register_blueprint(purchase_orders)
@@ -2740,7 +2740,7 @@ def _load_peripheral_status(force: bool = False) -> dict:
     global PERIPHERAL_STATUS_CACHE, PERIPHERAL_STATUS_CACHE_KEY
     path = _peripheral_workbook_path()
     if path is None:
-        raise FileNotFoundError("Place 'Peripheral Status Update_YYYYMMDD.xlsx' in the ERP_System base folder, or set PERIPHERAL_STATUS_WORKBOOK to its full path.")
+        raise FileNotFoundError("Place 'Peripheral Status Update_YYYYMMDD.xlsx' in the MRP_System base folder, or set PERIPHERAL_STATUS_WORKBOOK to its full path.")
     stat = path.stat()
     cache_key = (str(path.resolve()).lower(), stat.st_mtime_ns, stat.st_size)
     if not force and PERIPHERAL_STATUS_CACHE is not None and PERIPHERAL_STATUS_CACHE_KEY == cache_key:
