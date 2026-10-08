@@ -18,7 +18,8 @@ class WebUIAssetsTests(unittest.TestCase):
             for name, value in runpy.run_path(str(WEB_ROOT / "ui.py")).items()
             if name.endswith("_TPL")
         }
-        self.assertEqual(len(templates), 9)
+        self.assertEqual(len(templates), 7)
+        self.assertNotIn('INVENTORY_TPL', templates)
         for name, template in templates.items():
             with self.subTest(template=name):
                 Environment().parse(template)
@@ -36,6 +37,16 @@ class WebUIAssetsTests(unittest.TestCase):
         self.assertIn("PERIPHERAL_STATUS_TPL", imported)
         self.assertFalse((WEB_ROOT / "quote_ui.py").exists())
         self.assertFalse((WEB_ROOT / "peripheral_status_ui.py").exists())
+
+    def test_production_planning_removed(self):
+        server = (WEB_ROOT / "server.py").read_text(encoding="utf-8")
+        ui = (WEB_ROOT / "ui.py").read_text(encoding="utf-8")
+        self.assertNotIn("production_planning", server)
+        self.assertNotIn("production_planning", ui)
+        self.assertNotIn("PRODUCTION_TPL", ui)
+        self.assertNotIn("production_overrides", server)
+        self.assertNotIn("FINAL_SO", server)
+        self.assertIn("Sales Order Not Assigned LT", ui)
 
     def test_one_transparent_asset_per_snoopy_figure(self):
         assets = sorted(path.name for path in (WEB_ROOT / "static").glob("snoopy*"))

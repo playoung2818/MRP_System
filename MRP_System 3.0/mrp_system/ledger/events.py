@@ -80,6 +80,11 @@ def build_events(so: pd.DataFrame, sap_exp: pd.DataFrame, pod: pd.DataFrame | No
     pod_events = pd.DataFrame(columns=cols)
     if pod is not None and not pod.empty:
         pod = _norm_cols(pod)
+        # Protect direct callers and stale snapshots as well as transformed PODs.
+        items = pod.get("Item", pd.Series(pd.NA, index=pod.index, dtype="string")).astype("string").str.strip()
+        valid_item = items.notna() & ~items.str.lower().isin({"", "nan", "none", "<na>", "nat"})
+        valid_item &= ~items.str.match(r"(?i)^total\b", na=False)
+        pod = pod.loc[valid_item].copy()
         if "Source Name" in pod.columns:
             pod = pod.loc[~pod["Source Name"].astype(str).str.strip().isin(EXCLUDED_POD_SOURCE_NAMES)].copy()
         if "Ship Date" not in pod.columns and "Deliv Date" in pod.columns:

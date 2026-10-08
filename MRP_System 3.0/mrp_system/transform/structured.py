@@ -31,7 +31,7 @@ def reorder_df_out_by_output(output_df: pd.DataFrame, df_out: pd.DataFrame) -> p
 
 def build_structured_df(
     df_sales_order: pd.DataFrame,
-    word_files_df: pd.DataFrame,
+    mes_quantities: pd.DataFrame,
     inventory_df: pd.DataFrame,
     pdf_orders_df: pd.DataFrame,
     df_pod: pd.DataFrame,
@@ -65,28 +65,17 @@ def build_structured_df(
     final_sales_order["Item"] = final_sales_order["Item"].map(normalize_item)
     final_sales_order = final_sales_order.loc[:, ~final_sales_order.columns.duplicated()]
 
-    word_pick = word_files_df.copy()
-    word_pick["WO_Number"] = word_pick["WO_Number"].astype(str).apply(normalize_wo_number)
-    word_pick["Picked_Flag"] = word_pick["status"].astype(str).str.strip().eq("Picked")
-    word_pick = word_pick.groupby("WO_Number", as_index=False)["Picked_Flag"].max()
-
-    df_order_picked = (
-        final_sales_order.merge(word_pick, left_on="QB Num", right_on="WO_Number", how="left").drop(columns=["WO_Number"])
-    )
-    df_order_picked["Picked_Flag"] = df_order_picked["Picked_Flag"].astype("boolean").fillna(False)
-
-    partial_map = (
-        df_sales_order.groupby(["QB Num", "Item"], as_index=False)["partial"]
-        .any()
-        .rename(columns={"partial": "partial_flag"})
-    )
-    df_order_picked = df_order_picked.merge(partial_map, on=["QB Num", "Item"], how="left")
-    df_order_picked["partial"] = df_order_picked["partial_flag"].astype("boolean").fillna(False).astype(bool)
-    df_order_picked.drop(columns=["partial_flag"], inplace=True)
-
-    df_order_picked["Picked"] = np.where(df_order_picked["Picked_Flag"], "Picked", "No")
-    mask_partial = df_order_picked["Picked_Flag"] & df_order_picked["partial"]
-    df_order_picked.loc[mask_partial, "Picked"] = "Partial"
+    from .inventory import match_mes_quantities
+    picked = match_mes_quantities(df_sales_order, mes_quantities)
+    picked = picked[['QB Num', 'Item', 'Inventory Site', 'WIP_Qty', 'Qty(-)', 'partial']]
+    final_sales_order['QB Num'] = final_sales_order['QB Num'].astype(str).map(normalize_wo_number)
+    df_order_picked = final_sales_order.merge(picked, on=['QB Num', 'Item', 'Inventory Site'], how='left')
+    qty = df_order_picked['WIP_Qty'].fillna(0)
+    df_order_picked['Picked_Flag'] = qty.gt(0)
+    df_order_picked['partial'] = df_order_picked['partial'].astype('boolean').fillna(False).astype(bool)
+    partially_picked = qty.gt(0) & qty.lt(df_order_picked['Qty(-)'])
+    df_order_picked['Picked'] = np.where(qty.le(0), 'No', np.where(partially_picked, 'Partial', 'Picked'))
+    df_order_picked.drop(columns=['WIP_Qty', 'Qty(-)'], inplace=True)
 
     inv_plus = inventory_df.copy()
     for c in ["On Hand", "On Sales Order", "On PO", "Reorder Pt (Min)", "Sales/Week", "Available"]:

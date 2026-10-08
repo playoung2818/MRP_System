@@ -14,7 +14,6 @@ from mrp_system.ingest.io_ops import (
 from mrp_system.ingest.sources import (
     extract_inputs,
     fetch_pdf_orders_df_from_DB,
-    fetch_word_files_df,
     validate_input_tables,
 )
 from mrp_system.ledger.events import build_events
@@ -35,7 +34,6 @@ from mrp_system.runtime.policies import (
     GOOGLE_SHEET_SPREADSHEET,
     GOOGLE_SHEET_WORKSHEET,
     NOT_ASSIGNED_SO_EXPORT_PATH,
-    WORD_FILE_API_URLS,
 )
 from mrp_system.transform.inventory import build_wip_lookup, transform_inventory
 from mrp_system.transform.pod import enrich_pod_with_shipping_audit, transform_pod
@@ -183,17 +181,27 @@ def main() -> None:
         )
     except Exception as exc:
         logging.warning("Skipping POD_SITE refresh: %s", exc)
-    word_files_df = fetch_word_files_df(WORD_FILE_API_URLS)
+    so_full = transform_sales_order(so_raw)
+    from mrp_system.ingest.mes import fetch_mes_quantities
+    from mrp_system.transform.shipment_reconciliation import partial_shipment_report
+    mes_quantities = fetch_mes_quantities(so_full['QB Num'].unique())
+    shipment_report = partial_shipment_report(so_full, mes_quantities)
+    if shipment_report.empty:
+        print('Partial shipments: all current open SOs reconciled with MES.')
+    else:
+        print('\nPARTIALLY SHIPPED SOs — mark matching WO releases shipped in MES:')
+        print(shipment_report.to_string(index=False))
+        print('Positive Qty to reconcile: not yet marked shipped. Negative: too much marked shipped.')
+        print('WIP may be overstated or understated until these shipment flags are corrected.')
     pdf_orders_df = fetch_pdf_orders_df_from_DB()
 
-    so_full = transform_sales_order(so_raw)
-    wip_lookup = build_wip_lookup(so_full, word_files_df)
+    wip_lookup = build_wip_lookup(so_full, mes_quantities)
     inv = transform_inventory(inv_raw, wip_lookup)
     pod = transform_pod(pod_raw)
     ship = transform_shipping(ship_raw)
     pod = enrich_pod_with_shipping_audit(pod, ship)
 
-    structured, final_sales_order = build_structured_df(so_full, word_files_df, inv, pdf_orders_df, pod)
+    structured, final_sales_order = build_structured_df(so_full, mes_quantities, inv, pdf_orders_df, pod)
 
     sap_exp = expand_sap_preinstalled(ship)
     events_all = build_events(structured, sap_exp, pod)

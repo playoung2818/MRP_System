@@ -18,9 +18,7 @@ from ui import (
     INDEX_TPL,
     SUBPAGE_TPL,
     ITEM_TPL,
-    INVENTORY_TPL,
     ITEM_INFO_TPL,
-    PRODUCTION_TPL,
     QUOTE_TPL,
     PERIPHERAL_STATUS_TPL,
 )
@@ -33,7 +31,6 @@ if str(MRP_MODULE_DIR) not in sys.path:
 from mrp_system.normalize.mrp_normalize import normalize_item
 from mrp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from mrp_system.runtime.db_config import get_engine, DATABASE_DSN
-from mrp_system import production_overrides
 from mrp_system.quotation_cards import load_item_cards
 from mrp_system.purchase_order_lookup import purchase_orders
 from mrp_system.runtime.constants import PLACEHOLDER_DATE
@@ -54,7 +51,6 @@ SO_INV: pd.DataFrame | None = None
 INVENTORY_STATUS: pd.DataFrame | None = None
 SAP: pd.DataFrame | None = None
 OPEN_PO: pd.DataFrame | None = None
-FINAL_SO: pd.DataFrame | None = None
 LEDGER: pd.DataFrame | None = None
 ITEM_ATP: pd.DataFrame | None = None
 RECEIVING_LOG: pd.DataFrame | None = None
@@ -76,24 +72,6 @@ PERIPHERAL_STATUS_CACHE: dict | None = None
 PERIPHERAL_STATUS_CACHE_KEY: tuple[str, int, int] | None = None
 READY_ASSIGN_CACHE: list[dict] | None = None
 RECENT_HOME_SEARCHES: list[dict[str, str]] = []
-WEEKLY_LABOR_CAPACITY_HOURS = 90.0
-WO_PICKED_QTY_OVERRIDES_TABLE = "wo_picked_qty_overrides"
-LABOR_HOURS_PER_UNIT = {
-    "NUVO": 1.0,
-    "POC": 0.5,
-    "NRU": 1.0,
-    "SEMIL": 1.0,
-    "F": 1.0,
-    "INFICON": 1.0,
-}
-LABOR_FAMILY_LABELS = {
-    "NUVO": "Nuvo",
-    "POC": "POC",
-    "NRU": "NRU",
-    "SEMIL": "SEMIL",
-    "F": "F",
-    "INFICON": "Inficon",
-}
 
 # =========================
 # PDF settings/cache
@@ -131,11 +109,6 @@ def _to_date_str(s: pd.Series, fmt="%Y-%m-%d") -> pd.Series:
     return s.apply(lambda x: x.strftime(fmt) if pd.notnull(x) else "")
 
 
-def _is_unassigned_lt_series(s: pd.Series) -> pd.Series:
-    dates = pd.to_datetime(s, errors="coerce")
-    return (dates.dt.month.eq(7) & dates.dt.day.eq(4)) | (dates.dt.month.eq(12) & dates.dt.day.eq(31))
-
-
 def _format_num(value, digits: int = 1) -> str:
     try:
         num = float(value)
@@ -148,552 +121,10 @@ def _format_num(value, digits: int = 1) -> str:
     return f"{num:.{digits}f}".rstrip("0").rstrip(".")
 
 
-def _parse_float(value, default: float | None = None) -> float | None:
-    try:
-        num = float(value)
-    except Exception:
-        return default
-    if not np.isfinite(num):
-        return default
-    return num
-
-
 def _normalize_so_key(v: str) -> str:
     """Normalize SO/QB key for tolerant matching (SO-20260328 == so20260328)."""
     s = str(v or "").upper().strip()
     return re.sub(r"[^A-Z0-9]", "", s)
-
-
-def _classify_labor_family(item: object) -> tuple[str, float | None]:
-    item_upper = str(item or "").strip().upper()
-    if item_upper.startswith("NUVO-"):
-        return LABOR_FAMILY_LABELS["NUVO"], LABOR_HOURS_PER_UNIT["NUVO"]
-    if item_upper.startswith("NRU-"):
-        return LABOR_FAMILY_LABELS["NRU"], LABOR_HOURS_PER_UNIT["NRU"]
-    if item_upper.startswith("SEMIL-"):
-        return LABOR_FAMILY_LABELS["SEMIL"], LABOR_HOURS_PER_UNIT["SEMIL"]
-    if item_upper.startswith("POC-"):
-        return LABOR_FAMILY_LABELS["POC"], LABOR_HOURS_PER_UNIT["POC"]
-    if item_upper.startswith("F") and not item_upper.startswith(("FK", "FPNL-", "FANKIT", "FAN-")):
-        return LABOR_FAMILY_LABELS["F"], LABOR_HOURS_PER_UNIT["F"]
-    return "Unknown", None
-
-
-def _build_first_wo_item_map(structured_df: pd.DataFrame | None) -> dict[str, dict[str, object]]:
-    if (
-        structured_df is None
-        or structured_df.empty
-        or "QB Num" not in structured_df.columns
-        or "Item" not in structured_df.columns
-    ):
-        return {}
-
-    work = structured_df.copy()
-    work["QB Num"] = work["QB Num"].astype(str).str.strip()
-    work = work.loc[work["QB Num"].ne("")]
-    if work.empty:
-        return {}
-
-    # SO_INV (wo_structured) uses "Qty(-)"/"Name"; FINAL_SO (open_sales_orders, rebuilt for
-    # Production Planning) uses "Qty"/"Customer" instead. Accept either caller's schema.
-    qty_col = "Qty(-)" if "Qty(-)" in work.columns else ("Qty" if "Qty" in work.columns else None)
-    name_col = "Name" if "Name" in work.columns else ("Customer" if "Customer" in work.columns else None)
-    first_map: dict[str, dict[str, object]] = {}
-    for qb_num, group in work.groupby("QB Num", sort=False):
-        # Inficon WOs' line items don't follow the NUVO-/NRU-/SEMIL-/POC- naming the family
-        # classifier relies on, so it was falling through to "unrecognized" and defaulting to
-        # whatever line happened to be first — normally the cable, not the actual unit. Every
-        # Inficon WO's first line item is reliably the cable at 1-per-unit, so its qty is a
-        # reliable stand-in for the true unit count; count these units as Nuvo at 1 labor hour each.
-        customer_name = str(group.iloc[0].get(name_col) or "").strip().lower() if name_col else ""
-        if "inficon" in customer_name:
-            first_row = group.iloc[0]
-            first_item = first_row.get("Item") or ""
-            first_qty = 0.0
-            if qty_col is not None:
-                first_qty = _parse_float(first_row.get(qty_col), 0.0) or 0.0
-            first_qty = max(first_qty, 0.0)
-            first_map[str(qb_num).strip()] = {
-                "item": first_item,
-                "qty": first_qty,
-                "unit_rows": [
-                    {
-                        "item": first_item,
-                        "qty": first_qty,
-                        "family": LABOR_FAMILY_LABELS["NUVO"],
-                        "hours_per_unit": LABOR_HOURS_PER_UNIT["INFICON"],
-                        "position": 0,
-                    }
-                ],
-                "base_labor_hours": first_qty * LABOR_HOURS_PER_UNIT["INFICON"],
-            }
-            continue
-
-        unit_rows: list[dict[str, object]] = []
-        for pos, (_, row) in enumerate(group.iterrows()):
-            item = row.get("Item") or ""
-            family, hours_per_unit = _classify_labor_family(item)
-            if hours_per_unit is None:
-                continue
-            qty = 0.0
-            if qty_col is not None:
-                qty = _parse_float(row.get(qty_col), 0.0) or 0.0
-            unit_rows.append(
-                {
-                    "item": item,
-                    "qty": max(qty, 0.0),
-                    "family": family,
-                    "hours_per_unit": hours_per_unit,
-                    "position": pos,
-                }
-            )
-
-        if unit_rows:
-            primary = unit_rows[0]
-            total_qty = sum(float(r.get("qty") or 0.0) for r in unit_rows)
-            base_labor_hours = sum(
-                float(r.get("qty") or 0.0) * float(r.get("hours_per_unit") or 0.0)
-                for r in unit_rows
-            )
-            first_map[str(qb_num).strip()] = {
-                "item": primary.get("item") or "",
-                "qty": total_qty,
-                "unit_rows": unit_rows,
-                "base_labor_hours": base_labor_hours,
-            }
-            continue
-
-        first = group.iloc[0]
-        qty = None
-        if qty_col is not None:
-            qty = _parse_float(first.get(qty_col))
-        first_map[str(qb_num).strip()] = {
-            "item": first.get("Item") or "",
-            "qty": qty,
-            "unit_rows": [],
-            "base_labor_hours": None,
-        }
-    return first_map
-
-
-def _fully_picked_qb_nums(structured_df: pd.DataFrame | None) -> set[str]:
-    if (
-        structured_df is None
-        or structured_df.empty
-        or "QB Num" not in structured_df.columns
-        or "Picked" not in structured_df.columns
-    ):
-        return set()
-
-    work = structured_df[["QB Num", "Picked"]].copy()
-    work["QB Num"] = work["QB Num"].fillna("").astype(str).str.strip()
-    work["Picked"] = work["Picked"].fillna("").astype(str).str.strip().str.lower()
-    work = work.loc[work["QB Num"].ne("")]
-    if work.empty:
-        return set()
-
-    fully_picked: set[str] = set()
-    for qb_num, group in work.groupby("QB Num", sort=False):
-        statuses = group["Picked"]
-        if not statuses.empty and statuses.ne("").all() and statuses.eq("picked").all():
-            fully_picked.add(str(qb_num).strip())
-    return fully_picked
-
-
-
-
-def _load_wo_picked_qty_overrides() -> dict[str, float]:
-    try:
-        rows = pd.read_sql_query(
-            text(f"SELECT wo_number, picked_qty FROM public.{WO_PICKED_QTY_OVERRIDES_TABLE}"),
-            con=engine,
-        )
-    except Exception:
-        return {}
-
-    overrides: dict[str, float] = {}
-    for _, row in rows.iterrows():
-        key = str(row.get("wo_number") or "").strip()
-        picked_qty = _parse_float(row.get("picked_qty"))
-        if key and picked_qty is not None:
-            overrides[key] = picked_qty
-    return overrides
-
-
-
-
-def _load_production_schedule_overrides() -> dict[str, str]:
-    return production_overrides.load_schedule(engine)
-
-
-
-
-def _load_finished_goods_overrides() -> set[str]:
-    return production_overrides.load_finished_goods(engine)
-
-
-
-
-def _picked_qty_for_wo(
-    qb_num: object,
-    total_units: float,
-    wo_status: str,
-    picked_qty_overrides: dict[str, float],
-) -> tuple[float, bool]:
-    key = str(qb_num or "").strip()
-    if key in picked_qty_overrides:
-        picked_qty = picked_qty_overrides[key]
-        return max(picked_qty, 0.0), True
-    if str(wo_status or "").strip().lower() == "picked":
-        return max(total_units, 0.0), False
-    return 0.0, False
-
-
-def _planned_qty_for_qb_num(qb_num: str) -> float | None:
-    if FINAL_SO is None or FINAL_SO.empty or "QB Num" not in FINAL_SO.columns:
-        return None
-    key = str(qb_num or "").strip()
-    if not key:
-        return None
-    rows = FINAL_SO.loc[FINAL_SO["QB Num"].astype(str).str.strip().eq(key)]
-    if rows.empty:
-        return None
-    if "Qty" in rows.columns:
-        qty = _parse_float(rows.iloc[0].get("Qty"))
-        if qty is not None:
-            return qty
-    if "Qty(-)" in rows.columns:
-        qty = pd.to_numeric(rows["Qty(-)"], errors="coerce").fillna(0).sum()
-        return float(qty)
-    return None
-
-
-def _build_weekly_labor_capacity(df: pd.DataFrame, structured_df: pd.DataFrame | None = None) -> list[dict]:
-    if df is None or df.empty or "Lead Time" not in df.columns:
-        return []
-
-    work = df.copy()
-    work["Lead Time"] = pd.to_datetime(work["Lead Time"], errors="coerce")
-    work = work.dropna(subset=["Lead Time"])
-    work = work.loc[~_is_unassigned_lt_series(work["Lead Time"])].copy()
-    if work.empty:
-        return []
-
-    work["Qty"] = pd.to_numeric(work.get("Qty", 0), errors="coerce").fillna(0)
-    work["week_start"] = work["Lead Time"].dt.to_period("W-SUN").dt.start_time
-    current_week_start = pd.Timestamp.today().normalize().to_period("W-SUN").start_time
-    work = work.loc[work["week_start"] >= current_week_start].copy()
-    if work.empty:
-        return []
-
-    first_wo_items = _build_first_wo_item_map(structured_df)
-    wo_status_map = _wo_status_by_qb_num()
-    picked_qty_overrides = _load_wo_picked_qty_overrides()
-
-    weeks: list[dict] = []
-    for week_start, week_group in work.sort_values(["week_start", "Lead Time", "QB Num"]).groupby(
-        "week_start", sort=True
-    ):
-        so_rows: list[dict] = []
-        known_hours = 0.0
-        unknown_count = 0
-        for qb_num, so_group in week_group.groupby("QB Num", sort=True):
-            so_group = so_group.sort_values(["Lead Time", "Item"])
-            first = so_group.iloc[0]
-            wo_first = first_wo_items.get(str(qb_num).strip(), {})
-            first_item = wo_first.get("item") or first.get("Item") or ""
-            unit_rows = wo_first.get("unit_rows") or []
-            unit_families = [str(r.get("family") or "") for r in unit_rows if r.get("family")]
-            unique_families = sorted(set(unit_families))
-            family = unique_families[0] if len(unique_families) == 1 else ("Mixed" if unique_families else "Unknown")
-            family_display = family
-            hours_per_unit = None
-            if unit_rows and len(unique_families) == 1:
-                hours_per_unit = _parse_float(unit_rows[0].get("hours_per_unit"))
-            elif not unit_rows:
-                family_display, hours_per_unit = _classify_labor_family(first_item)
-            wo_qty = wo_first.get("qty")
-            total_units = float(wo_qty) if wo_qty is not None else float(so_group["Qty"].sum())
-            wo_status = wo_status_map.get(str(qb_num).strip(), "NA")
-            picked_qty, picked_qty_saved = _picked_qty_for_wo(
-                qb_num,
-                total_units,
-                wo_status,
-                picked_qty_overrides,
-            )
-            remaining_units = max(total_units - picked_qty, 0.0)
-            remaining_ratio = 0.0 if total_units <= 0 else min(max(remaining_units / total_units, 0.0), 1.0)
-            base_labor_hours = _parse_float(wo_first.get("base_labor_hours"))
-            if base_labor_hours is not None:
-                labor_hours = base_labor_hours * remaining_ratio
-            else:
-                labor_hours = None if hours_per_unit is None else remaining_units * hours_per_unit
-            if labor_hours is None:
-                unknown_count += 1
-            else:
-                known_hours += labor_hours
-
-            family_units_detail = {label: 0.0 for label in LABOR_FAMILY_LABELS.values()}
-            if unit_rows:
-                for unit_row in unit_rows:
-                    detail_family = unit_row.get("family")
-                    if detail_family in family_units_detail:
-                        family_units_detail[str(detail_family)] += (
-                            float(unit_row.get("qty") or 0.0) * remaining_ratio
-                        )
-            elif family_display in family_units_detail:
-                family_units_detail[family_display] += remaining_units
-
-            customer = first.get("Customer") or first.get("Name") or ""
-            terms = str(first.get("Terms") or "").strip()
-            so_rows.append(
-                {
-                    "qb_num": str(qb_num),
-                    "terms": terms,
-                    "customer": str(customer or ""),
-                    "first_item": str(first_item or ""),
-                    "family": family_display,
-                    "total_units": total_units,
-                    "total_units_str": _format_num(total_units),
-                    "picked_qty": picked_qty,
-                    "picked_qty_str": _format_num(picked_qty),
-                    "picked_qty_saved": picked_qty_saved,
-                    "remaining_units": remaining_units,
-                    "remaining_units_str": _format_num(remaining_units),
-                    "hours_per_unit": hours_per_unit,
-                    "hours_per_unit_str": _format_num(hours_per_unit) if hours_per_unit is not None else "",
-                    "labor_hours": labor_hours,
-                    "labor_hours_str": _format_num(labor_hours) if labor_hours is not None else "Review",
-                    "is_large": total_units > 20,
-                    "needs_review": labor_hours is None,
-                    "family_units_detail": family_units_detail,
-                }
-            )
-
-        remaining = WEEKLY_LABOR_CAPACITY_HOURS - known_hours
-        used_pct = min(max((known_hours / WEEKLY_LABOR_CAPACITY_HOURS) * 100, 0), 140)
-        status = "over" if known_hours > WEEKLY_LABOR_CAPACITY_HOURS else "tight" if known_hours >= 64 else "ok"
-        large_sos = [r for r in so_rows if r["is_large"]]
-        review_sos = [r for r in so_rows if r["needs_review"]]
-        family_units = {label: 0.0 for label in LABOR_FAMILY_LABELS.values()}
-        for row in so_rows:
-            detail = row.get("family_units_detail") or {}
-            for family, units in detail.items():
-                if family in family_units:
-                    family_units[family] += float(units or 0)
-        family_counts = [
-            {"label": label, "units_str": _format_num(family_units[label])}
-            for label in ("POC", "Nuvo", "SEMIL", "NRU", "F")
-        ]
-        weeks.append(
-            {
-                "week_start": week_start.strftime("%Y-%m-%d"),
-                "week_end": (week_start + pd.Timedelta(days=6)).strftime("%Y-%m-%d"),
-                "capacity_hours_str": _format_num(WEEKLY_LABOR_CAPACITY_HOURS),
-                "used_hours": known_hours,
-                "used_hours_str": _format_num(known_hours),
-                "remaining_hours": remaining,
-                "remaining_hours_str": _format_num(remaining),
-                "used_pct": f"{used_pct:.1f}",
-                "status": status,
-                "so_count": len(so_rows),
-                "unknown_count": unknown_count,
-                "large_sos": large_sos,
-                "review_sos": review_sos,
-                "family_counts": family_counts,
-            }
-        )
-    return weeks
-
-
-def _build_unassigned_lt_orders(df: pd.DataFrame, structured_df: pd.DataFrame | None = None) -> list[dict]:
-    if df is None or df.empty or "Lead Time" not in df.columns or "QB Num" not in df.columns:
-        return []
-
-    work = df.copy()
-    work["Lead Time"] = pd.to_datetime(work["Lead Time"], errors="coerce")
-    work = work.loc[_is_unassigned_lt_series(work["Lead Time"])].copy()
-    if work.empty:
-        return []
-
-    wo_status_map = _wo_status_by_qb_num()
-    picked_qty_overrides = _load_wo_picked_qty_overrides()
-    labor_item_map = _build_first_wo_item_map(structured_df)
-
-    orders: list[dict] = []
-    for qb_num, so_group in work.sort_values(["Lead Time", "QB Num"]).groupby("QB Num", sort=True):
-        first = so_group.iloc[0]
-        labor_info = labor_item_map.get(str(qb_num).strip(), {})
-        unit_rows = labor_info.get("unit_rows") or []
-        labor_qty = _parse_float(labor_info.get("qty"))
-        if labor_qty is None:
-            labor_qty = _parse_float(first.get("Qty"), 0.0) or 0.0
-
-        item_name = labor_info.get("item") or first.get("Item") or ""
-        wo_status = wo_status_map.get(str(qb_num).strip(), "NA")
-        picked_qty, picked_qty_saved = _picked_qty_for_wo(
-            qb_num,
-            labor_qty,
-            wo_status,
-            picked_qty_overrides,
-        )
-        remaining_qty = max(labor_qty - picked_qty, 0.0)
-        remaining_ratio = 0.0 if labor_qty <= 0 else min(max(remaining_qty / labor_qty, 0.0), 1.0)
-        base_labor_hours = _parse_float(labor_info.get("base_labor_hours"))
-        if base_labor_hours is not None:
-            labor_hours = base_labor_hours * remaining_ratio
-        else:
-            _, hours_per_unit = _classify_labor_family(item_name)
-            labor_hours = None if hours_per_unit is None else remaining_qty * hours_per_unit
-
-        family_units_detail = {label: 0.0 for label in LABOR_FAMILY_LABELS.values()}
-        if unit_rows:
-            for unit_row in unit_rows:
-                detail_family = unit_row.get("family")
-                if detail_family in family_units_detail:
-                    family_units_detail[str(detail_family)] += float(unit_row.get("qty") or 0.0) * remaining_ratio
-
-        customer = first.get("Customer") or first.get("Name") or ""
-        po_num = first.get("Customer PO") or first.get("P. O. #") or ""
-        terms = str(first.get("Terms") or "").strip()
-        lead_time = pd.to_datetime(first.get("Lead Time"), errors="coerce")
-        orders.append(
-            {
-                "qb_num": str(qb_num),
-                "terms": terms,
-                "customer": str(customer or ""),
-                "line": f"{item_name} x {_format_num(labor_qty)}".strip(),
-                "lead_time": lead_time.strftime("%Y-%m-%d") if pd.notnull(lead_time) else "",
-                "wo_status": wo_status,
-                "picked_qty": picked_qty,
-                "picked_qty_str": _format_num(picked_qty),
-                "picked_qty_saved": picked_qty_saved,
-                "remaining_qty": remaining_qty,
-                "remaining_qty_str": _format_num(remaining_qty),
-                "labor_hours": labor_hours,
-                "labor_hours_str": _format_num(labor_hours) if labor_hours is not None else "Pack & Go",
-                "needs_review": labor_hours is None,
-                "family_units_detail": family_units_detail,
-                "pdf_url": _find_pdf_url_for_so(str(qb_num), po_num),
-            }
-        )
-    return orders
-
-
-def _build_production_order_row(
-    qb_num: object,
-    so_group: pd.DataFrame,
-    *,
-    labor_item_map: dict[str, dict[str, object]],
-    wo_status_map: dict[str, str],
-    picked_qty_overrides: dict[str, float],
-    production_schedule_overrides: dict[str, str],
-    production_date_str: str,
-) -> dict:
-    first = so_group.iloc[0]
-    qb_key = str(qb_num).strip()
-    customer = first.get("Customer") or first.get("Name") or ""
-    terms = str(first.get("Terms") or "").strip()
-    qty_val = first.get("Qty")
-    try:
-        qty_float = float(qty_val)
-        qty_str = str(int(qty_float)) if qty_float.is_integer() else str(qty_float)
-    except Exception:
-        qty_str = str(qty_val) if qty_val is not None else ""
-        qty_float = _parse_float(qty_val, 0.0) or 0.0
-
-    labor_info = labor_item_map.get(qb_key, {})
-    labor_qty = _parse_float(labor_info.get("qty"))
-    if labor_qty is not None:
-        qty_float = labor_qty
-        qty_str = _format_num(labor_qty)
-
-    item_name = labor_info.get("item") or first.get("Item") or ""
-    unit_rows = labor_info.get("unit_rows") or []
-    wo_status = wo_status_map.get(qb_key, "NA")
-    picked_qty, picked_qty_saved = _picked_qty_for_wo(
-        qb_num,
-        qty_float,
-        wo_status,
-        picked_qty_overrides,
-    )
-    remaining_units = max(qty_float - picked_qty, 0.0)
-    remaining_ratio = 0.0 if qty_float <= 0 else min(max(remaining_units / qty_float, 0.0), 1.0)
-    base_labor_hours = _parse_float(labor_info.get("base_labor_hours"))
-    if base_labor_hours is not None:
-        labor_hours = base_labor_hours * remaining_ratio
-    else:
-        _, hours_per_unit = _classify_labor_family(item_name)
-        labor_hours = None if hours_per_unit is None else remaining_units * hours_per_unit
-
-    family_units_detail = {label: 0.0 for label in LABOR_FAMILY_LABELS.values()}
-    if unit_rows:
-        for unit_row in unit_rows:
-            detail_family = unit_row.get("family")
-            if detail_family in family_units_detail:
-                family_units_detail[str(detail_family)] += float(unit_row.get("qty") or 0.0) * remaining_ratio
-    else:
-        family, _ = _classify_labor_family(item_name)
-        if family in family_units_detail:
-            family_units_detail[family] += remaining_units
-
-    po_num = first.get("Customer PO") or first.get("P. O. #") or ""
-    ship_date = pd.to_datetime(first.get("Lead Time"), errors="coerce")
-    production_date = pd.to_datetime(production_date_str, errors="coerce")
-    lt_matches_production_date = (
-        pd.notnull(ship_date)
-        and pd.notnull(production_date)
-        and ship_date.normalize() <= production_date.normalize()
-    )
-    line = f"{item_name} x {qty_str}".strip()
-    return {
-        "qb_num": str(qb_num),
-        "terms": terms,
-        "customer": customer,
-        "line": line,
-        "qty": qty_float,
-        "qty_str": qty_str,
-        "remaining_units": remaining_units,
-        "remaining_units_str": _format_num(remaining_units),
-        "labor_hours": labor_hours,
-        "labor_hours_str": _format_num(labor_hours) if labor_hours is not None else "Review",
-        "family_units_detail": family_units_detail,
-        "ship_date": ship_date.strftime("%Y-%m-%d") if pd.notnull(ship_date) else "",
-        "production_date": production_date_str,
-        "lt_matches_production_date": lt_matches_production_date,
-        "production_date_saved": qb_key in production_schedule_overrides,
-        "wo_status": wo_status,
-        "picked_qty": picked_qty,
-        "picked_qty_str": _format_num(picked_qty),
-        "picked_qty_saved": picked_qty_saved,
-        "pdf_url": _find_pdf_url_for_so(str(qb_num), po_num),
-    }
-
-
-def _summarize_labor_rows(rows: list[dict]) -> dict:
-    known_hours = 0.0
-    unknown_count = 0
-    family_units = {label: 0.0 for label in LABOR_FAMILY_LABELS.values()}
-    for row in rows:
-        labor_hours = _parse_float(row.get("labor_hours"))
-        if labor_hours is None:
-            unknown_count += 1
-        else:
-            known_hours += labor_hours
-        detail = row.get("family_units_detail") or {}
-        for family, units in detail.items():
-            if family in family_units:
-                family_units[family] += float(units or 0)
-
-    return {
-        "known_hours": known_hours,
-        "known_hours_str": _format_num(known_hours),
-        "unknown_count": unknown_count,
-        "family_counts": [
-            {"label": label, "units_str": _format_num(family_units[label])}
-            for label in ("POC", "Nuvo", "SEMIL", "NRU", "F")
-        ],
-    }
 
 
 def _read_table(schema: str, table: str) -> pd.DataFrame:
@@ -787,128 +218,6 @@ def _hydrate_onedrive_file(path: Path) -> None:
         timeout=60,
     )
 
-
-def _reorder_df_out_by_output(output_df: pd.DataFrame, df_out: pd.DataFrame) -> pd.DataFrame:
-    """
-    Reorder df_out to match the line ordering found in output_df.
-    Both frames are expected to use columns: ['QB Num', 'Item'].
-    """
-    if output_df is None or output_df.empty:
-        return df_out.sort_values(["QB Num", "Item"]).reset_index(drop=True)
-
-    ref = output_df.copy()
-    ref["__pos_out"] = ref.groupby("QB Num").cumcount()
-    ref["__occ"] = ref.groupby(["QB Num", "Item"]).cumcount()
-    ref_key = ref[["QB Num", "Item", "__occ", "__pos_out"]]
-
-    tgt = df_out.copy()
-    tgt["__occ"] = tgt.groupby(["QB Num", "Item"]).cumcount()
-
-    merged = tgt.merge(ref_key, on=["QB Num", "Item", "__occ"], how="left")
-    merged["__fallback"] = merged.groupby("QB Num").cumcount()
-    merged["__pos_out"] = merged["__pos_out"].fillna(float("inf"))
-
-    ordered = (
-        merged.sort_values(["QB Num", "__pos_out", "__fallback"])
-        .drop(columns=["__occ", "__pos_out", "__fallback"])
-        .reset_index(drop=True)
-    )
-    return ordered
-
-
-def _build_pdf_orders_df() -> pd.DataFrame:
-    """
-    Build ['WO','Product Number'] from public.pdf_file_log.extracted_data JSON.
-    Mirrors io_ops.fetch_pdf_orders_df_from_supabase but kept local to avoid extra deps.
-    """
-    try:
-        rows = pd.read_sql('SELECT order_id, extracted_data FROM public.pdf_file_log', engine)
-    except Exception:
-        return pd.DataFrame(columns=["WO", "Product Number"])
-
-    def rows_from_json(extracted_data, order_id=""):
-        if isinstance(extracted_data, str):
-            try:
-                extracted_data = json.loads(extracted_data)
-            except Exception:
-                extracted_data = {}
-        data = extracted_data or {}
-        wo = data.get("wo", order_id)
-        items = data.get("items") or []
-        if not items:
-            return [{"WO": wo, "Product Number": ""}]
-        out = []
-        for it in items:
-            pn = (
-                it.get("product_number")
-                or it.get("part_number")
-                or it.get("product")
-                or it.get("part")
-                or ""
-            )
-            out.append({"WO": wo, "Product Number": pn})
-        return out
-
-    all_rows = []
-    for _, r in rows.iterrows():
-        all_rows.extend(rows_from_json(r.get("extracted_data"), r.get("order_id")))
-    return pd.DataFrame(all_rows, columns=["WO", "Product Number"])
-
-
-def _build_final_sales_order_from_db() -> pd.DataFrame:
-    """
-    Rebuild final_sales_order from DB tables so it can be used
-    for the Production Planning calendar.
-    """
-    try:
-        df_sales_order = _read_table("public", "open_sales_orders")
-    except Exception:
-        return pd.DataFrame()
-
-    pdf_orders_df = _build_pdf_orders_df()
-
-    terms_col = next((col for col in ("Terms", "Term", "term") if col in df_sales_order.columns), "Terms")
-    needed_cols = {
-        "Order Date": "SO Entry Date",
-        "Name": "Customer",
-        "P. O. #": "Customer PO",
-        "QB Num": "QB Num",
-        terms_col: "Terms",
-        "Item": "Item",
-        "Qty(-)": "Qty",
-        "Ship Date": "Lead Time",
-        "Inventory Site": "Inventory Site",
-    }
-    for src in list(needed_cols.keys()):
-        if src not in df_sales_order.columns:
-            df_sales_order[src] = "" if src not in ("Qty(-)",) else 0
-
-    df_out = (
-        df_sales_order.rename(columns=needed_cols)[list(needed_cols.values())].copy()
-    )
-
-    # open_sales_orders spans every site (kept that way for the Google Sheet export).
-    # Production Planning schedules WH01S/WH01X work orders only — a Drop Ship WO never
-    # gets picked/built here, so it shouldn't show up on the calendar.
-    if "Inventory Site" in df_out.columns:
-        site_text = df_out["Inventory Site"].astype(str).str.strip().str.casefold()
-        df_out = df_out.loc[~site_text.eq("drop ship")].copy()
-
-    df_out["WO"] = ""
-    for alt in ["WO", "WO_Number", "NTA Order ID", "SO Number"]:
-        if alt in df_sales_order.columns:
-            df_out["WO"] = df_sales_order[alt].astype(str)
-            break
-
-    df_out = df_out.sort_values(["QB Num", "Item"]).reset_index(drop=True)
-
-    pdf_ref = pdf_orders_df.rename(columns={"WO": "QB Num", "Product Number": "Item"})
-    final_sales_order = _reorder_df_out_by_output(pdf_ref, df_out)
-
-    final_sales_order["Item"] = final_sales_order["Item"].map(normalize_item)
-    final_sales_order = final_sales_order.loc[:, ~final_sales_order.columns.duplicated()]
-
-    return final_sales_order
 
 # ---------- PDF DB helpers (no Flask-SQLAlchemy) ----------
 def _pdf_db_search_by_filename(search_query: str, limit: int = 10) -> list[dict]:
@@ -1147,7 +456,7 @@ def _build_global_search_index(so: pd.DataFrame, inventory: pd.DataFrame) -> lis
     return entries
 
 def _load_from_db(force: bool = False):
-    global SO_INV, INVENTORY_STATUS, SAP, OPEN_PO, FINAL_SO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
+    global SO_INV, INVENTORY_STATUS, SAP, OPEN_PO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
     global ITEM_SUGGEST_CACHE, GLOBAL_SEARCH_INDEX
     global SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX
     global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE, QUOTE_ITEM_SUGGEST_ROWS, READY_ASSIGN_CACHE
@@ -1157,7 +466,6 @@ def _load_from_db(force: bool = False):
             or SO_INV is None
             or SAP is None
             or OPEN_PO is None
-            or FINAL_SO is None
             or LEDGER is None
             or ITEM_ATP is None
         ):
@@ -1176,7 +484,6 @@ def _load_from_db(force: bool = False):
                 _safe_date_col(ledger, "Date")
 
             SO_INV, INVENTORY_STATUS, SAP, OPEN_PO = so, inventory, sap, open_po
-            FINAL_SO = _build_final_sales_order_from_db()
             LEDGER = ledger
             ITEM_ATP = build_atp_view(ledger)
             SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX = _build_runtime_indexes(so, ledger)
@@ -1203,7 +510,6 @@ def _load_from_db(force: bool = False):
         INVENTORY_STATUS = None
         SAP = None
         OPEN_PO = None
-        FINAL_SO = None
         LEDGER = None
         ITEM_ATP = None
         SO_LOOKUP_BASE = None
@@ -1224,7 +530,6 @@ def _ensure_loaded():
         or INVENTORY_STATUS is None
         or SAP is None
         or OPEN_PO is None
-        or FINAL_SO is None
         or LEDGER is None
         or ITEM_ATP is None
     ):
@@ -1612,30 +917,6 @@ def _so_table_for_item(item: str) -> tuple[list[str], list[dict], dict[str, int 
         if "On PO" in g.columns:
             totals["on_po"] = _aggregate_metric(g["On PO"])
     return need_cols, rows, totals
-
-def _so_table_for_so(so_num: str, item: str | None = None) -> tuple[list[str], list[dict]]:
-    need_cols = ["Name", "QB Num", "Item", "Qty(-)", "On Hand - WIP", "Ship Date", "Picked"]
-    g = SO_INV.copy()
-    mask = g["QB Num"].astype(str).str.upper() == so_num.upper()
-    if item:
-        mask &= g["Item"].astype(str) == item
-    g = g.loc[mask].copy()
-    for c in need_cols:
-        if c not in g.columns:
-            g[c] = ""
-    # Fallback for WIP column if missing in data
-    if "On Hand - WIP" not in g.columns and "In Stock(Inventory)" in g.columns:
-        g["On Hand - WIP"] = g["In Stock(Inventory)"]
-    if "Ship Date" in g.columns:
-        ship_dates = pd.to_datetime(g["Ship Date"], errors="coerce")
-        g = (
-            g.assign(_ship_date_sort=ship_dates)
-            .sort_values("_ship_date_sort", na_position="last")
-            .drop(columns="_ship_date_sort")
-        )
-        g["Ship Date"] = _to_date_str(g["Ship Date"])
-    rows = g[need_cols].fillna("").astype(str).to_dict(orient="records") if not g.empty else []
-    return need_cols, rows
 
 def _compute_on_hand_metrics(df: pd.DataFrame) -> tuple[int | float | None, int | float | None]:
     if df is None or df.empty:
@@ -2351,21 +1632,8 @@ def item_photo():
             ), 503
 
 
-@app.route("/inventory_count")
-def inventory_count():
-    _ensure_loaded()
-    if _LAST_LOAD_ERR:
-        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
-
-    if request.args.get("reload") == "1":
-        _load_from_db(force=True)
-
-    so_input = (request.values.get("so") or "").strip()
-    item_input = (request.values.get("item") or "").strip()
-
-    so_num = so_input.upper()
-    if so_num and not so_num.startswith("SO-"):
-        so_num = f"SO-{so_num}"
+def _inventory_lookup_payload(item_input: str) -> dict:
+    """Keep inventory lookup/aggregation in MRP; Receiving only renders this data."""
 
     so_columns: list[str] | None = None
     so_rows: list[dict] | None = None
@@ -2391,8 +1659,6 @@ def inventory_count():
     if not inv_filtered.empty:
         on_hand = _aggregate_metric(inv_filtered.get("On Hand", pd.Series(dtype=float)))
         on_hand_wip = _aggregate_metric(inv_filtered.get("On Hand - WIP", pd.Series(dtype=float)))
-        if on_hand_wip is None:
-            on_hand_wip = on_hand
 
     filtered_df = SO_INV.copy()
     if item_input:
@@ -2401,21 +1667,19 @@ def inventory_count():
         item_norm_upper = str(item_norm).strip().upper()
         so_items = filtered_df["Item"].astype(str).str.strip().str.upper()
         filtered_df = filtered_df.loc[so_items.eq(item_upper) | so_items.eq(item_norm_upper)]
-    if so_num:
-        filtered_df = filtered_df[filtered_df["QB Num"].astype(str).str.upper() == so_num]
 
     if on_hand is None and not filtered_df.empty:
         on_hand, on_hand_wip = _compute_on_hand_metrics(filtered_df)
 
-    # Build the "On Sales Order" table depending on provided filters
+    # Resolve case/aliases before using the existing MRP lookup helpers.
+    canonical_item = item_input
     if item_input:
+        if not filtered_df.empty:
+            canonical_item = str(filtered_df.iloc[0]['Item']).strip()
+        elif not inv_filtered.empty:
+            canonical_item = str(inv_filtered.iloc[0]['Part_Number']).strip()
         receiving_columns, receiving_rows = _recent_receiving_summary_for_item(item_input)
-        so_columns, so_rows, _ = _so_table_for_item(item_input)
-        # If SO also provided, further filter rows to that SO
-        if so_num and so_rows:
-            so_rows = [r for r in so_rows if str(r.get("QB Num", "")).upper() == so_num]
-    elif so_num:
-        so_columns, so_rows = _so_table_for_so(so_num)
+        so_columns, so_rows, _ = _so_table_for_item(canonical_item)
     else:
         so_columns, so_rows = [], []
         inv_status = INVENTORY_STATUS.copy() if INVENTORY_STATUS is not None else pd.DataFrame()
@@ -2425,8 +1689,6 @@ def inventory_count():
             if "On Hand - WIP" not in inv_status.columns:
                 if "In Stock(Inventory)" in inv_status.columns:
                     inv_status["On Hand - WIP"] = inv_status["In Stock(Inventory)"]
-                elif "On Hand" in inv_status.columns:
-                    inv_status["On Hand - WIP"] = inv_status["On Hand"]
             inv_status_columns = [c for c in ("Part_Number", "On Hand", "On Hand - WIP") if c in inv_status.columns]
             if inv_status_columns:
                 inv_status = inv_status[inv_status_columns].copy()
@@ -2437,172 +1699,35 @@ def inventory_count():
                         inv_status[col] = inv_status[col].apply(_format_intish)
                 inv_status_rows = inv_status.fillna("").astype(str).to_dict(orient="records")
 
-    return render_template_string(
-        INVENTORY_TPL,
-        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "ï¿½?",
-        so_val=so_input,
-        item_val=item_input,
-        on_hand=on_hand,
-        on_hand_wip=on_hand_wip,
-        so_columns=so_columns,
-        so_rows=so_rows,
-        receiving_columns=receiving_columns,
-        receiving_rows=receiving_rows,
-        inv_status_columns=inv_status_columns,
-        inv_status_rows=inv_status_rows,
+    return dict(
+        ok=True, schema_version=1,
+        loaded_at=_LAST_LOADED_AT.isoformat() if _LAST_LOADED_AT else None,
+        item=item_input, canonical_item=canonical_item,
+        on_hand=on_hand, on_hand_wip=on_hand_wip,
+        so_columns=so_columns or [], so_rows=so_rows or [],
+        receiving_columns=receiving_columns, receiving_rows=receiving_rows,
+        inv_status_columns=inv_status_columns, inv_status_rows=inv_status_rows,
     )
 
 
-@app.route("/production_planning")
-def production_planning():
-    _ensure_loaded()
-    if _LAST_LOAD_ERR:
-        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
-
-    if request.args.get("reload") == "1":
-        _load_from_db(force=True)
-
-    if FINAL_SO is None or FINAL_SO.empty:
-        return render_template_string(ERR_TPL, error="No final_sales_order data available."), 503
-
-    df = FINAL_SO.copy()
-    if "Lead Time" not in df.columns:
-        return render_template_string(ERR_TPL, error="final_sales_order missing 'Lead Time' column."), 500
-
-    df["Lead Time"] = pd.to_datetime(df["Lead Time"], errors="coerce")
-    df = df.dropna(subset=["Lead Time"])
-    if df.empty:
-        return render_template_string(ERR_TPL, error="No valid Lead Time rows in final_sales_order."), 503
-
-    today = pd.Timestamp.today().normalize()
-    df["lead_date_str"] = df["Lead Time"].dt.strftime("%Y-%m-%d")
-    production_schedule_overrides = _load_production_schedule_overrides()
-    finished_goods_overrides = _load_finished_goods_overrides()
-    # SO_INV (wo_structured) is WH01S-NTA-only by design; Production Planning covers
-    # WH01S + WH01X (Drop Ship excluded), so labor classification must read FINAL_SO
-    # (already scoped that way) instead — SO_INV silently dropped every WH01X-NTA WO here.
-    unassigned_lt_orders = _build_unassigned_lt_orders(df, FINAL_SO)
-    unassigned_lt_orders = [
-        row for row in unassigned_lt_orders
-        if str(row.get("qb_num") or "").strip() not in production_schedule_overrides
-        and str(row.get("qb_num") or "").strip() not in finished_goods_overrides
-    ]
-    unassigned_lt_summary = _summarize_labor_rows(unassigned_lt_orders)
-
-    wo_status_map = _wo_status_by_qb_num()
-    picked_qty_overrides = _load_wo_picked_qty_overrides()
-    labor_item_map = _build_first_wo_item_map(FINAL_SO)
-    df["__qb_key"] = df["QB Num"].astype(str).str.strip()
-    df["production_date_str"] = df["__qb_key"].map(production_schedule_overrides).fillna("")
-    df["__is_finished_goods"] = df["__qb_key"].isin(finished_goods_overrides)
-    default_schedule_mask = (
-        df["production_date_str"].eq("")
-        & ~_is_unassigned_lt_series(df["Lead Time"])
-    )
-    df.loc[default_schedule_mask, "production_date_str"] = df.loc[default_schedule_mask, "lead_date_str"]
-    capacity_df = df.loc[df["production_date_str"].ne("") & ~df["__is_finished_goods"]].copy()
-    capacity_df["Lead Time"] = pd.to_datetime(capacity_df["production_date_str"], errors="coerce")
-    capacity_df = capacity_df.loc[capacity_df["Lead Time"].ge(today) & capacity_df["Lead Time"].dt.weekday.lt(5)].copy()
-    capacity_weeks = _build_weekly_labor_capacity(capacity_df, FINAL_SO)
-    date_groups: list[dict] = []
-    scheduled_df = df.loc[df["production_date_str"].ne("")].copy()
-    scheduled_df["__production_date"] = pd.to_datetime(scheduled_df["production_date_str"], errors="coerce")
-    passed_lt_df = scheduled_df.loc[
-        scheduled_df["__is_finished_goods"] | scheduled_df["__production_date"].lt(today)
-    ].copy()
-    scheduled_df = scheduled_df.loc[
-        ~scheduled_df["__is_finished_goods"]
-        &
-        scheduled_df["__production_date"].ge(today)
-        & scheduled_df["__production_date"].dt.weekday.lt(5)
-    ].copy()
-
-    passed_lt_orders: list[dict] = []
-    for qb_num, so_group in passed_lt_df.sort_values(["production_date_str", "Lead Time", "QB Num"]).groupby("QB Num"):
-        first = so_group.iloc[0]
-        row = _build_production_order_row(
-            qb_num,
-            so_group,
-            labor_item_map=labor_item_map,
-            wo_status_map=wo_status_map,
-            picked_qty_overrides=picked_qty_overrides,
-            production_schedule_overrides=production_schedule_overrides,
-            production_date_str=str(first.get("production_date_str") or ""),
-        )
-        passed_lt_orders.append(row)
-    passed_lt_orders.sort(key=lambda r: (r.get("production_date") or "", r.get("qb_num") or ""))
-    passed_lt_summary = _summarize_labor_rows(passed_lt_orders)
-
-    for date_str, date_group in scheduled_df.sort_values(["production_date_str", "Lead Time", "QB Num"]).groupby(
-        "production_date_str", sort=True
-    ):
-        orders: list[dict] = []
-        group_units = 0.0
-        group_hours = 0.0
-        group_unknown_hours = 0
-        for qb_num, so_group in date_group.groupby("QB Num"):
-            row = _build_production_order_row(
-                qb_num,
-                so_group,
-                labor_item_map=labor_item_map,
-                wo_status_map=wo_status_map,
-                picked_qty_overrides=picked_qty_overrides,
-                production_schedule_overrides=production_schedule_overrides,
-                production_date_str=date_str,
-            )
-            remaining_units = _parse_float(row.get("remaining_units"), 0.0) or 0.0
-            labor_hours = _parse_float(row.get("labor_hours"))
-            group_units += remaining_units
-            if labor_hours is None:
-                group_unknown_hours += 1
-            else:
-                group_hours += labor_hours
-            orders.append(row)
-        orders.sort(key=lambda r: r["qb_num"])
-        date_groups.append(
-            {
-                "date": date_str,
-                "orders": orders,
-                "total_units": group_units,
-                "total_units_str": _format_num(group_units),
-                "labor_hours": group_hours,
-                "labor_hours_str": _format_num(group_hours),
-                "unknown_hours_count": group_unknown_hours,
-            }
-        )
-
-    date_groups_by_date = {g["date"]: g for g in date_groups}
-    horizon_start = pd.Timestamp.today().normalize()
-    horizon_end = horizon_start + pd.Timedelta(days=21)
-    for date_val in pd.date_range(horizon_start, horizon_end, freq="B"):
-        date_key = date_val.strftime("%Y-%m-%d")
-        if date_key not in date_groups_by_date:
-            date_groups_by_date[date_key] = {
-                "date": date_key,
-                "orders": [],
-                "total_units": 0.0,
-                "total_units_str": "0",
-                "labor_hours": 0.0,
-                "labor_hours_str": "0",
-                "unknown_hours_count": 0,
-            }
-    date_groups = sorted(date_groups_by_date.values(), key=lambda g: g["date"])
-
-    return render_template_string(
-        PRODUCTION_TPL,
-        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
-        capacity_weeks=capacity_weeks,
-        passed_lt_orders=passed_lt_orders,
-        passed_lt_summary=passed_lt_summary,
-        unassigned_lt_orders=unassigned_lt_orders,
-        unassigned_lt_summary=unassigned_lt_summary,
-        date_groups=date_groups,
-    )
-
-
-
-
-
+@app.get('/api/inventory-lookup')
+def api_inventory_lookup():
+    global RECEIVING_LOG
+    item = (request.args.get('item') or '').strip()
+    if len(item) > 200:
+        return jsonify(ok=False, error='Item must be at most 200 characters.'), 400
+    try:
+        if request.args.get('reload') == '1':
+            _load_from_db(force=True)
+            RECEIVING_LOG = None
+        else:
+            _ensure_loaded()
+        if _LAST_LOAD_ERR:
+            return jsonify(ok=False, error='MRP inventory data is unavailable. Check the MRP load.'), 503
+        return jsonify(_inventory_lookup_payload(item))
+    except Exception:
+        app.logger.exception('Inventory lookup failed')
+        return jsonify(ok=False, error='MRP inventory lookup failed.'), 503
 
 
 @app.route("/api/global_suggest")

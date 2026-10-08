@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 
 import pandas as pd
-import requests
 
 from mrp_system.runtime.config import POD_FILE, SALES_ORDER_FILE, SHIPPING_SCHEDULE_FILE, WAREHOUSE_INV_FILE
 from mrp_system.runtime.db_config import get_engine
@@ -30,25 +29,6 @@ def validate_input_tables(df_shipping_schedule: pd.DataFrame, df_pod: pd.DataFra
         missing.append("POD table missing required column: 'Inventory Site'")
     if missing:
         raise ValueError("; ".join(missing))
-
-
-def fetch_word_files_df(api_url: str | list[str] | tuple[str, ...]) -> pd.DataFrame:
-    urls = [api_url] if isinstance(api_url, str) else list(api_url)
-    wf = pd.DataFrame(columns=["file_name", "order_id", "status"])
-    for url in urls:
-        try:
-            r = requests.get(url, timeout=10)
-            r.raise_for_status()
-            wf = pd.DataFrame(r.json().get("word_files", []))
-            break
-        except Exception:
-            continue
-    if "order_id" in wf.columns:
-        wf = wf.rename(columns={"order_id": "WO_Number"})
-    if "WO_Number" not in wf.columns:
-        wf["WO_Number"] = ""
-    wf["WO_Number"] = wf["WO_Number"].astype(str).apply(normalize_wo_number)
-    return wf
 
 
 def fetch_pdf_orders_df_from_DB() -> pd.DataFrame:
@@ -81,7 +61,6 @@ def fetch_pdf_orders_df_from_DB() -> pd.DataFrame:
 __all__ = [
     "extract_inputs",
     "fetch_pdf_orders_df_from_DB",
-    "fetch_word_files_df",
     "read_excel_safe",
     "validate_input_tables",
 ]

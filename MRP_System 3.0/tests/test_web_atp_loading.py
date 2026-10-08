@@ -32,11 +32,10 @@ def check_cached_ledger_atp(source=None):
     ctx = dict(pd=pd, datetime=datetime, _read_table=read_table, build_atp_view=build,
                earliest_atp_strict=earliest_atp_strict,
                _safe_date_col=lambda *args: None,
-               _build_final_sales_order_from_db=lambda: pd.DataFrame(),
                _build_runtime_indexes=lambda *args: ({}, {}, {}),
                _build_global_search_index=lambda *args: [],
                _build_quote_item_summaries=lambda *args: [])
-    ctx.update({name: None for name in ["SO_INV", "SAP", "OPEN_PO", "FINAL_SO", "LEDGER", "ITEM_ATP"]})
+    ctx.update({name: None for name in ["SO_INV", "SAP", "OPEN_PO", "LEDGER", "ITEM_ATP"]})
     exec(compile(ast.Module(body=_functions(source), type_ignores=[]), "<web-atp-test>", "exec"), ctx)
     ctx["_load_from_db"]()
     assert ctx["_LAST_LOAD_ERR"] is None

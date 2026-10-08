@@ -2,11 +2,6 @@ import os
 from pathlib import Path
 
 
-WORD_FILE_API_URLS = (
-    "http://192.168.60.215:5000/api/word-files",
-    "http://localhost:5000/api/word-files",
-)
-
 GOOGLE_SHEET_SPREADSHEET = "PDF_WO"
 GOOGLE_SHEET_WORKSHEET = "Open Sales Order"
 

@@ -15,7 +15,8 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
         pod["POD#"] = pod["Num"]
     pod.rename(columns={"Date": "Order Date", "Num": "QB Num", "Backordered": "Qty(+)"}, inplace=True)
     pod = pod.dropna(axis=0, how="all", subset=None, inplace=False)
-    pod["QB Num"] = pod["QB Num"].astype(str).str.split("(", expand=True)[0].str.strip()
+    pod["QB Num"] = pod["QB Num"].astype("string").str.split("(").str[0].str.strip()
+    is_total = pd.Series(False, index=pod.index)
 
     if first_col is not None and first_col in pod.columns:
         labels = pod[first_col].astype(str).str.replace("\u00A0", " ", regex=False).str.strip()
@@ -36,15 +37,22 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     else:
         pod["Item"] = pd.NA
 
+    # Totals reset the section above but must never become purchase-order lines.
+    pod = pod.loc[~is_total].copy()
     pod = pod.dropna(thresh=5)
 
     if "Memo" in pod.columns:
-        memo = pod["Memo"].astype(str).str.strip()
-        memo_item = memo.str.split(" ", expand=True)[0]
+        memo = pod["Memo"].astype("string").str.strip()
+        memo_item = memo.str.split().str[0]
         memo_item = pd.Series(memo_item, index=pod.index, dtype="string").str.replace("*", "", regex=False).str.strip()
         pod["Item"] = pod["Item"].fillna(memo_item)
 
-    pod = pod.loc[pod["QB Num"].notna() & pod["QB Num"].ne("")].copy()
+    invalid_tokens = {"", "nan", "none", "<na>", "nat"}
+    pod["Item"] = pod["Item"].astype("string").str.strip()
+    valid_id = pod["QB Num"].notna() & ~pod["QB Num"].str.lower().isin(invalid_tokens)
+    valid_item = pod["Item"].notna() & ~pod["Item"].str.lower().isin(invalid_tokens)
+    valid_item &= ~pod["Item"].str.match(r"(?i)^total\b", na=False)
+    pod = pod.loc[valid_id & valid_item].copy()
     pod["Order Date"] = pd.to_datetime(pod["Order Date"])
     if "Deliv Date" in pod.columns:
         pod["Deliv Date"] = pd.to_datetime(pod["Deliv Date"], errors="coerce")
@@ -52,7 +60,7 @@ def transform_pod(df_pod: pd.DataFrame) -> pd.DataFrame:
     if "Source Name" in pod.columns and "Deliv Date" in pod.columns:
         mask = ~pod["Source Name"].astype(str).isin(EXCLUDED_POD_SOURCE_NAMES)
         pod.loc[mask, "Ship Date"] = pod.loc[mask, "Deliv Date"]
-    pod["Item"] = pod["Item"].astype(str).str.strip().map(normalize_item)
+    pod["Item"] = pod["Item"].map(normalize_item)
     for c in ["Qty(+)", "Qty", "Rcv'd", "Amount"]:
         if c in pod.columns:
             pod[c] = pd.to_numeric(pod[c], errors="coerce")

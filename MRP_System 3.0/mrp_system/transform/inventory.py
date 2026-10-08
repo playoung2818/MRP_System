@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from mrp_system.normalize.mrp_normalize import normalize_item
@@ -11,52 +10,15 @@ from .sales_order import normalize_wo_number
 WIP_SITE = "WH01S-NTA"
 
 
-def build_wip_lookup(so_full: pd.DataFrame, word_files_df: pd.DataFrame, site: str = WIP_SITE) -> pd.DataFrame:
-    """Single source of truth for WIP: qty that's been picked (word file created) but is
-    still on an open sales order (i.e. not yet shipped), scoped to `site`. Computed once
-    here, before inventory_status is built; everything downstream (inventory_status,
-    wo_structured) just looks the number up by Part_Number instead of recomputing it.
-    """
-    word_pick = word_files_df.copy()
-    word_pick["WO_Number"] = word_pick["WO_Number"].astype(str).apply(normalize_wo_number)
-    word_pick["Picked_Flag"] = word_pick["status"].astype(str).str.strip().eq("Picked")
-    picked_flags = word_pick.groupby("WO_Number", as_index=False)["Picked_Flag"].max()
-
-    sales = so_full.copy()
-    sales["WO_Number"] = sales["QB Num"].astype(str).apply(normalize_wo_number)
-    sales["QB Num"] = sales["WO_Number"]
-    sales = sales.merge(picked_flags, on="WO_Number", how="left")
-    sales["Picked_Flag"] = sales["Picked_Flag"].astype("boolean").fillna(False)
-    sales["Picked"] = np.where(sales["Picked_Flag"], "Picked", "No")
-    partial_col = sales["partial"] if "partial" in sales.columns else False
-    partial_col = pd.Series(partial_col, index=sales.index).fillna(False)
-    mask_partial = sales["Picked_Flag"] & partial_col
-    sales.loc[mask_partial, "Picked"] = "Partial"
-
-    if "Inventory Site" in sales.columns:
-        sales = sales[sales["Inventory Site"].astype(str).str.strip() == site]
-
-    picked_lines = sales.loc[sales["Picked"].eq("Picked"), ["Item", "QB Num", "Qty(-)"]].copy()
-    if picked_lines.empty:
-        return pd.DataFrame(columns=["Part_Number", "WIP", "WIP_Qty"])
-
-    wip_qty = (
-        picked_lines.groupby("Item", as_index=False)["Qty(-)"].sum().rename(
-            columns={"Item": "Part_Number", "Qty(-)": "WIP_Qty"}
-        )
-    )
-    wip_list = (
-        picked_lines.groupby("Item")["QB Num"]
-        .apply(lambda s: ", ".join(pd.unique(s.dropna().astype(str))))
-        .reset_index()
-        .rename(columns={"Item": "Part_Number", "QB Num": "WIP"})
-    )
-
-    wip = wip_qty.merge(wip_list, on="Part_Number", how="outer")
-    wip["Part_Number"] = wip["Part_Number"].astype(str).str.strip().map(normalize_item)
-    wip["WIP_Qty"] = pd.to_numeric(wip["WIP_Qty"], errors="coerce").fillna(0)
-    wip["WIP"] = wip["WIP"].fillna("")
-    return wip
+def build_wip_lookup(so_full: pd.DataFrame, mes_quantities: pd.DataFrame, site: str = WIP_SITE) -> pd.DataFrame:
+    """Warehouse WIP comes exclusively from saved MES WO quantities."""
+    lines = match_mes_quantities(so_full, mes_quantities)
+    lines = lines[lines['Inventory Site'].eq(site) & lines['WIP_Qty'].gt(0)]
+    if lines.empty:
+        return pd.DataFrame(columns=['Part_Number', 'WIP', 'WIP_Qty'])
+    return lines.groupby('Item', as_index=False).agg(
+        WIP_Qty=('WIP_Qty', 'sum'),
+        WIP=('QB Num', lambda s: ', '.join(pd.unique(s.astype(str))))).rename(columns={'Item': 'Part_Number'})
 
 
 def transform_inventory(inventory_df: pd.DataFrame, wip_lookup: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -104,4 +66,45 @@ def transform_inventory(inventory_df: pd.DataFrame, wip_lookup: pd.DataFrame | N
     return inv
 
 
-__all__ = ["build_wip_lookup", "transform_inventory", "WIP_SITE"]
+def match_mes_quantities(so_full, quantities):
+    """Count only saved MES releases explicitly marked not shipped.
+
+    Never subtract invoice shipments again: shipped releases are already excluded.
+
+    Missing legacy sites are inferred only when the open SO/item has one site.
+    Finished Goods flags never participate in this calculation.
+    """
+    sales = so_full.copy()
+    sales['QB Num'] = sales['QB Num'].astype(str).map(normalize_wo_number)
+    sales['Item'] = sales['Item'].astype(str).str.strip().map(normalize_item)
+    sales['Inventory Site'] = sales['Inventory Site'].fillna('').astype(str).str.strip()
+    keys = ['QB Num', 'Item', 'Inventory Site']
+    if 'Shipped Qty' not in sales:
+        sales['Shipped Qty'] = 0
+    sales['Qty(-)'] = pd.to_numeric(sales['Qty(-)'], errors='raise')
+    sales['Shipped Qty'] = pd.to_numeric(sales['Shipped Qty'], errors='raise')
+    if 'partial' not in sales:
+        sales['partial'] = False
+    sales = sales.groupby(keys, as_index=False).agg({'Qty(-)': 'sum', 'Shipped Qty': 'sum', 'partial': 'any'})
+    mes = quantities.rename(columns={'sales_order': 'QB Num', 'item': 'Item', 'inventory_site': 'Inventory Site'}).copy()
+    mes['QB Num'] = mes['QB Num'].astype(str).map(normalize_wo_number)
+    mes['Item'] = mes['Item'].astype(str).str.strip().map(normalize_item)
+    mes['Inventory Site'] = mes['Inventory Site'].fillna('').astype(str).str.strip()
+    for index, row in mes[mes['Inventory Site'].eq('')].iterrows():
+        sites = sales.loc[sales['QB Num'].eq(row['QB Num']) & sales['Item'].eq(row['Item']), 'Inventory Site'].unique()
+        if len(sites) > 1:
+            raise ValueError(f"Missing MES warehouse for {row['QB Num']} / {row['Item']}")
+        if len(sites) == 1:
+            mes.at[index, 'Inventory Site'] = sites[0]
+    for column in ('quantity', 'shipped_quantity'):
+        mes[column] = pd.to_numeric(mes[column], errors='raise')
+    mes = mes.groupby(keys, as_index=False)[['quantity', 'shipped_quantity']].sum()
+    sales = sales.merge(mes, on=keys, how='left')
+    sales['MES Shipped Qty'] = sales['shipped_quantity'].fillna(0)
+    sales['MES Unshipped Qty'] = sales['quantity'].fillna(0)
+    sales['WIP_Qty'] = sales['MES Unshipped Qty'].clip(lower=0)
+    sales['WIP_Qty'] = sales[['WIP_Qty', 'Qty(-)']].min(axis=1).clip(lower=0)
+    return sales.drop(columns=['quantity', 'shipped_quantity'])
+
+
+__all__ = ['build_wip_lookup', 'transform_inventory', 'match_mes_quantities', 'WIP_SITE']
