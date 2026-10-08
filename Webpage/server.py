@@ -28,7 +28,7 @@ MRP_MODULE_DIR = REPO_ROOT / "MRP_System 3.0"
 if str(MRP_MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MRP_MODULE_DIR))
 
-from mrp_system.normalize.mrp_normalize import normalize_item
+from mrp_system.normalize.mrp_normalize import normalize_item, refresh_part_number_aliases
 from mrp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from mrp_system.runtime.db_config import get_engine, DATABASE_DSN
 from mrp_system.quotation_cards import load_item_cards
@@ -469,6 +469,7 @@ def _load_from_db(force: bool = False):
             or LEDGER is None
             or ITEM_ATP is None
         ):
+            refresh_part_number_aliases(engine)
             so = _read_table("public", "wo_structured")
             inventory = _read_table("public", "inventory_status")
             sap = _read_table("public", "NT Shipping Schedule")

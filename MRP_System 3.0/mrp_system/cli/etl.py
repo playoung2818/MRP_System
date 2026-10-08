@@ -19,7 +19,7 @@ from mrp_system.ingest.sources import (
 from mrp_system.ledger.events import build_events
 from mrp_system.ledger.ledger import build_ledger_from_events
 from mrp_system.ledger.material_readiness import refresh_material_readiness
-from mrp_system.normalize.mrp_normalize import refresh_pod_site
+from mrp_system.normalize.mrp_normalize import refresh_part_number_aliases, refresh_pod_site
 from mrp_system.runtime.config import (
     DB_SCHEMA,
     SHIPPING_SCHEDULE_FILE,
@@ -169,6 +169,7 @@ def _print_violation_diff(current: pd.DataFrame) -> None:
 
 
 def main() -> None:
+    logging.info("Loaded %d part-number aliases", refresh_part_number_aliases())
     logging.info("Shipping schedule input: %s", SHIPPING_SCHEDULE_FILE)
     so_raw, inv_raw, ship_raw, pod_raw = extract_inputs()
     validate_input_tables(ship_raw, pod_raw)

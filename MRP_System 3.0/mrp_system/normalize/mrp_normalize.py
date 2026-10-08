@@ -9,51 +9,7 @@ from typing import Any
 
 import pandas as pd
 
-# Direct canonical-name mappings used across all ingestion sources
-# (POD memo parsing, shipping expansion, SO/item normalization paths).
-# Item Names been shortened because they exceed the maximum length allowed on QB, now expand them
-ITEM_MAPPINGS: dict[str, str] = {
-    "AccsyBx-Cardholder-10108GC-5080": "AccsyBx-Cardholder-10108GC-5080_70_70Ti",
-    "AccsyBx-Cardholder-10208GC-5080": "AccsyBx-Cardholder-10208GC-5080_70_70Ti",
-    "AccsyBx-Cardholder-9160GC-2000E": "AccsyBx-Cardholder-9160GC-2000EAda",
-    "Cbl-M12A5F-OT2-B-Red-Fuse-100CM": "Cbl-M12A5F-OT2-Black-Red-Fuse-100CM",
-    "Cblkit-FP-NRU-230V-AWP_NRU-240S": "Cblkit-FP-NRU-230V-AWP_NRU-240S-AWP",
-    "E-mPCIe-BTWifi-WT-6218_Mod_40CM": "Extnd-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM_kits",
-    "E-mPCIe-GPS-M800_Mod_40CM": "Extnd-mPCIeHS_GPS-M800_Mod_Cbl-40CM_kits",
-    "E-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM": "Extnd-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM_kits",
-    "E-mPCIeHS_GPS-M800_Mod_Cbl-40CM": "Extnd-mPCIeHS_GPS-M800_Mod_Cbl-40CM_kits",
-    "E-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-15CM": "E-mPCIe-BTWifi-WT-6218_Mod_15CM",
-    "M.2 Key B_LTE_Telit FN990A40_15cm": "M.2 Key B_LTE_Telit FN990A40_15",
-    "M.2 KEY B_LTE_TELIT FN990A40_15CM": "M.2 Key B_LTE_Telit FN990A40_15",
-    "FPnl-3Ant-NRU-160-AWP series": "FPnl-3Ant-of NRU-160-AWP series",
-    "FPnl-3Ant-of": "FPnl-3Ant-of NRU-160-AWP series",
-    "mPCIeHS_BTWifi_Emwicon WMX6218_40cm": "Extnd-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM_kits",
-    "mPCIeHS_BTWifi_Emwicon WMX6218_15cm": "mPCIeHS_BTWifi_WMX6218_15cm",
-    "M.242-SSD-128GB-PCIe34-TLC5WT-T": "M.242-SSD-128GB-PCIe34-TLC5WT-TD",
-    "M.242-SSD-128G-PCIe34-TLC5WT-TD": "M.242-SSD-128GB-PCIe34-TLC5WT-TD",
-    "M.242-SSD-256GB-PCIe34-TLC5WT-T": "M.242-SSD-256GB-PCIe34-TLC5WT-TD",
-    "M.242-SSD-256G-PCIe34-TLC5WT-TD": "M.242-SSD-256GB-PCIe34-TLC5WT-TD",
-    "M.242-SSD-512GB-PCIe34-TLC5WT-T": "M.242-SSD-512GB-PCIE34-TLC5WT-TD",
-    "M.280-SSD-128G-SATA-TLC5WT-TD": "M.280-SSD-128GB-SATA-TLC5WT-TD",
-    "M.280-SSD-256GB-PCIe44-TLC5WT-T": "M.280-SSD-256GB-PCIe44-TLC5WT-TD",
-    "M.280-SSD-1TB-SATA-TLC5-P N": "M.280-SSD-1TB-SATA-TLC5-PN", ## Taipei SAP Description typo
-    "M.280-SSD-2TB- PCIe44-TLC5WT-TD": "M.280-SSD-2TB-PCIE44-TLC5WT-TD",
-    "M.280-SSD-4TB-PCIe4-TLCWT5NH-IK": "M.280-SSD-4TB-PCIe4-TLC5WT-NH-IK",
-    "M.280-SSD-512GB-PCIe44-TLC5WT-T": "M.280-SSD-512GB-PCIe44-TLC5WT-TD",
-    "M.280-SSD-256GB-P44-TLC5WT-TD2": "M.280-SSD-256GB-PCIe44-TLC5WT-TD2",
-    "M.242-SSD-256GB-P34-TLC5WT-TD1": "M.242-SSD-256GB-PCIe34-TLC5WT-TD1",
-    "M.280-SSD-512GB-P44-TLC5WT-TD2": "M.280-SSD-512GB-PCIe44-TLC5WT-TD2",
-    "PA-280W-CW6P-2P-1": "PA-280W-CW6P-2P",
-    "GC-J-A64GB-O-Industrial-Nvidia": "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
-    "GC-AGXOrin Ind. 64G-JP 6.0_NRU-230/240S": "GC-JETSON-AGX64GB-ORIN-INDUSTRIAL-NVIDIA",
-    "AccsyBx-FPnl_3Ant-Cbl-NRU-170-PPC series": "AccsyBx-FPnl_3Ant-Cbl-NRU170PPC",
-    "AccsyBx-Cardholder-10109GC-508070TVentus": "AccsyBx-Cardholder-10109GC-5080",
-    "AccsyBx-RPnl_3Ant-Cbl-POC-766AW": "AccsyBx-RPnl_3Ant-Cbl-POC-766AWP",
-    "Cbl-2W5M-M12A8F-40CM-PK-CANFD-T": "Cbl-2W5M-M12A8F-40CM-PK-CANFD-TP",
-    "RPnl-2LTE_2Wifi-SEMIL17": "Pnl-2LTE2Wifi-SEMIL17",
-    "NRU-240S-AWP-BAG": "NRU-240S-AWP-BAG(EA)",
-    "AccsyBx-Cardholder-960GC-RTX Pro 2000":"AccsyBx-CH-960GC-RTX Pro 2000",
-}
+from .part_aliases import canonical_part_for, refresh_part_number_aliases
 
 # Pattern-based canonical mappings (e.g., JetPack/JP variants).
 PATTERN_MAPPINGS = [
@@ -212,7 +168,7 @@ def normalize_item(value: Any) -> Any:
     """
     Normalize a single item name/identifier:
     1) Preserve missing values.
-    2) Strip whitespace and apply direct ITEM_MAPPINGS.
+    2) Apply database alias_part -> canonical_part mappings.
     3) Apply regex patterns (Jetson JetPack variants) for canonical names.
     """
     if value is None:
@@ -228,20 +184,20 @@ def normalize_item(value: Any) -> Any:
     if not name:
         return name
 
-    direct = ITEM_MAPPINGS.get(name)
+    direct = canonical_part_for(name)
     if direct:
         return direct
 
     for pattern, replacement in PATTERN_MAPPINGS:
         if pattern.match(name):
-            return ITEM_MAPPINGS.get(replacement, replacement)
+            return canonical_part_for(replacement) or replacement
 
     return name
 
 
 __all__ = [
     "normalize_item",
-    "ITEM_MAPPINGS",
+    "refresh_part_number_aliases",
     "PATTERN_MAPPINGS",
     "POD_SITE",
     "POD_SITE_PATH",

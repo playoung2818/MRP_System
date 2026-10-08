@@ -25,6 +25,19 @@ I rebuilt QuickBooks operational views into a unified analytics pipeline, blendi
 - The Not_assigned_SO export defaults to the repository root; set `NOT_ASSIGNED_SO_EXPORT_PATH` to override it.
 - Outputs: inventory_status, structured sales orders, POD, shipping, ledger, item summary, ATP, and Not_assigned_SO exports; pushed to DB and Sheets when configured.
 
+### Part-number normalization
+
+Direct part-number normalization uses rows from
+`public.part_number_aliases`: `alias_part` maps to `canonical_part`. Many aliases
+can share one canonical part. Matching ignores case and surrounding whitespace,
+while the output retains the database's canonical spelling. Unknown names remain
+unchanged unless an existing Jetson regex fallback applies. The table no longer
+uses `alias_type`, `confidence`, or `active`; all rows are used. Ambiguous aliases
+cause an error rather than an arbitrary mapping.
+The mapping is cached and refreshed at ETL startup and web data reload, with no
+per-item database queries. Database failures stop refresh instead of silently
+using the removed hard-coded mappings.
+
 ### POD inventory-site snapshot
 
 ETL derives non-default POD inventory sites from the current POD export and saves

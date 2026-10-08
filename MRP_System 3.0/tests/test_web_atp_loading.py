@@ -30,6 +30,7 @@ def check_cached_ledger_atp(source=None):
         return build_atp_view(frame)
 
     ctx = dict(pd=pd, datetime=datetime, _read_table=read_table, build_atp_view=build,
+               engine=object(), refresh_part_number_aliases=lambda engine: 0,
                earliest_atp_strict=earliest_atp_strict,
                _safe_date_col=lambda *args: None,
                _build_runtime_indexes=lambda *args: ({}, {}, {}),
