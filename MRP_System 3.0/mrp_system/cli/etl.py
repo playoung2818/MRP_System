@@ -202,7 +202,9 @@ def main() -> None:
     ship = transform_shipping(ship_raw)
     pod = enrich_pod_with_shipping_audit(pod, ship)
 
-    structured, final_sales_order = build_structured_df(so_full, mes_quantities, inv, pdf_orders_df, pod)
+    structured, final_sales_order = build_structured_df(
+        so_full, mes_quantities, inv, pdf_orders_df, pod,
+    )
 
     sap_exp = expand_sap_preinstalled(ship)
     events_all = build_events(structured, sap_exp, pod)

@@ -8,25 +8,12 @@ from mrp_system.runtime.constants import PLACEHOLDER_DATE
 from mrp_system.runtime.policies import EXCLUDED_PREINSTALLED_PO_VENDORS
 
 from .sales_order import normalize_wo_number
+from .item_order import reorder_so_items
 
 
 def reorder_df_out_by_output(output_df: pd.DataFrame, df_out: pd.DataFrame) -> pd.DataFrame:
-    ref = output_df.copy()
-    ref["__pos_out"] = ref.groupby("QB Num").cumcount()
-    ref["__occ"] = ref.groupby(["QB Num", "Item"]).cumcount()
-    ref_key = ref[["QB Num", "Item", "__occ", "__pos_out"]]
-
-    tgt = df_out.copy()
-    tgt["__occ"] = tgt.groupby(["QB Num", "Item"]).cumcount()
-
-    merged = tgt.merge(ref_key, on=["QB Num", "Item", "__occ"], how="left")
-    merged["__fallback"] = merged.groupby("QB Num").cumcount()
-    merged["__pos_out"] = merged["__pos_out"].fillna(np.inf)
-    return (
-        merged.sort_values(["QB Num", "__pos_out", "__fallback"])
-        .drop(columns=["__occ", "__pos_out", "__fallback"])
-        .reset_index(drop=True)
-    )
+    """Match reference order by canonical item, preserving repeated occurrences."""
+    return reorder_so_items(df_out, reference=output_df)
 
 
 def build_structured_df(
@@ -58,8 +45,6 @@ def build_structured_df(
         if alt in df_sales_order.columns:
             df_out["WO"] = df_sales_order[alt].astype(str).apply(normalize_wo_number)
             break
-    df_out = df_out.sort_values(["QB Num", "Item"]).reset_index(drop=True)
-
     pdf_ref = pdf_orders_df.rename(columns={"WO": "QB Num", "Product Number": "Item"})
     final_sales_order = reorder_df_out_by_output(pdf_ref, df_out)
     final_sales_order["Item"] = final_sales_order["Item"].map(normalize_item)

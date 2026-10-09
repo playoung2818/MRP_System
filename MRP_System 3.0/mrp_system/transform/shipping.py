@@ -22,16 +22,12 @@ SHIPPING_MODEL_GROUP_MAPPINGS: dict[str, tuple[tuple[str, float], ...]] = {
         ("FLYC-300-EC-JON16-NS", 1.0),
         ("M.230-SSD-1TB-PCIe4-TLC-TD", 1.0),
     ),
-    "SEMIL-1748GC-10G-L4-EL06": (
-        ("SEMIL-1748GC-10G-L4-BSK(EA)", 1.0),
-        ("E-2278GE", 1.0),
-        ("DDR4-32GB-ECC26WT-DL", 1.0),
-        ("M.280-SSD-2TB-PCIe44-TLC5ET-TD1", 1.0),
+    "SEMIL-1748GC-10G-L4-EL06'": (
+        ("SEMIL-1748GC-10G-L4-NGC-BSK(EA)", 1.0),
         ("Cbl-W5M-M12A5M-40CM-PK-CANFD-TP", 4.0),
         ("Cbl-W20F-M12A10F-40CM-IK-COM", 1.0),
         ("DtC-M12M-WP", 4.0),
         ("DtC-M12-WP", 1.0),
-        ("mPCIe-CAN-IPEH-4047", 1.0),
         ("mPCIe-COM-2RS232-X203", 1.0)
     ),
     "RGS-8805GC-7543P": (

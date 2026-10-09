@@ -38,6 +38,34 @@ The mapping is cached and refreshed at ETL startup and web data reload, with no
 per-item database queries. Database failures stop refresh instead of silently
 using the removed hard-coded mappings.
 
+### SO item ordering (PDF only)
+
+Production ETL uses only the PDF item sequence, matched by canonical part number
+and occurrence. Unmatched lines retain their relative source order after matched
+lines. With no PDF match, source order is retained. No trained model or WO Details
+sequence is used to order production SOs.
+
+The experimental model is retained for evaluation only. To train from the ordered
+`items` JSON arrays in `public."WO Details"` (read-only):
+
+```powershell
+cd "MRP_System 3.0"
+python -m mrp_system.cli.train_item_order
+```
+
+The generated `data/wo_item_order.json` is ignored by Git. Training does not
+activate it in ETL. Repeated lines, quantities, and other row values are preserved
+by the production PDF-only reorder step.
+
+Training counts at most one vote per SO per item pair, excludes conflicting
+release votes, and defaults to at least three SOs with 80% agreement. Evaluation
+holds out entire SOs, including their releases, and reports pairwise and full
+unique-item sequence accuracy plus evidence coverage. The learned fallback is
+not guaranteed to reproduce every WO. Cycles are resolved deterministically.
+Retrain after WO data or normalization rules change; changed database aliases
+invalidate the experimental snapshot. Re-enabling model-based production ordering
+requires an explicit code change. No QuickBooks integration or approval is required.
+
 ### POD inventory-site snapshot
 
 ETL derives non-default POD inventory sites from the current POD export and saves

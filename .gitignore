@@ -18,6 +18,8 @@ pycache/
 /MRP_System 3.0/data/item_cooccurrence.json
 /MRP_System 3.0/data/pod_site.json
 /MRP_System 3.0/data/.pod_site.json.*.tmp
+/MRP_System 3.0/data/wo_item_order.json
+/MRP_System 3.0/data/.wo_item_order.json.*.tmp
 
 # Runtime logs
 *.log

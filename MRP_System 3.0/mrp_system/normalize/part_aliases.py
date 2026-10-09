@@ -1,4 +1,6 @@
 """Cached, read-only alias_part -> canonical_part lookup from the database."""
+import hashlib
+import json
 from threading import RLock
 
 from sqlalchemy import text
@@ -65,3 +67,10 @@ def canonical_part_for(name: str) -> str | None:
             if _aliases is None:
                 refresh_part_number_aliases()
     return _aliases.get(name.strip().casefold())
+
+
+def part_alias_fingerprint() -> str:
+    """Version the current canonicalization data for generated model snapshots."""
+    canonical_part_for("")
+    snapshot = _aliases
+    return hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
