@@ -13,7 +13,10 @@ import numpy as np
 from sqlalchemy import text
 from openpyxl import load_workbook
 
+from unassigned_so import COLUMNS as UNASSIGNED_COLUMNS, NUMERIC_COLUMNS as UNASSIGNED_NUMERIC_COLUMNS, unassigned_orders, report_rows
+
 from ui import (
+    UNASSIGNED_SO_TPL,
     ERR_TPL,
     INDEX_TPL,
     SUBPAGE_TPL,
@@ -633,16 +636,7 @@ def _push_recent_home_search(*, so_input: str = "", customer_input: str = "") ->
 
 
 def _dashboard_lt_unassigned_count() -> int:
-    if SO_INV is None or SO_INV.empty or "Ship Date" not in SO_INV.columns or "QB Num" not in SO_INV.columns:
-        return 0
-    so = SO_INV.copy()
-    so["Ship Date"] = pd.to_datetime(so["Ship Date"], errors="coerce")
-    so["QB Num"] = so["QB Num"].astype(str).str.strip()
-    unassigned_mask = (
-        (so["Ship Date"].dt.month.eq(7) & so["Ship Date"].dt.day.eq(4))
-        | (so["Ship Date"].dt.month.eq(12) & so["Ship Date"].dt.day.eq(31))
-    )
-    return int(so.loc[unassigned_mask & so["QB Num"].ne(""), "QB Num"].nunique())
+    return int(unassigned_orders(SO_INV)["QB Num"].nunique())
 
 
 def _dashboard_top_shortage_items(limit: int = 5) -> list[dict[str, object]]:
@@ -1288,6 +1282,23 @@ def index():
             "Available + On PO","Sales/Week","Recommended Restock Qty"
         ],
     )
+
+@app.route("/dashboard/unassigned_so")
+def dashboard_unassigned_so():
+    if request.args.get("reload") == "1":
+        _load_from_db(force=True)
+    _ensure_loaded()
+    if _LAST_LOAD_ERR:
+        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
+    query = (request.args.get("q") or "").strip()
+    count, rows = report_rows(SO_INV, query)
+    return render_template_string(
+        UNASSIGNED_SO_TPL, columns=UNASSIGNED_COLUMNS,
+        numeric_cols=UNASSIGNED_NUMERIC_COLUMNS, rows=rows, count=count,
+        total_count=_dashboard_lt_unassigned_count(), query=query,
+        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "—",
+    )
+
 
 @app.route("/dashboard/negative_inventory")
 def dashboard_negative_inventory():

@@ -7,7 +7,6 @@ import pandas as pd
 
 from mrp_system.contracts import TABLE_CONTRACTS, validate_output_table
 from mrp_system.ingest.io_ops import (
-    save_not_assigned_so,
     write_final_sales_order_to_gsheet,
     write_to_db,
 )
@@ -33,13 +32,12 @@ from mrp_system.runtime.config import (
 from mrp_system.runtime.policies import (
     GOOGLE_SHEET_SPREADSHEET,
     GOOGLE_SHEET_WORKSHEET,
-    NOT_ASSIGNED_SO_EXPORT_PATH,
 )
 from mrp_system.transform.inventory import build_wip_lookup, transform_inventory
 from mrp_system.transform.pod import enrich_pod_with_shipping_audit, transform_pod
 from mrp_system.transform.sales_order import transform_sales_order
 from mrp_system.transform.shipping import expand_sap_preinstalled, transform_shipping
-from mrp_system.transform.structured import build_structured_df, prepare_mrp_view
+from mrp_system.transform.structured import build_structured_df
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -216,18 +214,7 @@ def main() -> None:
 
     inv, structured, pod, ship, ledger = _validate_outputs(inv, structured, pod, ship, ledger)
 
-    mrp_df = prepare_mrp_view(structured)
-    not_assigned_so = mrp_df.loc[~mrp_df["AssignedFlag"]].copy()
-
-    summary = save_not_assigned_so(
-        not_assigned_so.copy(),
-        output_path=NOT_ASSIGNED_SO_EXPORT_PATH,
-        band_by_col="QB Num",
-        shortage_col="Component_Status",
-        shortage_value="Shortage",
-        pod_watchlist_df=pd.DataFrame(columns=["QB Num", "Item", "Component_Status", "POD#"]),
-    )
-    print(summary)
+    # Unassigned LT orders are now a read-only web report over structured data.
 
     write_to_db(inv, schema=DB_SCHEMA, table=TBL_INVENTORY)
     write_to_db(so_full, schema=DB_SCHEMA, table=TBL_SALES_ORDER)

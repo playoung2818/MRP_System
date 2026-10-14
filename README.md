@@ -22,8 +22,9 @@ Rebuilt QuickBooks operational views into a unified pipeline, blending inventory
 - Configure `DATABASE_DSN` in the environment or `MRP_System 3.0/.env`.
 - Update input file paths in `MRP_System 3.0/mrp_system/runtime/paths.py`.
 - From `MRP_System 3.0`, run `python -m mrp_system.cli.etl`.
-- The Not_assigned_SO export defaults to the repository root; set `NOT_ASSIGNED_SO_EXPORT_PATH` to override it.
-- Outputs: inventory_status, structured sales orders, POD, shipping, ledger, item summary, ATP, and Not_assigned_SO exports; pushed to DB and Sheets when configured.
+- Unassigned LT orders are available on the webpage: click **Sales Order Not Assigned LT** on the homepage ( `/dashboard/unassigned_so` ). ETL no longer writes `Not_assigned_SO.xlsx`; existing workbooks are left untouched.
+- The browser report uses the existing structured sales order data, supports SO/customer/item search, and links to SO details. It preserves SO group banding, red Shortage rows, and yellow Available + On PO cells when Sales/Week is higher. July 4 and December 31 ship dates are treated as unassigned, matching the former export.
+- Outputs: inventory_status, structured sales orders, POD, shipping, ledger, item summary, and ATP; pushed to DB and Sheets when configured.
 
 ### Part-number normalization
 

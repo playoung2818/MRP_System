@@ -18,7 +18,7 @@ class WebUIAssetsTests(unittest.TestCase):
             for name, value in runpy.run_path(str(WEB_ROOT / "ui.py")).items()
             if name.endswith("_TPL")
         }
-        self.assertEqual(len(templates), 7)
+        self.assertEqual(len(templates), 8)
         self.assertNotIn('INVENTORY_TPL', templates)
         for name, template in templates.items():
             with self.subTest(template=name):

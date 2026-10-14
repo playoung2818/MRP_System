@@ -28,6 +28,71 @@ ERR_TPL = """
 </html>
 """
 
+UNASSIGNED_SO_TPL = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sales Order Not Assigned LT</title>
+  <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body{ background:#f7fafc; color:#0f172a; padding:24px; }
+    .report{ background:white; border-radius:14px; padding:20px; box-shadow:0 10px 22px rgba(0,0,0,.06); }
+    .table-responsive{ max-height:72vh; overflow:auto; }
+    .table thead th{ position:sticky; top:0; z-index:2; background:#e8eef6; white-space:nowrap; }
+    .table td{ background:white; vertical-align:middle; }
+    .table .so-band td{ background:#f2f2f2; }
+    .table .shortage td, .table .shortage a{ color:#c62828; }
+    .table td.low-cover{ background:#fff176; font-weight:700; }
+    .table tbody tr:hover td{ box-shadow:inset 0 0 0 9999px rgba(13,110,253,.06); }
+    .num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .so-link{ font-weight:600; white-space:nowrap; }
+  </style>
+</head>
+<body>
+  <header class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+    <div>
+      <h1 class="h3 mb-1">Sales Order Not Assigned LT</h1>
+      <div class="text-muted">Ship date falls on July 4 or December 31 (same rule as the former Excel report).</div>
+      <div class="text-muted small">Loaded {{ loaded_at }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="/">Home</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('dashboard_unassigned_so', reload=1, q=query) }}">Reload</a>
+    </div>
+  </header>
+  <section class="report">
+    <form method="get" class="d-flex flex-wrap gap-2 mb-3">
+      <label class="visually-hidden" for="report-search">Search SO, customer or item</label>
+      <input id="report-search" class="form-control" style="max-width:420px" name="q" value="{{ query }}" placeholder="Search SO, customer or item">
+      <button class="btn btn-primary">Search</button>
+      <a class="btn btn-outline-secondary" href="/dashboard/unassigned_so">Clear</a>
+    </form>
+    <div class="fw-semibold mb-2">{{ count }} of {{ total_count }} sales orders · {{ rows|length }} component rows</div>
+    <div class="small text-muted mb-3">Alternating bands group each SO. <span style="color:#c62828">Red = Shortage</span>. <span style="background:#fff176;color:#0f172a;padding:2px 5px">Yellow = Sales/Week exceeds Available + On PO</span>. Click an SO to view details.</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0">
+        <thead><tr>{% for col in columns %}<th scope="col">{{ col }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in rows %}
+          <tr class="{{ 'so-band' if row.band else '' }} {{ 'shortage' if row.shortage else '' }}">
+            {% for col in columns %}
+            <td class="{{ 'num' if col in numeric_cols else '' }} {{ 'low-cover' if col == 'Available + On PO' and row.low_cover else '' }}">
+              {% if col == 'QB Num' %}<a class="so-link" href="{{ url_for('index', so=row.cells[col]) }}">{{ row.cells[col] }}</a>{% else %}{{ row.cells[col] }}{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% else %}<tr><td colspan="{{ columns|length }}" class="text-center text-muted py-4">No unassigned sales orders found{{ ' for this search' if query else '' }}.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</body>
+</html>
+"""
+
 INDEX_TPL = """
 <!doctype html>
 <html>
@@ -215,11 +280,11 @@ INDEX_TPL = """
 
         <div class="row g-4">
           <div class="col-12 col-xl-4">
-            <div class="card-lite metric-card">
+            <a class="card-lite metric-card metric-link" href="/dashboard/unassigned_so">
               <div class="metric-value">{{ lt_unassigned_count or 0 }}</div>
               <div class="metric-label">Sales Order Not Assigned LT</div>
-              <div class="metric-note">Placeholder ship date: 2099-12-31</div>
-            </div>
+              <div class="metric-note">View orders and highlighted shortages →</div>
+            </a>
           </div>
         </div>
 
