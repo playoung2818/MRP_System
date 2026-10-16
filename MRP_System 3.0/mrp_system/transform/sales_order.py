@@ -5,6 +5,7 @@ import re
 import pandas as pd
 
 from mrp_system.normalize.mrp_normalize import normalize_item
+from mrp_system.order_scope import exclude_drop_ship_orders
 
 
 def normalize_wo_number(wo: str) -> str:
@@ -32,9 +33,9 @@ def transform_sales_order(df_sales_order: pd.DataFrame) -> pd.DataFrame:
     df = df[~df["Item"].str.lower().isin(["forwarding charge", "tariff (estimation)"])]
     if "Inventory Site" in df.columns:
         df["Inventory Site"] = df["Inventory Site"].astype(str).str.strip()
-    # Non-WH01S-NTA rows are kept here (not dropped) so the Google Sheet export can show
-    # every site; build_structured_df() re-applies the WH01S-NTA scope for ledger/ATP/
-    # assignment calculations so those numbers are unaffected.
+    # Any Drop Ship source line excludes the entire SO, including warehouse lines.
+    df = exclude_drop_ship_orders(df)
+    # Other sites retain their existing downstream WH01S-NTA ledger/ATP scope.
     df["Item"] = df["Item"].map(normalize_item)
     return df
 

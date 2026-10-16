@@ -32,6 +32,15 @@ class MesWipTests(unittest.TestCase):
         self.assertEqual(report['QB Num'].tolist(), ['SO-20261234'])
         self.assertEqual(report.iloc[0]['Shipped Qty'], 3)
 
+    def test_sales_transform_excludes_entire_mixed_site_drop_ship_so(self):
+        from mrp_system.transform.sales_order import transform_sales_order
+        raw = pd.DataFrame([
+            {'Unnamed: 0': 'CPU', 'Num': 'SO-20260349', 'Qty': 1, 'Backordered': 1, 'Inventory Site': 'WH01S-NTA'},
+            {'Unnamed: 0': 'System', 'Num': 'SO-20260349', 'Qty': 1, 'Backordered': 1, 'Inventory Site': ' Drop ship '},
+            {'Unnamed: 0': 'System', 'Num': 'SO-OTHER', 'Qty': 1, 'Backordered': 1, 'Inventory Site': 'WH01S-NTA'},
+        ])
+        self.assertEqual(transform_sales_order(raw)['QB Num'].tolist(), ['SO-OTHER'])
+
     def test_partial_wo_counts_seven(self):
         wip = build_wip_lookup(self.sales(), self.mes())
         self.assertEqual(wip.iloc[0]['WIP_Qty'], 7)

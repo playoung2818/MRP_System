@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from lt_materials import CUTOFF, REASONS, material_context, validate_blockers
 from unassigned_so import unassigned_orders
 from so_review.combined import content_context, review_content
+from so_review.service import is_drop_ship_order
 
 
 def source_ship_date(group):
@@ -111,6 +112,18 @@ def create_lt_planning(engine, source):
             plans = conn.execute(text("SELECT DISTINCT ON (qb_num) * FROM public.lt_planning_history ORDER BY qb_num, assigned_at DESC, id DESC")).mappings().all()
             review_by_so = {r["qb_num"]: dict(r) for r in reviews}
             plan_by_so = {r["qb_num"]: dict(r) for r in plans}
+            excluded = set()
+            for record in conn.execute(text('''SELECT sales_order, latest_snapshot, previous_snapshot, approved_snapshot,
+                    metadata_fields, items FROM public.approved_work_orders''')).mappings().all():
+                snapshot = record['latest_snapshot'] or record['previous_snapshot'] or record['approved_snapshot'] or dict(
+                    record['metadata_fields'] or {}, items=record['items'])
+                if is_drop_ship_order(snapshot):
+                    excluded.add(record['sales_order'])
+            if 'Inventory Site' in so:
+                sites = so['Inventory Site'].fillna('').astype(str).str.strip().str.casefold()
+                excluded.update(so.loc[sites.eq('drop ship'), 'QB Num'].astype(str).str.strip())
+            if selected in excluded:
+                selected = ''
             staged_keys = set(conn.execute(text("""SELECT sales_order FROM public.approved_work_orders
                 WHERE google_present AND (NOT is_active OR approved_at IS NULL
                     OR CAST(approved_snapshot AS jsonb) IS DISTINCT FROM CAST(latest_snapshot AS jsonb))""")).scalars())
@@ -124,7 +137,7 @@ def create_lt_planning(engine, source):
         unassigned = unassigned_orders(so)
         unassigned_keys = set(unassigned["QB Num"])
         current_keys = set(so["QB Num"].fillna("").astype(str).str.strip())
-        keys = unassigned_keys | staged_keys | set(review_by_so) | set(plan_by_so)
+        keys = (unassigned_keys | staged_keys | set(review_by_so) | set(plan_by_so)) - excluded
         all_rows = []
         for key in sorted(keys):
             group = so.loc[so["QB Num"].fillna("").astype(str).str.strip().eq(key)]

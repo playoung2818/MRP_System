@@ -113,6 +113,8 @@ class WorkflowTests(unittest.TestCase):
         result.mappings.return_value.first.return_value = None
         if 'SELECT * FROM public.approved_work_orders' in sql:
             result.mappings.return_value.first.return_value = self.staged
+        if 'SELECT sales_order, latest_snapshot' in sql:
+            result.mappings.return_value.all.return_value = [self.staged]
         if "FROM public.approved_work_orders" in sql:
             result.scalar_one_or_none.return_value = "SO-1" if self.mes_approved else None
         if "INSERT" in sql:
@@ -183,6 +185,25 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('POD#', response.json['error'])
         self.assertEqual(self.writes, [])
+
+    def test_drop_ship_snapshot_hides_entire_so_in_all_stages(self):
+        self.staged['latest_snapshot']['items'].append({'id': 'drop', 'item': 'System',
+            'quantity': 1, 'inventory_site': ' Drop Ship '})
+        self.existing_review()
+        self.plan = {'id': uuid4(), 'qb_num': 'SO-1', 'planned_production_start': date(2026, 7, 10),
+                     'assigned_at': datetime.now(timezone.utc), 'notes': ''}
+        for status in ('needs_material_review', 'needs_production_planning', 'planning_complete'):
+            html = self.client.get('/planning', query_string={'status': status, 'so': 'SO-1'}).get_data(as_text=True)
+            self.assertNotIn('<strong>SO-1</strong>', html)
+            self.assertNotIn('id="review-form"', html)
+            self.assertIn('No sales orders match this view.', html)
+        # After the next CLI excludes it, the retained last source snapshot
+        # still prevents historical planning rows from restoring this SO.
+        self.staged['previous_snapshot'] = self.staged['latest_snapshot']
+        self.staged['latest_snapshot'] = None
+        self.staged['approved_snapshot'] = {'inventory_site': 'WH01S-NTA', 'items': []}
+        html = self.client.get('/planning?status=planning_complete').get_data(as_text=True)
+        self.assertNotIn('<strong>SO-1</strong>', html)
 
     def test_stale_data_and_concurrent_review_rejected(self):
         self.assertEqual(self.post(fingerprint="old").status_code, 400)

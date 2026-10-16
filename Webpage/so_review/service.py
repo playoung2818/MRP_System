@@ -11,6 +11,13 @@ FIELDS = ('customer', 'customer_po', 'ship_date', 'terms', 'inventory_site')
 ITEM_FIELDS = ('item', 'quantity', 'configuration', 'inventory_site')
 
 
+def is_drop_ship_order(source):
+    source = source or {}
+    return (str(source.get('inventory_site') or '').strip().casefold() == 'drop ship'
+            or any(str(item.get('inventory_site') or '').strip().casefold() == 'drop ship'
+                   for item in source.get('items', []) or []))
+
+
 def lock_review():
     if db.engine.dialect.name == 'postgresql':
         db.session.execute(text('SELECT pg_advisory_xact_lock(26091003)'))

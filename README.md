@@ -63,6 +63,14 @@ Only final production-plan confirmation publishes/activates the SO for MES. No
 new tables or copies of business rows are created. Source staging is performed by
 MRP CLI, not a separate web Google-sync step. Removed SOs are disabled, not deleted.
 
+**Drop Ship exclusion:** if any source line has Inventory Site `Drop Ship`
+(case-insensitive, ignoring surrounding spaces), the entire SO is outside
+MRP/MES production scope, including its warehouse lines. CLI excludes it before
+ledger calculations/staging; previously staged orders are deactivated on the
+next CLI run. Planning and MES also filter existing snapshots immediately, and
+reject review/publication/scheduling of excluded SOs. Historical review/planning
+records and saved WOs are preserved, not deleted.
+
 **Notes carry through the workflow:** the single **Notes** value entered during
 material review is prefilled in production assignment. It can be edited there;
 confirmation stores that final value in planning history and publishes it as

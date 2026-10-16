@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import pandas as pd
 from sqlalchemy import text
+from mrp_system.order_scope import exclude_drop_ship_orders, is_drop_ship_order
 
 
 def _identity(item):
@@ -47,7 +48,7 @@ def cli_sources(frame):
     required = {'QB Num', 'Item', 'Qty'}
     if frame.empty or not required.issubset(frame):
         raise ValueError('SO staging requires a complete, nonempty CLI sales-order output.')
-    frame = frame.copy().astype(object).where(pd.notna(frame), '')
+    frame = exclude_drop_ship_orders(frame).astype(object).where(pd.notna(frame), '')
     orders = {}
     for _, row in frame.iterrows():
         number, item = str(row['QB Num']).strip(), str(row['Item']).strip()
@@ -74,7 +75,7 @@ def stage_cli_orders(engine, frame):
         for number in sorted(set(existing) | set(orders)):
             old = existing.get(number)
             if number not in orders:
-                conn.execute(text('''UPDATE public.approved_work_orders SET previous_snapshot=latest_snapshot,
+                conn.execute(text('''UPDATE public.approved_work_orders SET previous_snapshot=COALESCE(latest_snapshot, previous_snapshot),
                     latest_snapshot=NULL, google_present=FALSE, is_active=FALSE,
                     synced_at=CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
                     source_revision=source_revision + CASE WHEN google_present THEN 1 ELSE 0 END
@@ -104,6 +105,8 @@ def publish_completed_order(conn, number, notes=None):
     if row is None or not row['google_present'] or not row['latest_snapshot']:
         raise ValueError('Run MRP CLI to stage this SO before completing production planning.')
     incoming = row['latest_snapshot']
+    if is_drop_ship_order(incoming):
+        raise ValueError('Drop Ship sales orders are excluded from MRP and MES production planning.')
     by_id = {i['id']: deepcopy(i) for i in incoming['items']}
     items = []
     # Preserve MRP-reviewed order/manual rows while merging the latest source.

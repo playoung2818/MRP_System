@@ -4,11 +4,11 @@ from types import SimpleNamespace
 import json
 
 from sqlalchemy import text
-from .service import _normalize_review_rows, differences, review_items
+from .service import _normalize_review_rows, differences, review_items, is_drop_ship_order
 
 
 def content_context(row):
-    if not row:
+    if not row or is_drop_ship_order(row['latest_snapshot']):
         return None
     return {'source': row['latest_snapshot'] or {}, 'source_revision': row['source_revision'],
             'revision': row['revision'], 'items': review_items(SimpleNamespace(**dict(row))),
@@ -21,6 +21,8 @@ def review_content(conn, number, payload):
     row = conn.execute(text('SELECT * FROM public.approved_work_orders WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
     if not row or not row['google_present'] or not row['latest_snapshot']:
         raise ValueError('Run MRP CLI to stage this sales order before reviewing it.')
+    if is_drop_ship_order(row['latest_snapshot']):
+        raise ValueError('Drop Ship sales orders are excluded from MRP and MES production planning.')
     try:
         versions_match = int(payload['source_revision']) == row['source_revision'] and int(payload['revision']) == row['revision']
     except (KeyError, TypeError, ValueError):

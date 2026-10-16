@@ -26,6 +26,35 @@ class StagingTests(unittest.TestCase):
         third = staged_snapshot(cli_sources(changed)['SO1'], first)
         self.assertEqual(third['items'][0]['id'], first['items'][0]['id'])
 
+    def test_mixed_site_drop_ship_so_is_not_staged(self):
+        rows = self.source()
+        drop = dict(rows.iloc[0], Item='System', **{'Inventory Site': ' Drop ship '})
+        warehouse = dict(rows.iloc[0], **{'QB Num': 'SO2'})
+        rows = pd.concat([rows, pd.DataFrame([drop, warehouse])], ignore_index=True)
+        self.assertEqual(set(cli_sources(rows)), {'SO2'})
+
+    def test_previously_staged_drop_ship_so_is_deactivated(self):
+        engine = MagicMock()
+        conn = engine.begin.return_value.__enter__.return_value
+        conn.execute.return_value.mappings.return_value.__iter__.return_value = iter([{'sales_order': 'SO1'}])
+        rows = self.source()
+        rows['Inventory Site'] = 'Drop Ship'
+        self.assertEqual(stage_cli_orders(engine, rows), 0)
+        sql, params = conn.execute.call_args.args
+        self.assertIn('google_present=FALSE, is_active=FALSE', str(sql))
+        self.assertEqual(params['so'], 'SO1')
+
+    def test_publication_rejects_existing_mixed_site_drop_ship_so(self):
+        conn = MagicMock()
+        incoming = {'inventory_site': 'WH01S-NTA', 'items': [
+            {'id': 'a', 'item': 'CPU', 'quantity': 1, 'inventory_site': 'WH01S-NTA'},
+            {'id': 'b', 'item': 'System', 'quantity': 1, 'inventory_site': 'DROP SHIP'}]}
+        conn.execute.return_value.mappings.return_value.first.return_value = {
+            'google_present': True, 'latest_snapshot': incoming, 'items': []}
+        with self.assertRaisesRegex(ValueError, 'Drop Ship'):
+            publish_completed_order(conn, 'SO1')
+        self.assertFalse(any('UPDATE public.approved_work_orders' in str(c.args[0]) for c in conn.execute.call_args_list))
+
     def test_invalid_or_empty_source_does_not_start_transaction(self):
         engine = MagicMock()
         with self.assertRaises(ValueError):

@@ -59,6 +59,13 @@ class CombinedReviewTests(unittest.TestCase):
         self.assertLess(params['items'].index('"B"'), params['items'].index('"A"'))
         self.conn.commit.assert_not_called()  # Caller commits material + SO together.
 
+    def test_drop_ship_so_cannot_be_reviewed(self):
+        self.row['latest_snapshot']['items'][1]['inventory_site'] = ' Drop ship '
+        self.assertIsNone(content_context(self.row))
+        with self.assertRaisesRegex(ValueError, 'Drop Ship'):
+            review_content(self.conn, 'SO1', self.payload())
+        self.assertFalse(any(str(c.args[0]).lstrip().startswith('UPDATE') for c in self.conn.execute.call_args_list))
+
     def test_stale_so_revision_is_rejected(self):
         payload = self.payload()
         payload['source_revision'] = 0
