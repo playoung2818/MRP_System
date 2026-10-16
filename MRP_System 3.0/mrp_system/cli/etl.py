@@ -6,6 +6,8 @@ from pathlib import Path
 import pandas as pd
 
 from mrp_system.contracts import TABLE_CONTRACTS, validate_output_table
+from mrp_system.order_staging import stage_cli_orders
+from mrp_system.runtime.db_config import get_engine
 from mrp_system.ingest.io_ops import (
     write_final_sales_order_to_gsheet,
     write_to_db,
@@ -222,6 +224,11 @@ def main() -> None:
     write_to_db(pod, schema=DB_SCHEMA, table=TBL_POD)
     write_to_db(ship, schema=DB_SCHEMA, table=TBL_Shipping)
     write_to_db(ledger, schema=DB_SCHEMA, table=TBL_LEDGER)
+    review_engine = get_engine()
+    try:
+        logging.info("Staged %s SOs for MRP review (not published to MES).", stage_cli_orders(review_engine, final_sales_order))
+    finally:
+        review_engine.dispose()
     try:
         logging.info("Material readiness refreshed: %s", refresh_material_readiness())
     except Exception:
@@ -237,19 +244,20 @@ def main() -> None:
     )
 
 
-    ## Write SO sheet to Google sheet
-    if not final_sales_order.empty:
-        so_for_sheet = final_sales_order.assign(
-            Lead_Time = pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date
-        )
-        try:
-            write_final_sales_order_to_gsheet(
-                so_for_sheet,
-                spreadsheet_name=GOOGLE_SHEET_SPREADSHEET,
-                worksheet_name=GOOGLE_SHEET_WORKSHEET,
-            )
-        except Exception as exc:
-            logging.warning("Skipping Open Sales Order export: %s", exc)
+    # Google Sheet export temporarily disabled; Planning and MES use the database.
+    # Kept here so it can be re-enabled later.
+    # if not final_sales_order.empty:
+    #     so_for_sheet = final_sales_order.assign(
+    #         Lead_Time = pd.to_datetime(final_sales_order["Lead Time"], errors="coerce").dt.date
+    #     )
+    #     try:
+    #         write_final_sales_order_to_gsheet(
+    #             so_for_sheet,
+    #             spreadsheet_name=GOOGLE_SHEET_SPREADSHEET,
+    #             worksheet_name=GOOGLE_SHEET_WORKSHEET,
+    #         )
+    #     except Exception as exc:
+    #         logging.warning("Skipping Open Sales Order export: %s", exc)
 
 
 if __name__ == "__main__":

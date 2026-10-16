@@ -241,14 +241,13 @@ INDEX_TPL = """
       </div>
       <div class="nav-group">
         <div class="nav-label">Workspace</div>
-        <a class="nav-link active" href="/"><span class="nav-dot"></span><span>Home</span></a>
-        <a class="nav-link" href="/quotation_lookup"><span class="nav-dot"></span><span>Quotations</span></a>
-        <a class="nav-link" href="/item_info"><span class="nav-dot"></span><span>Item Info</span></a>
+        <a class="nav-link" href="/quotation_lookup"><span class="nav-dot"></span><span>Quotation Lookup</span></a>
+        <a class="nav-link" href="/item_info"><span class="nav-dot"></span><span>Item Information</span></a>
         <a class="nav-link" href="/purchase_orders"><span class="nav-dot"></span><span>Purchase Orders</span></a>
+        <a class="nav-link" href="/planning"><span class="nav-dot"></span><span>Planning</span></a>
       </div>
       <div class="sidebar-note">
-        <p><strong>Quotations:</strong> For Inventory status lookup</p>
-        <p><strong>Item Info:</strong> Item Details</p>
+        Review sales orders and materials, assign production dates, then send completed plans to MES.
       </div>
     </aside>
 
@@ -280,10 +279,10 @@ INDEX_TPL = """
 
         <div class="row g-4">
           <div class="col-12 col-xl-4">
-            <a class="card-lite metric-card metric-link" href="/dashboard/unassigned_so">
-              <div class="metric-value">{{ lt_unassigned_count or 0 }}</div>
-              <div class="metric-label">Sales Order Not Assigned LT</div>
-              <div class="metric-note">View orders and highlighted shortages →</div>
+            <a class="card-lite metric-card metric-link" href="/planning">
+              <div class="metric-value">Planning</div>
+              <div class="metric-label">Review materials and schedule production</div>
+              <div class="metric-note">Open planning workspace →</div>
             </a>
           </div>
         </div>

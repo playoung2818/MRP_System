@@ -41,12 +41,35 @@ class WebUIAssetsTests(unittest.TestCase):
     def test_production_planning_removed(self):
         server = (WEB_ROOT / "server.py").read_text(encoding="utf-8")
         ui = (WEB_ROOT / "ui.py").read_text(encoding="utf-8")
-        self.assertNotIn("production_planning", server)
-        self.assertNotIn("production_planning", ui)
+        self.assertNotIn('@app.route("/production_planning")', server)
+        self.assertNotIn('href="/production_planning"', ui)
         self.assertNotIn("PRODUCTION_TPL", ui)
         self.assertNotIn("production_overrides", server)
         self.assertNotIn("FINAL_SO", server)
-        self.assertIn("Sales Order Not Assigned LT", ui)
+        self.assertIn('href="/planning"', ui)
+        self.assertNotIn('Review Sales Orders', ui)
+
+    def test_home_sidebar_has_four_main_modules(self):
+        ui = runpy.run_path(str(WEB_ROOT / 'ui.py'))['INDEX_TPL']
+        sidebar = ui.split('<aside class="sidebar">', 1)[1].split('</aside>', 1)[0]
+        links = re.findall(r'<a class="nav-link[^\"]*" href="([^\"]+)"', sidebar)
+        self.assertEqual(links, [
+            '/quotation_lookup', '/item_info', '/purchase_orders', '/planning',
+        ])
+
+    def test_planning_sidebar_has_only_three_stages(self):
+        from flask import Flask, render_template
+        app = Flask(__name__, template_folder=str(WEB_ROOT / 'templates'))
+        app.add_url_rule('/planning', endpoint='lt_planning.workspace', view_func=lambda: '')
+        with app.test_request_context('/planning'):
+            html = render_template('lt_planning.html', db_error='test', status='needs_material_review')
+        sidebar = html.split('<nav class="sidebar-nav"', 1)[1].split('</nav>', 1)[0]
+        links = re.findall(r'href="([^"]+)"', sidebar)
+        self.assertEqual(links, [
+            '/planning?status=needs_material_review',
+            '/planning?status=needs_production_planning',
+            '/planning?status=planning_complete',
+        ])
 
     def test_one_transparent_asset_per_snoopy_figure(self):
         assets = sorted(path.name for path in (WEB_ROOT / "static").glob("snoopy*"))

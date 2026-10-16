@@ -4,6 +4,7 @@ import sys
 import json
 import re
 import subprocess
+import secrets
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -14,6 +15,8 @@ from sqlalchemy import text
 from openpyxl import load_workbook
 
 from unassigned_so import COLUMNS as UNASSIGNED_COLUMNS, NUMERIC_COLUMNS as UNASSIGNED_NUMERIC_COLUMNS, unassigned_orders, report_rows
+from lt_planning import create_lt_planning
+from so_review import create_so_review
 
 from ui import (
     UNASSIGNED_SO_TPL,
@@ -40,12 +43,15 @@ from mrp_system.runtime.constants import PLACEHOLDER_DATE
 from mrp_system.runtime.paths import PERIPHERAL_STATUS_FILE
 
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY") or secrets.token_hex(32)
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", MAX_CONTENT_LENGTH=2 * 1024 * 1024)
 app.register_blueprint(purchase_orders)
 
 # =========================
 # DB ENGINE
 # =========================
 engine = get_engine()
+app.register_blueprint(create_so_review(engine))
 
 # =========================
 # Data cache
@@ -1057,6 +1063,16 @@ def _open_po_table_for_item(item: str) -> tuple[list[str], list[dict]]:
     result = result.fillna("").astype(str)
     return list(result.columns), result.to_dict(orient="records")
 
+
+def _lt_planning_source(force=False):
+    if force:
+        _load_from_db(force=True)
+    else:
+        _ensure_loaded()
+    return SO_INV, LEDGER, OPEN_PO, _LAST_LOADED_AT, _LAST_LOAD_ERR
+
+
+app.register_blueprint(create_lt_planning(engine, _lt_planning_source))
 
 # initial load
 _load_from_db(force=True)
