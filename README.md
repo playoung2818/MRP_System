@@ -43,11 +43,12 @@ The workspace has two active MRP views and one completion/history view:
    privately in MRP; they do not appear in MES yet.
 2. **Needs Production Planning:** a table, not a second detail page. It shows
    recorded blockers, refreshed current blockers after shipment/inventory updates,
-   and an inline production-date assignment column. Confirm current readiness and
-   the date, then **Assign Production Date**. If data changed, that explicit inline
-   confirmation also records a fresh material assessment; old blocker history is
-   preserved. Remaining blockers require an override and notes. No operator name
-   is required. Ship date is displayed exactly as imported by CLI, never entered.
+   and an inline production-date assignment column. Enter the date, then click
+   **Assign Production Date**; the button itself confirms the decision, with no
+   additional approval or blocker-override checkboxes. If data changed, assignment
+   also records a fresh material assessment; old blocker history is preserved.
+   Notes are optional even with blockers; assignment with blockers is flagged in
+   planning history. No operator name is required. Ship date is displayed exactly as imported by CLI, never entered.
 3. **Planning Complete:** a confirmed production date moves the SO here and publishes
    it to MES atomically. This view is read-only. Later production-date changes are
    made in MES; MRP does not reopen completed orders for routine source updates.

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pandas as pd
 from sqlalchemy import text
-from mrp_system.order_scope import exclude_drop_ship_orders, is_drop_ship_order
+from mrp_system.order_scope import exclude_drop_ship_orders, is_drop_ship_order, is_nonproduction_item
 
 
 def _identity(item):
@@ -48,6 +48,7 @@ def cli_sources(frame):
     required = {'QB Num', 'Item', 'Qty'}
     if frame.empty or not required.issubset(frame):
         raise ValueError('SO staging requires a complete, nonempty CLI sales-order output.')
+    frame = frame.loc[~frame['Item'].map(is_nonproduction_item)]
     frame = exclude_drop_ship_orders(frame).astype(object).where(pd.notna(frame), '')
     orders = {}
     for _, row in frame.iterrows():
@@ -104,13 +105,18 @@ def publish_completed_order(conn, number, notes=None):
     row = conn.execute(text('SELECT * FROM public.approved_work_orders WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
     if row is None or not row['google_present'] or not row['latest_snapshot']:
         raise ValueError('Run MRP CLI to stage this SO before completing production planning.')
-    incoming = row['latest_snapshot']
+    incoming = deepcopy(row['latest_snapshot'])
+    incoming['items'] = [i for i in incoming['items'] if not is_nonproduction_item(i.get('item'))]
+    if not incoming['items']:
+        raise ValueError('This SO has no production items to publish.')
     if is_drop_ship_order(incoming):
         raise ValueError('Drop Ship sales orders are excluded from MRP and MES production planning.')
     by_id = {i['id']: deepcopy(i) for i in incoming['items']}
     items = []
     # Preserve MRP-reviewed order/manual rows while merging the latest source.
     for item in row['items'] or []:
+        if is_nonproduction_item(item.get('item')):
+            continue
         if item.get('id') in by_id:
             items.append(by_id.pop(item['id']))
         elif str(item.get('id', '')).startswith('manual-'):

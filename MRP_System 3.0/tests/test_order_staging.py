@@ -26,6 +26,31 @@ class StagingTests(unittest.TestCase):
         third = staged_snapshot(cli_sources(changed)['SO1'], first)
         self.assertEqual(third['items'][0]['id'], first['items'][0]['id'])
 
+    def test_nonproduction_lines_are_excluded_from_cli_staging(self):
+        rows = self.source()
+        charge = dict(rows.iloc[0], Item=' Shipping Charge ', **{'Inventory Site': 'WH01S-NTA'})
+        charge_only = dict(charge, **{'QB Num': 'SO-CHARGE'})
+        service = dict(charge, Item=' Engineer Services ')
+        service_only = dict(service, **{'QB Num': 'SO-SERVICE'})
+        orders = cli_sources(pd.concat([rows, pd.DataFrame([charge, charge_only, service, service_only])], ignore_index=True))
+        self.assertEqual(set(orders), {'SO1'})
+        self.assertEqual([i['item'] for i in orders['SO1']['items']], ['A'])
+
+    def test_publication_filters_legacy_and_manual_nonproduction_lines(self):
+        conn = MagicMock()
+        incoming = staged_snapshot(cli_sources(self.source())['SO1'], None)
+        incoming['items'].extend([{'id': 'charge', 'item': 'Shipping Charge', 'quantity': 1},
+                                  {'id': 'service', 'item': 'Engineer Services', 'quantity': 1}])
+        conn.execute.return_value.mappings.return_value.first.return_value = {
+            'google_present': True, 'latest_snapshot': incoming,
+            'items': [{'id': 'manual-charge', 'item': ' shipping charge ', 'quantity': 1},
+                      {'id': 'manual-service', 'item': ' ENGINEER SERVICES ', 'quantity': 1}]}
+        conn.execute.return_value.mappings.return_value.__iter__.return_value = iter([])
+        publish_completed_order(conn, 'SO1')
+        params = conn.execute.call_args.args[1]
+        self.assertEqual([i['item'] for i in json.loads(params['items'])], ['A'])
+        self.assertEqual([i['item'] for i in json.loads(params['snapshot'])['items']], ['A'])
+
     def test_mixed_site_drop_ship_so_is_not_staged(self):
         rows = self.source()
         drop = dict(rows.iloc[0], Item='System', **{'Inventory Site': ' Drop ship '})

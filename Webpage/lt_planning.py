@@ -166,6 +166,9 @@ def create_lt_planning(engine, source):
                   for stage in ("needs_material_review", "needs_production_planning", "planning_complete")}
         rows = [r for r in all_rows if r["status"] == status
                 and (not query or query.casefold() in (r["so"] + " " + r["customer"]).casefold())]
+        # Displayed dates are sorted ISO dates; use the earliest when an SO has
+        # multiple ship dates. Missing dates sort last, then break ties by SO#.
+        rows.sort(key=lambda row: (row['ship_date'].split(', ')[0] or '9999-12-31', row['so']))
         detail = None
         if selected and not plan_by_so.get(selected):
             group = so.loc[so["QB Num"].fillna("").astype(str).str.strip().eq(selected)]
@@ -246,8 +249,6 @@ def create_lt_planning(engine, source):
                     if not review:
                         raise ValueError("Approve a material review before saving the production plan.")
                     if review["source_fingerprint"] != fingerprint:
-                        if payload.get('material_update_approved') is not True:
-                            raise ValueError('Review the current material status and confirm it in the assignment column.')
                         if any(r.get('warning') for r in suggestions):
                             raise ValueError('Material data is incomplete. Correct it before confirming an updated assessment.')
                         blockers = current_blockers(suggestions, review)
@@ -271,11 +272,9 @@ def create_lt_planning(engine, source):
                     ship = source_ship_date(group)
                     if ship is not None and start > ship:
                         raise ValueError("Production start must not follow the ship date imported by MRP CLI.")
-                    override = payload.get("blocker_override") is True
-                    if review["blockers"] and (not override or not notes):
-                        raise ValueError("Blockers remain. Explicitly acknowledge the override and explain it in notes.")
-                    if payload.get("approved") is not True:
-                        raise ValueError("Confirm the planning decision before saving.")
+                    # The Assign button is the manual confirmation. Preserve an
+                    # audit flag when assigning with blockers, without extra checks.
+                    override = bool(review['blockers'])
                     # This final MRP confirmation is the publication boundary.
                     # MES needs no prior eligibility or approval step.
                     publish_to_mes(conn, qb_num, notes)

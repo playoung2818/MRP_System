@@ -35,9 +35,7 @@
       event.preventDefault();
       const fields = form.elements;
       save(form, "assign", {...JSON.parse(form.dataset.context),
-        production_start: fields.production_start.value, notes: fields.notes.value,
-        approved: fields.approved.checked, material_update_approved: fields.approved.checked,
-        blocker_override: Boolean(fields.blocker_override?.checked)});
+        production_start: fields.production_start.value, notes: fields.notes.value});
     });
   });
   const contextElement = document.getElementById("planning-context");

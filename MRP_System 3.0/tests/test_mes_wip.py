@@ -32,6 +32,19 @@ class MesWipTests(unittest.TestCase):
         self.assertEqual(report['QB Num'].tolist(), ['SO-20261234'])
         self.assertEqual(report.iloc[0]['Shipped Qty'], 3)
 
+    def test_sales_transform_excludes_nonproduction_lines(self):
+        from mrp_system.transform.sales_order import transform_sales_order
+        raw = pd.DataFrame([
+            {'Unnamed: 0': 'CPU', 'Num': 'SO1', 'Qty': 1, 'Backordered': 1},
+            {'Unnamed: 0': ' Shipping Charge ', 'Num': 'SO1', 'Qty': 1, 'Backordered': 1},
+            {'Unnamed: 0': 'SHIPPING CHARGE', 'Num': 'SO2', 'Qty': 1, 'Backordered': 1},
+            {'Unnamed: 0': ' Engineer Services ', 'Num': 'SO1', 'Qty': 1, 'Backordered': 1},
+            {'Unnamed: 0': 'ENGINEER SERVICES', 'Num': 'SO3', 'Qty': 1, 'Backordered': 1},
+        ])
+        sales = transform_sales_order(raw)
+        self.assertEqual(sales['Item'].tolist(), ['CPU'])
+        self.assertEqual(sales['QB Num'].tolist(), ['SO1'])
+
     def test_sales_transform_excludes_entire_mixed_site_drop_ship_so(self):
         from mrp_system.transform.sales_order import transform_sales_order
         raw = pd.DataFrame([

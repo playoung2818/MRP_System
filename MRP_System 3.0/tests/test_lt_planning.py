@@ -205,6 +205,22 @@ class WorkflowTests(unittest.TestCase):
         html = self.client.get('/planning?status=planning_complete').get_data(as_text=True)
         self.assertNotIn('<strong>SO-1</strong>', html)
 
+    def test_orders_sorted_by_ship_date_then_so_with_missing_dates_last(self):
+        base = self.so.iloc[0].to_dict()
+        dates = [('SO-A', '2099-12-31'), ('SO-Z', '2026-07-04'),
+                 ('SO-B', '2026-07-04'), ('SO-C', '2026-12-31'), ('SO-1', None)]
+        self.so = pd.DataFrame([{**base, 'QB Num': number, 'Ship Date': day} for number, day in dates])
+        def execute(statement, params=None):
+            result = self.execute(statement, params)
+            if 'SELECT sales_order FROM public.approved_work_orders' in str(statement):
+                result.scalars.return_value = self.so['QB Num'].tolist()
+            return result
+        self.read_conn.execute.side_effect = execute
+        html = self.client.get('/planning').get_data(as_text=True)
+        expected = ['SO-B', 'SO-Z', 'SO-C', 'SO-A', 'SO-1']
+        positions = [html.index('<strong>' + number + '</strong>') for number in expected]
+        self.assertEqual(positions, sorted(positions))
+
     def test_stale_data_and_concurrent_review_rejected(self):
         self.assertEqual(self.post(fingerprint="old").status_code, 400)
         self.existing_review()
@@ -224,13 +240,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("public.production_overrides", self.writes[-2][0])
         self.assertIn("mes_sent_at", self.writes[-1][0])
 
-    def test_blockers_require_override_and_notes_and_valid_dates(self):
+    def test_assign_button_accepts_blockers_without_checkboxes_or_notes(self):
         self.existing_review([{"item": "PART-A", "required_qty": 10, "uncovered_qty": 8, "reason": "No open POD"}])
         fields = {"review_id": str(self.review["id"]), "production_start": "2026-07-10", "ship_date": "2026-07-15"}
-        self.assertEqual(self.post("assign", **fields).status_code, 400)
-        self.assertEqual(self.post("assign", **fields, blocker_override=True).status_code, 400)
-        self.assertEqual(self.post("assign", **fields, blocker_override=True, notes="Confirmed exception").status_code, 200)
+        self.assertEqual(self.post("assign", **fields, approved=False, notes='').status_code, 200)
+        self.assertTrue(self.writes[-1][1]['override'])
+        self.assertEqual(self.writes[-1][1]['notes'], '')
         self.assertIsNone(self.writes[-1][1]["ship"])  # Browser-supplied dates are ignored.
+        for invalid in ('2026-06-30', '2026-07-11', ''):
+            self.assertEqual(self.post('assign', **{**fields, 'production_start': invalid}).status_code, 400)
+        html = self.client.get('/planning?status=needs_production_planning').get_data(as_text=True)
+        self.assertNotIn('name="blocker_override"', html)
+        self.assertNotIn('name="approved"', html)
+        self.assertNotIn('placeholder="Notes" required', html)
 
     def test_ship_date_is_read_from_cli_source_not_browser(self):
         self.so.loc[0, "Ship Date"] = "2026-07-15"
@@ -286,7 +308,7 @@ class WorkflowTests(unittest.TestCase):
         self.existing_review()
         self.review['source_fingerprint'] = 'old'
         response = self.post('assign', review_id=str(self.review['id']), production_start='2026-07-10',
-                             material_update_approved=True, blocker_override=True, notes='Confirmed shipping update')
+                             approved=False, notes='Confirmed shipping update')
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertIn('mrp_review_history', self.writes[0][0])
         self.assertEqual(self.writes[-1][1]['review'], self.writes[0][1]['id'])

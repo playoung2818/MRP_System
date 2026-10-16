@@ -5,7 +5,7 @@ import re
 import pandas as pd
 
 from mrp_system.normalize.mrp_normalize import normalize_item
-from mrp_system.order_scope import exclude_drop_ship_orders
+from mrp_system.order_scope import exclude_drop_ship_orders, is_nonproduction_item
 
 
 def normalize_wo_number(wo: str) -> str:
@@ -30,7 +30,7 @@ def transform_sales_order(df_sales_order: pd.DataFrame) -> pd.DataFrame:
     )
     df["Item"] = df["Item"].ffill().astype(str).str.strip()
     df = df[~df['Item'].str.casefold().isin(['', 'nan', 'none', 'null'])]
-    df = df[~df["Item"].str.lower().isin(["forwarding charge", "tariff (estimation)"])]
+    df = df[~df['Item'].map(is_nonproduction_item)]
     if "Inventory Site" in df.columns:
         df["Inventory Site"] = df["Inventory Site"].astype(str).str.strip()
     # Any Drop Ship source line excludes the entire SO, including warehouse lines.

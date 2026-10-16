@@ -42,9 +42,7 @@
         {% elif status == 'needs_production_planning' %}
           <form class="inline-plan-form" data-context="{{ row.assignment|tojson|forceescape }}">
             <label class="visually-hidden" for="production-{{ loop.index }}">Production date for {{ row.so }}</label><input class="form-control" id="production-{{ loop.index }}" name="production_start" type="date" required value="{{ row.plan.planned_production_start if row.plan else '' }}">
-            <label class="form-label mt-2" for="notes-{{ loop.index }}">Notes</label><textarea class="form-control" id="notes-{{ loop.index }}" name="notes" rows="2" maxlength="4000" placeholder="Notes" {{ 'required' if active_blockers else '' }} aria-label="Notes for {{ row.so }}">{{ row.review.notes if row.review else '' }}</textarea>
-            {% if active_blockers %}<label class="d-block small mt-2"><input type="checkbox" name="blocker_override" required> Assign despite the listed blockers (explain in notes).</label>{% endif %}
-            <label class="d-block small mt-2"><input type="checkbox" name="approved" required> I reviewed the current material status and approve this date for MES.</label>
+            <label class="form-label mt-2" for="notes-{{ loop.index }}">Notes</label><textarea class="form-control" id="notes-{{ loop.index }}" name="notes" rows="2" maxlength="4000" placeholder="Notes" aria-label="Notes for {{ row.so }}">{{ row.review.notes if row.review else '' }}</textarea>
             <button class="btn btn-sm btn-primary mt-2" type="submit">Assign Production Date</button>
           </form>
         {% else %}<strong>{{ row.plan.planned_production_start }}</strong><div class="hint">Confirmed {{ row.plan.assigned_at|lt_utc }}</div><div class="hint">{{ 'Sent to MES' if row.plan.mes_sent_at else 'Legacy plan — MES handoff not recorded' }}</div>{% if row.plan.notes %}<div class="hint"><strong>Notes:</strong> {{ row.plan.notes }}</div>{% endif %}{% endif %}

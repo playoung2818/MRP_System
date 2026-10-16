@@ -1,6 +1,12 @@
 """Orders fulfilled by drop shipment are outside MRP/MES production scope."""
 
 
+def is_nonproduction_item(item):
+    return str(item or '').strip().casefold() in {
+        'shipping charge', 'forwarding charge', 'tariff (estimation)', 'engineer services',
+    }
+
+
 def is_drop_ship_order(source):
     source = source or {}
     return (str(source.get('inventory_site') or '').strip().casefold() == 'drop ship'
