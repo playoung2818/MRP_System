@@ -275,8 +275,33 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Acme &lt;script&gt;", response.get_data(as_text=True))
         self.assertIn("MES handoff not recorded", response.get_data(as_text=True))
+        self.assertIn('Approve source changes for MES', response.get_data(as_text=True))
+        self.assertIn('source-review-form', response.get_data(as_text=True))
         self.assertIn("2099-12-31", response.get_data(as_text=True))
         self.assertNotIn("Not assigned in the source sales order", response.get_data(as_text=True))
+
+    def test_completed_source_approval_preserves_plan_and_history(self):
+        self.plan = {'id': uuid4(), 'planned_production_start': date(2026, 7, 10)}
+        response = self.post('acknowledge_source', source_revision=1, revision=0)
+        self.assertEqual(response.status_code, 200)
+        self.publish.assert_called_once_with(self.conn, 'SO-1', None)
+        self.content_review.assert_not_called()
+        self.assertEqual(self.writes, [])
+        self.source.assert_not_called()
+
+    def test_source_approval_rejects_stale_versions_and_incomplete_plan(self):
+        self.assertEqual(self.post('acknowledge_source', source_revision=1, revision=0).status_code, 400)
+        self.plan = {'planned_production_start': date(2026, 7, 10)}
+        self.assertEqual(self.post('acknowledge_source', source_revision=0, revision=0).status_code, 400)
+        self.publish.assert_not_called()
+
+    def test_source_approval_requires_csrf_and_propagates_allocation_errors(self):
+        self.assertEqual(self.client.post('/lt_planning/acknowledge_source', json={}).status_code, 403)
+        self.plan = {'planned_production_start': date(2026, 7, 10)}
+        self.publish.side_effect = ValueError('SO quantities are below saved WO allocations.')
+        response = self.post('acknowledge_source', source_revision=1, revision=0)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('saved WO allocations', response.json['error'])
 
     def test_separate_active_views_and_stale_review_routing(self):
         self.existing_review()

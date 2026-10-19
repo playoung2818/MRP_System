@@ -157,6 +157,7 @@ def create_lt_planning(engine, source):
                 continue
             row = {"so": key, "customer": names.iloc[0] if len(names) else "", "review": review,
                    "plan": plan, "ship_date": displayed_ship_date(group), "stale": stale, "status": stage,
+                   "pending_source": key in staged_keys,
                    "current_blockers": current_blockers(suggestions, review),
                    "assignment": {"so": key, "fingerprint": fingerprint,
                        "review_id": str(review['id']) if review else '',
@@ -182,9 +183,39 @@ def create_lt_planning(engine, source):
                           "content": selected_content}
         return render_template("lt_planning.html", rows=rows, counts=counts, status=status,
                                query=query, archived=archived, detail=detail, history=history,
+                               completed_content=selected_content if selected and plan_by_so.get(selected) else None,
+                               selected_so=selected,
                                planning_history=planning_history, loaded=loaded, reasons=REASONS,
                                csrf_token=csrf(), review_submission=str(uuid4()), plan_submission=str(uuid4()),
                                stage_labels={"needs_material_review": "Needs Material Review", "needs_production_planning": "Needs Production Planning", "planning_complete": "Planning Complete"})
+
+    @bp.post('/lt_planning/acknowledge_source')
+    def acknowledge_source():
+        if not secrets.compare_digest(request.headers.get('X-CSRF-Token', ''), csrf()):
+            return jsonify(error='Session expired. Reload the page and try again.'), 403
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify(error='A JSON form is required.'), 400
+        try:
+            number = str(payload.get('so') or '').strip()
+            if not number:
+                raise ValueError('An SO is required.')
+            with engine.begin() as conn:
+                conn.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:so, 0))'), {'so': number})
+                conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
+                plan = latest(conn, 'lt_planning_history', number)
+                if not plan or not plan['planned_production_start']:
+                    raise ValueError('Complete production planning before using this action.')
+                row = conn.execute(text('SELECT * FROM public.approved_work_orders WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
+                if (not row or payload.get('source_revision') != row['source_revision']
+                        or payload.get('revision') != row['revision']):
+                    raise ValueError('Sales-order content changed. Reload and review again.')
+                # Publication preserves manual items, notes and reviewed order,
+                # validates saved WO allocations, and does not touch the schedule.
+                publish_to_mes(conn, number, None)
+            return jsonify(ok=True, so=number)
+        except (ValueError, TypeError, KeyError) as exc:
+            return jsonify(error=str(exc)), 400
 
     @bp.post("/lt_planning/<action>")
     def save(action):

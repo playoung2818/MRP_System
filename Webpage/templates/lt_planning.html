@@ -6,7 +6,7 @@
   <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="/static/lt-planning.css?v=2" rel="stylesheet"><link href="/static/so-review.css?v=1" rel="stylesheet">
-  <script src="/static/so-review.js?v=7" defer></script><script src="/static/lt-planning.js?v=2" defer></script>
+  <script src="/static/source-review.js?v=1" defer></script><script src="/static/so-review.js?v=7" defer></script><script src="/static/lt-planning.js?v=2" defer></script>
 </head>
 <body>
 <a href="#workspace" class="skip-link">Skip to workspace</a>
@@ -45,12 +45,21 @@
             <label class="form-label mt-2" for="notes-{{ loop.index }}">Notes</label><textarea class="form-control" id="notes-{{ loop.index }}" name="notes" rows="2" maxlength="4000" placeholder="Notes" aria-label="Notes for {{ row.so }}">{{ row.review.notes if row.review else '' }}</textarea>
             <button class="btn btn-sm btn-primary mt-2" type="submit">Assign Production Date</button>
           </form>
-        {% else %}<strong>{{ row.plan.planned_production_start }}</strong><div class="hint">Confirmed {{ row.plan.assigned_at|lt_utc }}</div><div class="hint">{{ 'Sent to MES' if row.plan.mes_sent_at else 'Legacy plan — MES handoff not recorded' }}</div>{% if row.plan.notes %}<div class="hint"><strong>Notes:</strong> {{ row.plan.notes }}</div>{% endif %}{% endif %}
+        {% else %}<strong>{{ row.plan.planned_production_start }}</strong><div class="hint">Confirmed {{ row.plan.assigned_at|lt_utc }}</div><div class="hint">{{ 'Sent to MES' if row.plan.mes_sent_at else 'Legacy plan — MES handoff not recorded' }}</div>{% if row.plan.notes %}<div class="hint"><strong>Notes:</strong> {{ row.plan.notes }}</div>{% endif %}{% if row.pending_source %}<a class="btn btn-sm btn-warning mt-2" href="{{ url_for('lt_planning.workspace', status='planning_complete', so=row.so, q=query) }}#source-review">Review source changes</a>{% endif %}{% endif %}
         </td>
       </tr>
     {% else %}<tr><td colspan="{{ 3 if status == 'needs_material_review' else 4 }}" class="text-muted text-center p-4">No sales orders match this view.</td></tr>{% endfor %}
     </tbody></table></div><div class="hint p-2 border-top">Loaded {{ loaded }}. Ship dates come from MRP CLI. Confirming a production date moves the SO to Planning Complete and publishes it to MES.</div>
   </section>
+  {% if completed_content and completed_content.changes %}
+  <section class="result-card" id="source-review"><div class="card-header"><h2>{{ selected_so }} · Review source changes</h2></div><div class="card-body">
+    <p>Approve the latest imported SO content for MES. The completed production plan, production schedule and material-review history will not change. Item changes may require a separate material or schedule assessment.</p>
+    <ul>{% for change in completed_content.changes %}<li>{{ change }}</li>{% endfor %}</ul>
+    <h3 class="h6">Latest source items and retained manual items</h3>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Item</th><th>Quantity</th><th>Configuration</th><th>Site</th></tr></thead><tbody>{% for item in completed_content['items'] %}<tr><td>{{ item.item }}{% if item.id.startswith('manual-') %} (manual){% endif %}</td><td>{{ item.quantity }}</td><td>{{ item.configuration }}</td><td>{{ item.inventory_site }}</td></tr>{% endfor %}</tbody></table></div>
+    <form id="source-review-form" data-context="{{ {'so': selected_so, 'source_revision': completed_content.source_revision, 'revision': completed_content.revision}|tojson|forceescape }}"><button class="btn btn-primary" type="submit" {{ 'disabled' if not completed_content.source else '' }}>Approve source changes for MES</button></form>
+  </div></section>
+  {% endif %}
   {% if detail and status == 'needs_material_review' %}
   <section class="result-card" id="material-review"><div class="card-header"><h2>{{ detail.so }} · Review Sales Order & Materials</h2></div><div class="card-body">
     {% if not detail.content %}<div class="alert alert-warning">Run MRP CLI to stage this sales order. Its SO content and material review must be saved together.</div>{% endif %}

@@ -50,8 +50,13 @@ The workspace has two active MRP views and one completion/history view:
    Notes are optional even with blockers; assignment with blockers is flagged in
    planning history. No operator name is required. Ship date is displayed exactly as imported by CLI, never entered.
 3. **Planning Complete:** a confirmed production date moves the SO here and publishes
-   it to MES atomically. This view is read-only. Later production-date changes are
-   made in MES; MRP does not reopen completed orders for routine source updates.
+   it to MES atomically. Production planning remains read-only. Later production-date
+   changes are made in MES. For pending source changes, open **Review source changes**
+   and select **Approve source changes for MES** after reviewing the differences.
+   This republishes the current source while retaining manual items, reviewed item
+   order and notes; it does not reset the completed plan, schedule or material history.
+   Stale reviews and quantities below saved WO allocations are rejected. Item changes
+   may need a separate material or schedule assessment.
 
 **Sales-order review is integrated into Needs Material Review.** There is no
 separate Review Sales Orders menu or independent approval step. Old `/sales_orders`
