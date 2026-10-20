@@ -22,7 +22,8 @@ def item_key(series):
 
 def material_context(so, ledger, pods, qb_num, today=None):
     today = pd.Timestamp(today or date.today()).normalize()
-    order = so.loc[so["QB Num"].fillna("").astype(str).str.strip().eq(qb_num)].copy()
+    from mrp_system.order_scope import is_nonproduction_item
+    order = so.loc[so["QB Num"].fillna("").astype(str).str.strip().eq(qb_num) & ~so["Item"].map(is_nonproduction_item)].copy()
     order["Item"] = item_key(order["Item"])
     order["Qty(-)"] = pd.to_numeric(order["Qty(-)"], errors="coerce").fillna(0)
     demands = order.loc[order["Item"].ne("") & order["Qty(-)"].gt(0)].groupby("Item", sort=True)["Qty(-)"].sum()
@@ -36,7 +37,14 @@ def material_context(so, ledger, pods, qb_num, today=None):
     po = po.loc[po["Item"].isin(demands.index)]
     # Stable content identity detects changed quantities, PODs and competing demand.
     parts = []
-    for frame in (order, led, po):
+    own_out = led.get('Kind', pd.Series('', index=led.index)).eq('OUT') & led.get('QB Num', pd.Series('', index=led.index)).fillna('').astype(str).str.strip().eq(qb_num)
+    relevant_ledger = led.loc[~own_out].reindex(columns=['Item', 'Date', 'Opening', 'Delta', 'Kind', 'QB Num'])
+    own_validation = led.loc[own_out].reindex(columns=['Item', 'Opening', 'Delta', 'Kind', 'QB Num']).copy()
+    own_validation['Date valid'] = pd.to_datetime(led.loc[own_out, 'Date'], errors='coerce').notna() if 'Date' in led else False
+    # Source ship dates and descriptive inventory columns do not define material
+    # approval. Own OUT is removed by the calculation too; its rescheduling must
+    # not manufacture a fresh shortage observation.
+    for frame in (order.reindex(columns=['QB Num', 'Item', 'Qty(-)']), relevant_ledger, own_validation, po):
         data = frame.reindex(sorted(frame.columns), axis=1).astype("string").fillna("")
         parts.append(sorted(json.dumps(row, sort_keys=True, ensure_ascii=False) for row in data.to_dict(orient="records")))
     fingerprint = hashlib.sha256(json.dumps([str(today.date()), parts], sort_keys=True).encode()).hexdigest()

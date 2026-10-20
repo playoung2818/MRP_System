@@ -40,6 +40,8 @@ class MesWipTests(unittest.TestCase):
             {'Unnamed: 0': 'SHIPPING CHARGE', 'Num': 'SO2', 'Qty': 1, 'Backordered': 1},
             {'Unnamed: 0': ' Engineer Services ', 'Num': 'SO1', 'Qty': 1, 'Backordered': 1},
             {'Unnamed: 0': 'ENGINEER SERVICES', 'Num': 'SO3', 'Qty': 1, 'Backordered': 1},
+            {'Unnamed: 0': ' Tariff Charge ', 'Num': 'SO1', 'Qty': 1, 'Backordered': 1},
+            {'Unnamed: 0': 'TARIFF CHARGE', 'Num': 'SO4', 'Qty': 1, 'Backordered': 1},
         ])
         sales = transform_sales_order(raw)
         self.assertEqual(sales['Item'].tolist(), ['CPU'])

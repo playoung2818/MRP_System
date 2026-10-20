@@ -23,7 +23,8 @@
       if (!response.ok) throw new Error(result.error || "Unable to save.");
       const url = new URL(window.location.href);
       url.searchParams.delete("reload"); url.searchParams.delete("assigned"); url.searchParams.delete("so");
-      url.searchParams.set("status", action === "review" ? "needs_production_planning" : "planning_complete");
+      url.searchParams.delete("q");
+      url.searchParams.set("status", result.next_status || "needs_material_review");
       url.hash = ""; window.location.assign(url.toString());
     } catch (error) {
       showError(error.message || "Network error. Retry the same form; duplicate submissions are protected.");

@@ -4,7 +4,17 @@ from types import SimpleNamespace
 import json
 
 from sqlalchemy import text
-from .service import _normalize_review_rows, differences, review_items, is_drop_ship_order
+from .service import _normalize_review_rows, review_items, is_drop_ship_order
+
+
+def quantity_signature(source):
+    from mrp_system.so_workflow import order_signature
+    return order_signature(source)
+
+
+def quantity_changes(before, after):
+    return [f'{name}: {before.get(name, 0)} → {after.get(name, 0)} ordered'
+            for name in sorted(set(before) | set(after)) if before.get(name, 0) != after.get(name, 0)]
 
 
 def content_context(row):
@@ -12,8 +22,8 @@ def content_context(row):
         return None
     return {'source': row['latest_snapshot'] or {}, 'source_revision': row['source_revision'],
             'revision': row['revision'], 'items': review_items(SimpleNamespace(**dict(row))),
-            'changes': differences(row['approved_snapshot'], row['latest_snapshot']),
-            'sync_changes': differences(row['previous_snapshot'], row['latest_snapshot'])}
+            'changes': quantity_changes(row.get('approved_order_signature') or quantity_signature(row['approved_snapshot']), quantity_signature(row['latest_snapshot'])),
+            'sync_changes': quantity_changes(quantity_signature(row['previous_snapshot']), quantity_signature(row['latest_snapshot']))}
 
 
 def review_content(conn, number, payload):
@@ -44,7 +54,7 @@ def review_content(conn, number, payload):
     for wo in conn.execute(text('SELECT items FROM public."WO Details" WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings():
         for item in wo['items'] or []:
             saved[item['item'].strip().casefold()] += int(item.get('quantity', 0))
-    if any(qty > planned.get(item, 0) for item, qty in saved.items()):
+    if not row.get('returned_from_mes') and any(qty > planned.get(item, 0) for item, qty in saved.items()):
         raise ValueError('SO quantities are below saved WO allocations. Resolve them before approval.')
     incoming = row['latest_snapshot']
     conn.execute(text('''UPDATE public.approved_work_orders SET items=CAST(:items AS json),
@@ -52,5 +62,5 @@ def review_content(conn, number, payload):
         approved_snapshot=CAST(:snapshot AS json), approved_at=CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
         is_active=FALSE, revision=revision+1 WHERE sales_order=:so'''),
         {'so': number, 'items': json.dumps(items), 'customer': incoming.get('customer', ''),
-         'po': incoming.get('customer_po', ''), 'metadata': json.dumps({k: incoming.get(k, '') for k in ('ship_date', 'terms', 'inventory_site')}),
+         'po': incoming.get('customer_po', ''), 'metadata': json.dumps(dict(row.get('metadata_fields') or {}, **{k: incoming.get(k, '') for k in ('ship_date', 'terms', 'inventory_site')})),
          'snapshot': json.dumps(incoming)})

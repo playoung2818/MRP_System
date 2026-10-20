@@ -32,9 +32,16 @@ def build_structured_df(
         terms_col: "Terms",
         "Item": "Item",
         "Qty(-)": "Qty",
+        "Ordered Qty": "Ordered Qty",
+        "Shipped Qty": "Shipped Qty",
         "Ship Date": "Lead Time",
         "Inventory Site": "Inventory Site",
     }
+    if 'Shipped Qty' not in df_sales_order:
+        df_sales_order['Shipped Qty'] = 0
+    if 'Ordered Qty' not in df_sales_order:
+        df_sales_order['Ordered Qty'] = (pd.to_numeric(df_sales_order['Qty(-)'], errors='raise')
+                                         + pd.to_numeric(df_sales_order['Shipped Qty'], errors='raise'))
     for src in list(needed_cols.keys()):
         if src not in df_sales_order.columns:
             df_sales_order[src] = "" if src not in ("Qty(-)",) else 0

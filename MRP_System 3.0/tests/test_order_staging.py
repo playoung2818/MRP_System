@@ -32,7 +32,9 @@ class StagingTests(unittest.TestCase):
         charge_only = dict(charge, **{'QB Num': 'SO-CHARGE'})
         service = dict(charge, Item=' Engineer Services ')
         service_only = dict(service, **{'QB Num': 'SO-SERVICE'})
-        orders = cli_sources(pd.concat([rows, pd.DataFrame([charge, charge_only, service, service_only])], ignore_index=True))
+        tariff = dict(charge, Item=' TaRiFf Charge ')
+        tariff_only = dict(tariff, **{'QB Num': 'SO-TARIFF'})
+        orders = cli_sources(pd.concat([rows, pd.DataFrame([charge, charge_only, service, service_only, tariff, tariff_only])], ignore_index=True))
         self.assertEqual(set(orders), {'SO1'})
         self.assertEqual([i['item'] for i in orders['SO1']['items']], ['A'])
 
@@ -40,11 +42,13 @@ class StagingTests(unittest.TestCase):
         conn = MagicMock()
         incoming = staged_snapshot(cli_sources(self.source())['SO1'], None)
         incoming['items'].extend([{'id': 'charge', 'item': 'Shipping Charge', 'quantity': 1},
-                                  {'id': 'service', 'item': 'Engineer Services', 'quantity': 1}])
+                                  {'id': 'service', 'item': 'Engineer Services', 'quantity': 1},
+                                  {'id': 'tariff', 'item': ' Tariff Charge ', 'quantity': 1}])
         conn.execute.return_value.mappings.return_value.first.return_value = {
             'google_present': True, 'latest_snapshot': incoming,
             'items': [{'id': 'manual-charge', 'item': ' shipping charge ', 'quantity': 1},
-                      {'id': 'manual-service', 'item': ' ENGINEER SERVICES ', 'quantity': 1}]}
+                      {'id': 'manual-service', 'item': ' ENGINEER SERVICES ', 'quantity': 1},
+                      {'id': 'manual-tariff', 'item': 'TARIFF CHARGE', 'quantity': 1}]}
         conn.execute.return_value.mappings.return_value.__iter__.return_value = iter([])
         publish_completed_order(conn, 'SO1')
         params = conn.execute.call_args.args[1]
@@ -66,7 +70,8 @@ class StagingTests(unittest.TestCase):
         rows['Inventory Site'] = 'Drop Ship'
         self.assertEqual(stage_cli_orders(engine, rows), 0)
         sql, params = conn.execute.call_args.args
-        self.assertIn('google_present=FALSE, is_active=FALSE', str(sql))
+        self.assertIn("workflow_status=CASE WHEN :excluded THEN 'closed'", str(sql))
+        self.assertTrue(params['excluded'])
         self.assertEqual(params['so'], 'SO1')
 
     def test_publication_rejects_existing_mixed_site_drop_ship_so(self):
@@ -108,6 +113,27 @@ class StagingTests(unittest.TestCase):
         self.assertIn('is_active=TRUE', str(sql))
         self.assertEqual(params['customer'], 'Customer')
         self.assertIn('"quantity": 3', params['items'])
+
+    def test_returned_publication_flags_conflicts_without_rewriting_wos(self):
+        conn = MagicMock()
+        snapshot = staged_snapshot(cli_sources(self.source())['SO1'], None)
+        result = MagicMock()
+        result.mappings.return_value.first.return_value = {'google_present': True, 'latest_snapshot': snapshot,
+            'items': [], 'approved_order_signature': {'a': 5}}
+        result.mappings.return_value.__iter__.return_value = iter([{'items': [{'item': 'A', 'quantity': 4}], 'is_shipped': False}])
+        result.scalar_one_or_none.return_value = True
+        conn.execute.return_value = result
+        publish_completed_order(conn, 'SO1', allow_reconciliation=True)
+        args = conn.execute.call_args.args[1]
+        self.assertTrue(args['reconcile'])
+        self.assertEqual(json.loads(args['details'])['allocations'], [{'item': 'a', 'ordered': 3, 'allocated': 4}])
+        self.assertFalse(any(str(c.args[0]).lstrip().startswith(('UPDATE public."WO Details"', 'INSERT INTO public.production_overrides')) for c in conn.execute.call_args_list))
+
+    def test_missing_identity_does_not_begin_transaction(self):
+        engine = MagicMock()
+        with self.assertRaises(ValueError):
+            stage_cli_orders(engine, self.source().assign(**{'QB Num': None}))
+        engine.begin.assert_not_called()
 
     def test_publication_rejects_below_saved_wo_quantity(self):
         conn = MagicMock()

@@ -6,7 +6,7 @@
   <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="/static/lt-planning.css?v=2" rel="stylesheet"><link href="/static/so-review.css?v=1" rel="stylesheet">
-  <script src="/static/source-review.js?v=1" defer></script><script src="/static/so-review.js?v=7" defer></script><script src="/static/lt-planning.js?v=2" defer></script>
+  <script src="/static/so-review.js?v=7" defer></script><script src="/static/lt-planning.js?v=3" defer></script>
 </head>
 <body>
 <a href="#workspace" class="skip-link">Skip to workspace</a>
@@ -14,7 +14,7 @@
   <a class="sidebar-brand" href="/">NTA MRP<span>PRODUCTION & MATERIAL PLANNING</span></a>
   <div class="nav-section-label">PLANNING</div>
   <nav class="sidebar-nav" aria-label="Planning stages">
-    {% for key, label in [('needs_material_review','Needs Material Review'),('needs_production_planning','Needs Production Planning'),('planning_complete','Planning Complete')] %}<a class="{{ 'active' if status == key else '' }}" href="{{ url_for('lt_planning.workspace', status=key) }}">{{ label }}</a>{% endfor %}
+    {% for key, label in [('needs_material_review','Needs Material Review'),('needs_production_planning','Needs Production Planning')] %}<a class="{{ 'active' if status == key else '' }}" href="{{ url_for('lt_planning.workspace', status=key) }}">{{ label }}</a>{% endfor %}
   </nav>
   <div class="sidebar-footer">Review the SO and materials together.<br>Assign production inline.<br>MES receives completed plans.</div>
 </aside>
@@ -24,65 +24,60 @@
   {% if db_error %}<div class="alert alert-danger">{{ db_error }}</div>{% else %}
   <div class="summary-grid">{% for key,label in stage_labels.items() %}<a class="summary-card {{ 'active' if status == key else '' }}" href="{{ url_for('lt_planning.workspace', status=key) }}"><strong>{{ counts[key] }}</strong><span>{{ label }}</span></a>{% endfor %}</div>
   <section class="result-card">
-    <div class="card-header"><h2>{{ stage_labels[status] }}</h2><span class="result-count">{{ rows|length }} orders</span></div>
-    <form class="filters" method="get"><input type="hidden" name="status" value="{{ status }}"><div class="search"><label class="form-label" for="q">SO / customer</label><input class="form-control" id="q" name="q" value="{{ query }}" placeholder="Search SO or customer"></div><button class="btn btn-primary">Search</button><a class="btn btn-outline-secondary" href="{{ url_for('lt_planning.workspace', status=status) }}">Clear</a></form>
-    <div class="table-wrap"><table class="table"><thead><tr><th>Sales order</th><th>Customer</th>{% if status != 'needs_material_review' %}<th>Blocking items · uncovered / required</th>{% endif %}<th>{{ 'Review' if status == 'needs_material_review' else 'Production assignment' }}</th></tr></thead><tbody>
+    <div class="card-header">{% if not query %}<h2>{{ stage_labels[status] }}</h2>{% endif %}<span class="result-count">{{ rows|length }} orders</span></div>
+    <form class="filters" method="get"><input type="hidden" name="status" value="{{ status }}"><div class="search"><label class="form-label" for="q">SO / customer · current MRP work</label><input class="form-control" id="q" name="q" value="{{ query }}" placeholder="Search SO or customer"></div><button class="btn btn-primary">Search</button><a class="btn btn-outline-secondary" href="{{ url_for('lt_planning.workspace', status=status) }}">Clear</a></form>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Sales order</th><th>Customer</th>{% if query or status != 'needs_material_review' %}<th>Blocking items · uncovered / required</th>{% endif %}<th>{{ 'Status / action' if query else ('Review' if status == 'needs_material_review' else 'Production assignment') }}</th></tr></thead><tbody>
     {% for row in rows %}
       {% set active_blockers = row.current_blockers if row.stale else (row.review.blockers if row.review else []) %}
       <tr class="{{ 'selected' if detail and detail.so == row.so else '' }}">
-        <td class="nowrap"><strong>{{ row.so }}</strong><div class="hint">Ship date: {{ row.ship_date }}</div></td><td>{{ row.customer }}</td>
-        {% if status != 'needs_material_review' %}<td class="{{ 'blocked' if active_blockers else '' }}">
+        <td class="nowrap"><strong>{{ row.so }}</strong>{% if row.returned %}<div><span class="badge text-bg-warning">Returned from MES</span></div>{% endif %}<div class="hint">Ship date: {{ row.ship_date }}</div></td><td>{{ row.customer }}</td>
+        {% if query or status != 'needs_material_review' %}<td class="{{ 'blocked' if active_blockers else '' }}">
           {% if not row.review %}<span class="text-muted">SO and material review required</span>
           {% else %}{% for b in active_blockers %}<div><strong>{{ b.item }}</strong>{% if b.pod_num %} <span class="hint">POD# {{ b.pod_num }}</span>{% endif %} · {{ b.uncovered_qty }} / {{ b.required_qty }} <span class="hint">— {{ b.reason }}</span>{% if b.warning %}<div class="text-danger">{{ b.warning }}</div>{% endif %}</div>{% else %}<span class="text-success">No current material blockers</span>{% endfor %}
           <div class="hint mt-1">Reviewed {{ row.review.assessed_at|lt_utc }}</div>
-          {% if row.stale %}<div class="hint text-warning-emphasis">Material data changed. Current calculated status shown above.</div><details class="hint mt-1"><summary>Previously approved blockers</summary>{% for b in row.review.blockers %}<div>{{ b.item }}{% if b.pod_num %} · POD# {{ b.pod_num }}{% endif %} · {{ b.uncovered_qty }} / {{ b.required_qty }} — {{ b.reason }}</div>{% else %}No blockers recorded.{% endfor %}</details>{% endif %}{% endif %}
+          {% if row.stale %}<div class="hint text-warning-emphasis">Current calculated material status shown above.</div>{% endif %}{% endif %}
         </td>{% endif %}
         <td>
-        {% if status == 'needs_material_review' %}<a class="btn btn-sm btn-primary" href="{{ url_for('lt_planning.workspace', status=status, so=row.so, q=query) }}#material-review">Review SO & Materials</a>
-        {% elif status == 'needs_production_planning' %}
+        {% if query %}<div class="hint mb-2">{{ stage_labels[row.status] }}</div>{% endif %}
+        {% if row.source_missing %}<div class="text-warning-emphasis">Missing from current source — disposition required. Release is blocked.</div>
+        {% elif row.status == 'needs_material_review' %}<a class="btn btn-sm btn-primary" href="{{ url_for('lt_planning.workspace', status=row.status, so=row.so, q=query) }}#material-review">Review SO & Materials</a>
+        {% elif row.status == 'needs_production_planning' %}
           <form class="inline-plan-form" data-context="{{ row.assignment|tojson|forceescape }}">
-            <label class="visually-hidden" for="production-{{ loop.index }}">Production date for {{ row.so }}</label><input class="form-control" id="production-{{ loop.index }}" name="production_start" type="date" required value="{{ row.plan.planned_production_start if row.plan else '' }}">
+            <label class="visually-hidden" for="production-{{ loop.index }}">Production date for {{ row.so }}</label><input class="form-control" id="production-{{ loop.index }}" name="production_start" type="date" required>
             <label class="form-label mt-2" for="notes-{{ loop.index }}">Notes</label><textarea class="form-control" id="notes-{{ loop.index }}" name="notes" rows="2" maxlength="4000" placeholder="Notes" aria-label="Notes for {{ row.so }}">{{ row.review.notes if row.review else '' }}</textarea>
             <button class="btn btn-sm btn-primary mt-2" type="submit">Assign Production Date</button>
           </form>
-        {% else %}<strong>{{ row.plan.planned_production_start }}</strong><div class="hint">Confirmed {{ row.plan.assigned_at|lt_utc }}</div><div class="hint">{{ 'Sent to MES' if row.plan.mes_sent_at else 'Legacy plan — MES handoff not recorded' }}</div>{% if row.plan.notes %}<div class="hint"><strong>Notes:</strong> {{ row.plan.notes }}</div>{% endif %}{% if row.pending_source %}<a class="btn btn-sm btn-warning mt-2" href="{{ url_for('lt_planning.workspace', status='planning_complete', so=row.so, q=query) }}#source-review">Review source changes</a>{% endif %}{% endif %}
+        {% endif %}
         </td>
       </tr>
-    {% else %}<tr><td colspan="{{ 3 if status == 'needs_material_review' else 4 }}" class="text-muted text-center p-4">No sales orders match this view.</td></tr>{% endfor %}
-    </tbody></table></div><div class="hint p-2 border-top">Loaded {{ loaded }}. Ship dates come from MRP CLI. Confirming a production date moves the SO to Planning Complete and publishes it to MES.</div>
+    {% else %}<tr><td colspan="{{ 3 if not query and status == 'needs_material_review' else 4 }}" class="text-muted text-center p-4">No sales orders match this view.</td></tr>{% endfor %}
+    </tbody></table></div><div class="hint p-2 border-top">Loaded {{ loaded }}. Ship dates come from MRP CLI. After release, the SO leaves MRP and belongs to MES.</div>
   </section>
-  {% if completed_content and completed_content.changes %}
-  <section class="result-card" id="source-review"><div class="card-header"><h2>{{ selected_so }} · Review source changes</h2></div><div class="card-body">
-    <p>Approve the latest imported SO content for MES. The completed production plan, production schedule and material-review history will not change. Item changes may require a separate material or schedule assessment.</p>
-    <ul>{% for change in completed_content.changes %}<li>{{ change }}</li>{% endfor %}</ul>
-    <h3 class="h6">Latest source items and retained manual items</h3>
-    <div class="table-responsive"><table class="table"><thead><tr><th>Item</th><th>Quantity</th><th>Configuration</th><th>Site</th></tr></thead><tbody>{% for item in completed_content['items'] %}<tr><td>{{ item.item }}{% if item.id.startswith('manual-') %} (manual){% endif %}</td><td>{{ item.quantity }}</td><td>{{ item.configuration }}</td><td>{{ item.inventory_site }}</td></tr>{% endfor %}</tbody></table></div>
-    <form id="source-review-form" data-context="{{ {'so': selected_so, 'source_revision': completed_content.source_revision, 'revision': completed_content.revision}|tojson|forceescape }}"><button class="btn btn-primary" type="submit" {{ 'disabled' if not completed_content.source else '' }}>Approve source changes for MES</button></form>
-  </div></section>
-  {% endif %}
-  {% if detail and status == 'needs_material_review' %}
+  {% if detail %}
   <section class="result-card" id="material-review"><div class="card-header"><h2>{{ detail.so }} · Review Sales Order & Materials</h2></div><div class="card-body">
     {% if not detail.content %}<div class="alert alert-warning">Run MRP CLI to stage this sales order. Its SO content and material review must be saved together.</div>{% endif %}
+    {% if detail.returned %}<div class="alert alert-warning"><strong>Returned from MES</strong> — review the revised items and ordered quantities. Existing WOs and production dates are preserved. Approval returns this SO directly to MES.</div>{% endif %}
+    {% if detail.allocations %}<h3 class="h6">Existing WO allocations</h3><ul>{% for item in detail.allocations %}<li>{{ item.item }} × {{ item.quantity }}</li>{% endfor %}</ul><p class="hint">Conflicting allocations will require reconciliation in MES; approval does not rewrite WOs.</p>{% endif %}
     <form id="review-form"><fieldset {{ 'disabled' if not detail.eligible or not detail.content else '' }}>
       {% if detail.content %}
       <div class="metric-grid"><div class="metric"><div class="label">Customer</div>{{ detail.content.source.customer }}</div><div class="metric"><div class="label">Customer PO</div>{{ detail.content.source.customer_po }}</div><div class="metric"><div class="label">Ship date · from MRP CLI</div>{{ detail.ship_date }}</div><div class="metric"><div class="label">Terms</div>{{ detail.content.source.terms }}</div></div>
       <div class="row g-3 mb-3"><div class="col-md-6"><strong>Changes since last SO review</strong>{% for change in detail.content.changes %}<div>{{ change }}</div>{% else %}<div class="hint">No pending SO content changes.</div>{% endfor %}</div><div class="col-md-6"><strong>Changes since previous MRP run</strong>{% for change in detail.content.sync_changes %}<div>{{ change }}</div>{% else %}<div class="hint">No changes.</div>{% endfor %}</div></div>
       <h3 class="h6">Sales-order items</h3><input type="hidden" id="approved-item-order"><input type="hidden" id="approved-item-rows">
       <div class="data-toolbar"><span class="hint">Review quantities, configuration and item order before approving materials.</span><div class="d-flex gap-2"><button class="btn btn-outline-secondary" type="button" id="add-review-row">Add manual item</button><button class="btn btn-outline-secondary" type="button" id="restore-sheet-order">Use source order</button></div></div>
-      <div class="table-responsive"><table class="table approval-table"><thead><tr><th>Order</th><th>Item</th><th>Qty</th><th>Site</th><th>Move</th></tr></thead><tbody id="approved-items">
+      <div class="table-responsive"><table class="table approval-table"><thead><tr><th>Order</th><th>Item</th><th>Ordered qty</th><th>Site</th><th>Move</th></tr></thead><tbody id="approved-items">
         {% for item in detail.content['items'] %}{% set manual = item.id.startswith('manual-') %}<tr data-item-id="{{ item.id }}"><td><span class="approval-drag" draggable="true">☰</span> <span class="approval-number">{{ loop.index }}</span></td><td><input class="form-control review-item" value="{{ item.item }}" {{ '' if manual else 'readonly' }} required><input type="hidden" class="review-configuration" value="{{ item.configuration }}"><div class="hint">{{ item.configuration }}</div></td><td><input class="form-control review-quantity" type="number" min="0" step="1" value="{{ item.quantity }}" {{ '' if manual else 'readonly' }} required></td><td><input class="form-control review-site" value="{{ item.inventory_site }}" {{ '' if manual else 'readonly' }}></td><td class="nowrap"><button type="button" class="btn btn-sm btn-outline-secondary approval-up" aria-label="Move up">↑</button> <button type="button" class="btn btn-sm btn-outline-secondary approval-down" aria-label="Move down">↓</button><button type="button" class="btn btn-sm btn-outline-danger approval-delete" {{ '' if manual else 'hidden' }}>Remove</button></td></tr>{% endfor %}
       </tbody></table></div><script type="application/json" id="sheet-item-order">{{ detail.content.source['items']|map(attribute='id')|list|tojson }}</script>
       {% endif %}
-      <h3 class="h6 mt-4">System-calculated material readiness</h3><div class="table-responsive"><table class="table"><thead><tr><th>Item</th><th class="num">Required</th><th class="num">Uncovered</th><th>Assessment</th></tr></thead><tbody>{% for s in detail.suggestions %}<tr><td>{{ s.item }}{% if s.warning %}<div class="text-danger">{{ s.warning }}</div>{% endif %}<div class="hint">Open POD: {{ s.open_po_qty }} · unknown date: {{ s.unknown_date_po_qty }}</div></td><td class="num">{{ s.required_qty }}</td><td class="num">{{ s.uncovered_qty }}</td><td>{{ s.reason if s.blocking else 'Ready ' ~ s.ready_date }}</td></tr>{% endfor %}</tbody></table></div>
+      <h3 class="h6 mt-4">System-calculated material readiness</h3><p class="hint">Requirements exclude outstanding work already covered by unambiguous WO allocations or previously finished goods. Unreconciled shipment attribution is treated conservatively; review the existing WOs above.</p><div class="table-responsive"><table class="table"><thead><tr><th>Item</th><th class="num">Required</th><th class="num">Uncovered</th><th>Assessment</th></tr></thead><tbody>{% for s in detail.suggestions %}<tr><td>{{ s.item }}{% if s.warning %}<div class="text-danger">{{ s.warning }}</div>{% endif %}<div class="hint">Open POD: {{ s.open_po_qty }} · unknown date: {{ s.unknown_date_po_qty }}</div></td><td class="num">{{ s.required_qty }}</td><td class="num">{{ s.uncovered_qty }}</td><td>{{ s.reason if s.blocking else 'Ready ' ~ s.ready_date }}</td></tr>{% endfor %}</tbody></table></div>
       <h3 class="h6 mt-4">Record blocking items</h3><p class="hint">System suggestions are not automatically approved. Enter your conclusion below.</p>
       <div class="table-responsive"><table class="table blocker-form-table"><thead><tr><th>Blocking item</th><th>POD#</th><th>Required qty</th><th>Uncovered qty</th><th>Reason</th><th></th></tr></thead><tbody id="blocker-rows"></tbody></table></div>
       <button class="btn btn-outline-secondary mt-2" type="button" id="add-blocker">+ Add blocking item</button>
       <label class="d-block my-3"><input type="checkbox" id="no-blockers"> I reviewed the components: no material blockers.</label>
-      <label class="form-label" for="review-notes">Notes</label><textarea class="form-control" id="review-notes" maxlength="4000" rows="2">{{ detail.review.notes if detail.review else '' }}</textarea>
-      <button class="btn btn-primary mt-3" type="submit">Save SO & Material Review</button><p class="hint mt-2">Saves both reviews together and moves the SO to Needs Production Planning. Not yet published to MES.</p>
+      <label class="form-label" for="review-notes">Notes</label><textarea class="form-control" id="review-notes" maxlength="4000" rows="2">{{ detail.notes or '' }}</textarea>
+      <button class="btn btn-primary mt-3" type="submit">{{ 'Approve Revision & Return to MES' if detail.returned else 'Save SO & Material Review' }}</button><p class="hint mt-2">{{ 'Publishes the revised SO to MES without changing the production date or existing WOs.' if detail.returned else 'Saves both reviews together and moves the SO to Needs Production Planning. Not yet published to MES.' }}</p>
     </fieldset></form>
   </div></section>
-  <script id="planning-context" type="application/json">{{ {'so': detail.so, 'fingerprint': detail.fingerprint, 'review_id': (detail.review.id|string) if detail.review else '', 'plan_id': (detail.plan.id|string) if detail.plan else '', 'suggestions': detail.suggestions, 'reasons': reasons, 'review_submission': review_submission, 'order_versions': {'source_revision': detail.content.source_revision, 'revision': detail.content.revision} if detail.content else {}}|tojson }}</script>
+  <script id="planning-context" type="application/json">{{ {'so': detail.so, 'fingerprint': detail.fingerprint, 'review_id': (detail.review.id|string) if detail.review else '', 'suggestions': detail.suggestions, 'reasons': reasons, 'review_submission': review_submission, 'order_versions': {'source_revision': detail.content.source_revision, 'revision': detail.content.revision} if detail.content else {}}|tojson }}</script>
   {% endif %}
   <script id="planning-csrf" type="application/json">{{ csrf_token|tojson }}</script>
   {% endif %}

@@ -33,7 +33,13 @@ white-sidebar / blue-accent presentation follows the design language of
 [Lookup-Part-Name-by-Serial-Number](https://github.com/playoung2818/Lookup-Part-Name-by-Serial-Number).
 The original highlighted component report remains at `/dashboard/unassigned_so`.
 
-The workspace has two active MRP views and one completion/history view:
+The Planning search spans only the two current MRP-owned stages. MES-owned and
+closed SOs do not appear even when searched. There is no Planning Complete or
+history view; previous approvals remain queryable in the database.
+
+The shared `approved_work_orders.workflow_status` is authoritative in both apps:
+`needs_material_review`, `needs_production_planning`, `released_to_mes`, `closed`.
+The workspace has only two active MRP views:
 
 1. **Needs Material Review:** select **Review SO & Materials**. Review the sales-order
    metadata, source diffs, configuration and item order in the same form as material
@@ -49,14 +55,25 @@ The workspace has two active MRP views and one completion/history view:
    also records a fresh material assessment; old blocker history is preserved.
    Notes are optional even with blockers; assignment with blockers is flagged in
    planning history. No operator name is required. Ship date is displayed exactly as imported by CLI, never entered.
-3. **Planning Complete:** a confirmed production date moves the SO here and publishes
-   it to MES atomically. Production planning remains read-only. Later production-date
-   changes are made in MES. For pending source changes, open **Review source changes**
-   and select **Approve source changes for MES** after reviewing the differences.
-   This republishes the current source while retaining manual items, reviewed item
-   order and notes; it does not reset the completed plan, schedule or material history.
-   Stale reviews and quantities below saved WO allocations are rejected. Item changes
-   may need a separate material or schedule assessment.
+After assignment the SO leaves MRP and is **Released to MES**. Genuine changes to
+items or **total ordered quantities** return it to Needs Material Review with a
+**Returned from MES** badge, not a third tab. Approval republishes the revision
+straight to MES without another production-date assignment, schedule/finished-goods
+reset or WO rewrite. Existing WOs remain visible as records, with a warning;
+new releases/picking are blocked while MRP owns the SO. Conflicting allocations
+and added work on finished-goods SOs require explicit MES reconciliation after
+revision approval. Ship-date, production-date, line-order/ID and fulfillment
+quantity changes do not reopen approval.
+
+CLI preserves `Ordered Qty`, `Shipped Qty` and outstanding `Qty` separately.
+Snapshots use total ordered `quantity` plus `remaining_quantity` and
+`shipped_quantity`. The normalized `approved_order_signature` ignores dates,
+line IDs/order, non-production lines and manual extras. Fully shipped lines
+omitted by an open-order export are retained when recorded shipment evidence
+proves fulfillment; an unexplained disappearance still needs review. Missing
+whole SOs are not assumed cancelled. Proven fully MES-shipped orders can close;
+otherwise they keep their owner with a source-missing/disposition warning and
+blocked new releases.
 
 **Sales-order review is integrated into Needs Material Review.** There is no
 separate Review Sales Orders menu or independent approval step. Old `/sales_orders`
@@ -65,9 +82,11 @@ HTTP 410. The combined form retains source diffs, stable item IDs, item ordering
 manual rows, revision checks and saved-WO quantity safeguards.
 CLI runs stage new SOs in the existing `public.approved_work_orders` table with
 `is_active=FALSE`. SO-content review prepares the data but does not activate it.
-Only final production-plan confirmation publishes/activates the SO for MES. No
-new tables or copies of business rows are created. Source staging is performed by
-MRP CLI, not a separate web Google-sync step. Removed SOs are disabled, not deleted.
+Initial production-plan confirmation publishes/activates the SO for MES. A
+returned revision is republished by its combined material/SO review instead.
+No new tables or copies of business rows are created. Source staging is performed
+by MRP CLI, not a separate web Google-sync step. Excluded SOs are closed, not deleted;
+missing SOs with active work require disposition.
 
 **Drop Ship exclusion:** if any source line has Inventory Site `Drop Ship`
 (case-insensitive, ignoring surrounding spaces), the entire SO is outside
@@ -85,24 +104,37 @@ Production Planning and retains it when dates are adjusted. Prior review-history
 entries preserve their original notes rather than being overwritten. No new
 column or table is needed for this shared value.
 
-**MES handoff:** `public.production_overrides` is the shared schedule destination,
-keyed by SO number (`wo_number`). Confirming a plan atomically saves MRP history and
-upserts the production date. At that same final confirmation, the latest staged
-SO content is published/activated after checking saved-WO allocations. There is
-no prior MES eligibility or approval step. MES refreshes the shared database and
-can adjust production dates later on its Production Planning page. Dates must be
-today or a future weekday. Missing CLI staging or invalid allocations roll back
-publication, scheduling and planning history together. Existing MES dates are
-replaced; finished-goods status is cleared, matching MES schedule-save semantics.
-No WO release is created and `WO Details` is not modified. QuickBooks, source ship
-dates, and actual production records are untouched. `mes_sent_at` records successful
-shared-schedule writes. Historical plans without that marker are labelled as lacking
-a recorded handoff; no legacy plans are automatically sent or rescheduled.
+**MES handoff:** initial assignment saves history, publishes content, sets the
+shared owner and upserts `public.production_overrides` in one transaction. New
+production dates must be today/future weekdays and not after a real source ship
+date. Initial handoff clears finished-goods state, matching normal scheduling.
+Returned-revision approval preserves the existing schedule and finished-goods
+state; inconsistent allocations/added work are flagged for MES reconciliation.
+MES releases use ordered requirements minus externally shipped quantities,
+without subtracting MES-recorded shipments twice. No automatic WO release or
+WO rewrite is performed. Historical execution timestamps remain unchanged.
+
+**Explicit workflow migration (existing tables only):** run a preview first, then
+apply after inspecting it. MES startup checks for the workflow schema rather than
+silently backfilling approvals. The setup command is rerunnable and never resets
+already initialized ownership. It writes a pre-migration SO backup before apply.
+
+```powershell
+cd "MRP_System 3.0"
+python -m mrp_system.cli.setup_so_workflow --report ../reports/so_workflow_migration_preview.csv
+python -m mrp_system.cli.setup_so_workflow --apply --report ../reports/so_workflow_migration_preview.csv --backup-dir ../reports/private_backups
+```
+
+Legacy MES-approved SOs retain MES ownership even without MRP history. Legacy
+inactive/absent, never-reviewed orders remain archived, not active new work.
+A legacy outstanding-quantity approval is normalized as a comparison baseline
+only when it exactly matches the current outstanding source; its published WO
+requirements are not changed by migration.
 
 The two approved PostgreSQL tables are `public.mrp_review_history` (one row per
 manual approval, with an array of approved blocking components plus the system
-suggestion snapshot) and `public.lt_planning_history` (one row per assignment or
-revision, linked to its exact approved review; ship date is a nullable snapshot
+suggestion snapshot) and `public.lt_planning_history` (one row per initial assignment,
+linked to its exact approved review; ship date is a nullable snapshot
 of the source at save time). The current displayed ship date always comes from
 MRP source data, not the historical snapshot. `assigned_at` is the plan save time,
 not the actual time LT was assigned in Excel. Empty blocker arrays explicitly
@@ -117,6 +149,11 @@ python -m mrp_system.cli.setup_lt_planning
 `run_id` identifies the manual assessment, not a scheduled ETL execution;
 `source_fingerprint` identifies the source content and assessment day used.
 Use `jsonb_array_elements(blockers)` to expand approved components for analysis.
+New reviews store `incident_id`, `source_revision`, `review_kind` (initial,
+returned_from_mes or readiness_refresh), and revision handoff `mes_sent_at`.
+Group repeated assessments by SO + incident + item to avoid counting the same
+shortage repeatedly; legacy incident IDs remain NULL rather than fabricated.
+Observations and handoff times are not proof of the exact physical receipt time.
 Both histories are append-only through the application. Duplicate form submissions
 are protected by UUIDs; concurrent reviews/assignments require reloading rather
 than silently overwriting another decision.

@@ -22,6 +22,7 @@ def transform_sales_order(df_sales_order: pd.DataFrame) -> pd.DataFrame:
     numbers = df['Num'].fillna('').astype(str).str.strip()
     df = df[~numbers.str.casefold().isin(['', 'nan', 'none', 'null'])].copy()
     df['Num'] = numbers.loc[df.index]
+    df['Ordered Qty'] = pd.to_numeric(df['Qty'], errors='raise')
     df["partial"] = df["Qty"] != df["Backordered"]
     df['Shipped Qty'] = (pd.to_numeric(df['Qty'], errors='raise') - pd.to_numeric(df['Backordered'], errors='raise')).clip(lower=0)
     df = df.drop(columns=["Qty", "Item"], errors="ignore")

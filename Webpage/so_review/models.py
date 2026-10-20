@@ -1,6 +1,6 @@
 """Mappings for existing shared tables only. Never call create_all here."""
 from flask import current_app, g
-from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String
+from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, Uuid
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
@@ -44,6 +44,14 @@ class ApprovedSO(Base):
     approved_at = Column(DateTime)
     source_revision = Column(Integer, nullable=False, default=0)
     revision = Column(Integer, nullable=False, default=0)
+    workflow_status = Column(String(40), nullable=False, default='needs_material_review')
+    returned_from_mes = Column(Boolean, nullable=False, default=False)
+    approved_order_signature = Column(JSON)
+    mes_released_at = Column(DateTime(timezone=True))
+    review_incident_id = Column(Uuid)
+    material_review_id = Column(Uuid)
+    reconciliation_required = Column(Boolean, nullable=False, default=False)
+    reconciliation_details = Column(JSON, nullable=False, default=dict)
 
     def to_source(self):
         return dict(self.metadata_fields or {}, sales_order=self.sales_order,

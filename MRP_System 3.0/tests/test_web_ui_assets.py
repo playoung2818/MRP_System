@@ -57,7 +57,7 @@ class WebUIAssetsTests(unittest.TestCase):
             '/quotation_lookup', '/item_info', '/purchase_orders', '/planning',
         ])
 
-    def test_planning_sidebar_has_only_three_stages(self):
+    def test_planning_sidebar_has_only_two_active_stages(self):
         from flask import Flask, render_template
         app = Flask(__name__, template_folder=str(WEB_ROOT / 'templates'))
         app.add_url_rule('/planning', endpoint='lt_planning.workspace', view_func=lambda: '')
@@ -68,7 +68,6 @@ class WebUIAssetsTests(unittest.TestCase):
         self.assertEqual(links, [
             '/planning?status=needs_material_review',
             '/planning?status=needs_production_planning',
-            '/planning?status=planning_complete',
         ])
 
     def test_one_transparent_asset_per_snoopy_figure(self):

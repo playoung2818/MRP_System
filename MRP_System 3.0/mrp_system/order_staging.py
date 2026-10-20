@@ -5,11 +5,12 @@ Uses existing approved_work_orders. No table creation and no automatic approval.
 from collections import defaultdict, deque
 from copy import deepcopy
 import json
-import math
 from uuid import uuid4
+from mrp_system.so_workflow import order_signature, whole_quantity, next_state, allocation_conflicts, execution_limits, restore_fulfilled_lines, shipment_conflicts
 
 import pandas as pd
 from sqlalchemy import text
+from mrp_system.transform.sales_order import normalize_wo_number
 from mrp_system.order_scope import exclude_drop_ship_orders, is_drop_ship_order, is_nonproduction_item
 
 
@@ -48,58 +49,94 @@ def cli_sources(frame):
     required = {'QB Num', 'Item', 'Qty'}
     if frame.empty or not required.issubset(frame):
         raise ValueError('SO staging requires a complete, nonempty CLI sales-order output.')
+    frame = frame.copy()
+    frame['QB Num'] = frame['QB Num'].fillna('').astype(str).str.strip().map(normalize_wo_number)
     frame = frame.loc[~frame['Item'].map(is_nonproduction_item)]
     frame = exclude_drop_ship_orders(frame).astype(object).where(pd.notna(frame), '')
     orders = {}
     for _, row in frame.iterrows():
-        number, item = str(row['QB Num']).strip(), str(row['Item']).strip()
-        qty = float(row['Qty'])
-        if not number or not item or not math.isfinite(qty) or qty < 0 or not qty.is_integer():
-            raise ValueError('SO staging rejected invalid identity or non-whole quantity; prior snapshots preserved.')
+        number, item = normalize_wo_number(str(row['QB Num']).strip()), str(row['Item']).strip()
+        remaining = whole_quantity(row['Qty'])
+        shipped = whole_quantity(row.get('Shipped Qty', 0))
+        qty = whole_quantity(row.get('Ordered Qty', remaining + shipped))
+        if number.casefold() in ('', 'nan', 'none', 'null') or not item or remaining + shipped != qty:
+            raise ValueError('SO staging rejected inconsistent ordered/shipped/remaining quantities; prior snapshots preserved.')
         ship = pd.to_datetime(row.get('Lead Time', ''), errors='coerce')
         source = orders.setdefault(number, dict(sales_order=number, customer=str(row.get('Customer', '')),
             customer_po=str(row.get('Customer PO', '')), ship_date='', terms=str(row.get('Terms', '')),
             inventory_site=str(row.get('Inventory Site', '')), items=[]))
         if pd.notna(ship):
             source['ship_date'] = ship.strftime('%Y-%m-%d')
-        source['items'].append(dict(item=item, quantity=int(qty),
+        source['items'].append(dict(item=item, quantity=qty, ordered_quantity=qty,
+            remaining_quantity=remaining, shipped_quantity=shipped,
             configuration=str(row.get('Configuration', row.get('Description', ''))),
             inventory_site=str(row.get('Inventory Site', ''))))
     return orders
 
 
 def stage_cli_orders(engine, frame):
+    if 'QB Num' in frame:
+        frame = frame.copy()
+        frame['QB Num'] = frame['QB Num'].fillna('').astype(str).str.strip().map(normalize_wo_number)
     orders = cli_sources(frame)  # Validate everything before touching shared rows.
+    production = frame.loc[~frame['Item'].map(is_nonproduction_item)]
+    eligible = exclude_drop_ship_orders(production)
+    excluded_keys = set(frame['QB Num'].astype(str).str.strip()) - set(eligible['QB Num'].astype(str).str.strip())
     with engine.begin() as conn:
         conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
         existing = {r['sales_order']: r for r in conn.execute(text('SELECT * FROM public.approved_work_orders FOR UPDATE')).mappings()}
+        wo_by_so = defaultdict(list)
+        for wo in conn.execute(text('SELECT sales_order, items, is_shipped FROM public."WO Details" WHERE record_source=\'mes\'')).mappings():
+            wo_by_so[wo['sales_order']].append(wo)
         for number in sorted(set(existing) | set(orders)):
             old = existing.get(number)
             if number not in orders:
+                prior = old.get('latest_snapshot') or old.get('previous_snapshot') or old.get('approved_snapshot') or {}
+                proven = restore_fulfilled_lines({'items': []}, prior, wo_by_so[number])
+                fulfilled = bool(old.get('workflow_status') == 'released_to_mes' and old.get('approved_order_signature')
+                                 and not old.get('reconciliation_required')
+                                 and not allocation_conflicts(
+                                     [{'item': name, 'quantity': qty} for name, qty in (old.get('approved_order_signature') or {}).items()],
+                                     [i for wo in wo_by_so[number] for i in wo['items'] or []])
+                                 and order_signature(proven) == old['approved_order_signature'])
+                # Missing from an open-order export is NOT proof of cancellation.
+                # Retain ownership and records, but block new releases pending disposition.
                 conn.execute(text('''UPDATE public.approved_work_orders SET previous_snapshot=COALESCE(latest_snapshot, previous_snapshot),
-                    latest_snapshot=NULL, google_present=FALSE, is_active=FALSE,
+                    latest_snapshot=NULL, google_present=FALSE,
+                    workflow_status=CASE WHEN :excluded THEN 'closed' ELSE workflow_status END,
+                    is_active=CASE WHEN :excluded THEN FALSE ELSE is_active END,
                     synced_at=CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
                     source_revision=source_revision + CASE WHEN google_present THEN 1 ELSE 0 END
-                    WHERE sales_order=:so'''), {'so': number})
+                    WHERE sales_order=:so'''), {'so': number, 'excluded': fulfilled or number in excluded_keys or is_drop_ship_order(
+                        old.get('latest_snapshot') or old.get('previous_snapshot') or old.get('approved_snapshot'))})
                 continue
             prior = old['latest_snapshot'] or old['approved_snapshot'] or {'items': old['items']} if old else None
-            incoming = staged_snapshot(orders[number], prior)
+            incoming = staged_snapshot(restore_fulfilled_lines(orders[number], prior, wo_by_so[number]), prior)
             changed = not old or old['latest_snapshot'] != incoming
+            status, returned = next_state(old, incoming)
+            incident = (str(uuid4()) if not old or status != old.get('workflow_status')
+                        else str(old['review_incident_id']) if old.get('review_incident_id') else str(uuid4()))
             conn.execute(text('''INSERT INTO public.approved_work_orders
                 (sales_order, items, metadata_fields, previous_snapshot, latest_snapshot,
-                 google_present, is_active, synced_at, source_revision, revision)
+                 google_present, is_active, synced_at, source_revision, revision,
+                 workflow_status, returned_from_mes, review_incident_id)
                 VALUES (:so, '[]', '{}', NULL, CAST(:snapshot AS json), TRUE, FALSE,
-                        CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 1, 0)
-                ON CONFLICT (sales_order) DO UPDATE SET previous_snapshot=approved_work_orders.latest_snapshot,
+                        CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 1, 0, :status, :returned, CAST(:incident AS uuid))
+                ON CONFLICT (sales_order) DO UPDATE SET previous_snapshot=COALESCE(approved_work_orders.latest_snapshot, approved_work_orders.previous_snapshot),
                     latest_snapshot=EXCLUDED.latest_snapshot, google_present=TRUE,
-                    is_active=CASE WHEN approved_work_orders.google_present THEN approved_work_orders.is_active ELSE FALSE END,
-                    synced_at=EXCLUDED.synced_at,
-                    source_revision=approved_work_orders.source_revision + :changed'''),
-                {'so': number, 'snapshot': json.dumps(incoming), 'changed': int(changed)})
+                    workflow_status=:status, returned_from_mes=:returned,
+                    review_incident_id=CAST(:incident AS uuid),
+                    is_active=(:status = 'released_to_mes'), synced_at=EXCLUDED.synced_at,
+                    source_revision=approved_work_orders.source_revision + :changed,
+                    metadata_fields=CASE WHEN :status = 'released_to_mes'
+                        THEN CAST(CAST(approved_work_orders.metadata_fields AS jsonb) || jsonb_build_object('ship_date', :ship) AS json)
+                        ELSE approved_work_orders.metadata_fields END'''),
+                {'so': number, 'snapshot': json.dumps(incoming), 'changed': int(changed),
+                 'status': status, 'returned': returned, 'incident': incident, 'ship': incoming.get('ship_date', '')})
     return len(orders)
 
 
-def publish_completed_order(conn, number, notes=None):
+def publish_completed_order(conn, number, notes=None, allow_reconciliation=False):
     """Caller owns transaction: publishing + schedule + planning history are atomic."""
     conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
     row = conn.execute(text('SELECT * FROM public.approved_work_orders WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
@@ -122,14 +159,19 @@ def publish_completed_order(conn, number, notes=None):
         elif str(item.get('id', '')).startswith('manual-'):
             items.append(deepcopy(item))
     items.extend(by_id.values())
-    saved, planned = defaultdict(int), defaultdict(int)
-    for wo in conn.execute(text('SELECT items FROM public."WO Details" WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings():
-        for item in wo['items'] or []:
-            saved[item['item'].strip().casefold()] += int(item.get('quantity', 0))
-    for item in items:
-        planned[item['item'].strip().casefold()] += int(item['quantity'])
-    if any(qty > planned.get(item, 0) for item, qty in saved.items()):
+    wo_records = list(conn.execute(text('SELECT items, is_shipped FROM public."WO Details" WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings())
+    saved_items = [i for wo in wo_records for i in wo['items'] or []]
+    limits = execution_limits(items, wo_records, incoming)
+    conflicts = allocation_conflicts([{'item': name, 'quantity': qty} for name, qty in limits.items()], saved_items)
+    if conflicts and not allow_reconciliation:
         raise ValueError('SO quantities are below saved WO allocations. Resolve them before publication.')
+    old_quantities = row.get('approved_order_signature') or order_signature(row.get('approved_snapshot') or {'items': row.get('items') or []})
+    new_quantities = order_signature(incoming)
+    finished = conn.execute(text('SELECT is_finished_goods FROM public.production_overrides WHERE wo_number=:so'), {'so': number}).scalar_one_or_none()
+    fg_review = bool(finished is True and allow_reconciliation and any(
+        qty > old_quantities.get(name, 0) for name, qty in new_quantities.items()))
+    shipping_issues = shipment_conflicts(items, wo_records, incoming)
+    details = {'allocations': conflicts, 'finished_goods': fg_review, 'shipments': shipping_issues}
     metadata = dict(row.get('metadata_fields') or {})
     metadata.update({k: incoming.get(k, '') for k in ('ship_date', 'terms', 'inventory_site')})
     if notes is not None:
@@ -137,7 +179,12 @@ def publish_completed_order(conn, number, notes=None):
     conn.execute(text('''UPDATE public.approved_work_orders SET customer=:customer, customer_po=:po,
         items=CAST(:items AS json), metadata_fields=CAST(:metadata AS json),
         approved_snapshot=CAST(:snapshot AS json), approved_at=CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
-        is_active=TRUE, revision=revision+1 WHERE sales_order=:so'''),
+        is_active=TRUE, workflow_status='released_to_mes', returned_from_mes=FALSE,
+        approved_order_signature=CAST(:signature AS jsonb),
+        reconciliation_required=:reconcile, reconciliation_details=CAST(:details AS jsonb),
+        mes_released_at=COALESCE(mes_released_at, CURRENT_TIMESTAMP),
+        revision=revision+1 WHERE sales_order=:so'''),
         {'so': number, 'customer': incoming.get('customer', ''), 'po': incoming.get('customer_po', ''),
          'items': json.dumps(items), 'metadata': json.dumps(metadata),
-         'snapshot': json.dumps(incoming)})
+         'snapshot': json.dumps(incoming), 'signature': json.dumps(new_quantities),
+         'reconcile': bool(conflicts or fg_review or shipping_issues), 'details': json.dumps(details)})

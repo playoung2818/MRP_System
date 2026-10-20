@@ -1,0 +1,29 @@
+﻿so,mrp_status,mes_available,mes_wo_count,finished_goods,item_qty_changed,source_snapshot_changed,reason
+SO-20261324,needs_material_review,True,1,False,True,True,MES active approval exists but no MRP material review; Latest snapshot uses remaining quantities versus prior approved total quantities; source confirms 6 of 7 systems shipped and 1 remaining (RAM 12 of 14 shipped and 2 remaining); not evidence of a customer quantity amendment; MES retains last published items
+SO-20261465,needs_material_review,True,0,False,False,False,MES active approval exists but no MRP material review
+SO-20261474,needs_material_review,True,0,False,False,False,MES active approval exists but no MRP material review
+SO-20251280,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20260588,planning_complete,True,1,True,False,False,MRP retains Planning Complete after MES publication
+SO-20260913,planning_complete,True,1,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261167,planning_complete,True,1,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261168,planning_complete,True,0,False,False,True,"MRP retains Planning Complete after MES publication; Snapshot differs, but not production item/qty (dates/site/configuration/IDs/charges may differ)"
+SO-20261361,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261429,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261430,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261431,planning_complete,True,1,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261432,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261438,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261439,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261443,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261480,planning_complete,True,0,False,False,True,"MRP retains Planning Complete after MES publication; Snapshot differs, but not production item/qty (dates/site/configuration/IDs/charges may differ)"
+SO-20261489,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261497,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261499,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261503,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261504,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261508,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261513,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261528,planning_complete,True,1,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261537,planning_complete,True,0,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261551,planning_complete,True,1,False,False,False,MRP retains Planning Complete after MES publication
+SO-20261556,planning_complete,True,1,False,False,False,MRP retains Planning Complete after MES publication
