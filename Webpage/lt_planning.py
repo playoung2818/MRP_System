@@ -16,6 +16,17 @@ REVIEW, PLANNING = 'needs_material_review', 'needs_production_planning'
 LABELS = {REVIEW: 'Needs Material Review', PLANNING: 'Needs Production Planning'}
 
 
+def order_age(created, today=None):
+    """Use the source order date, never the import/review/assignment timestamp."""
+    created = pd.to_datetime(created, errors='coerce')
+    if pd.isna(created) or created >= CUTOFF:
+        return '', None, ''
+    created = created.date()
+    days = ((today or date.today()) - created).days
+    color = 'so-age-danger' if days > 14 else 'so-age-warning' if days > 7 else ''
+    return created.isoformat(), days, color
+
+
 def source_ship_date(group):
     if group.empty or 'Ship Date' not in group:
         return None
@@ -122,6 +133,13 @@ def create_lt_planning(engine, source):
             for wo in conn.execute(text('SELECT sales_order,items,is_shipped FROM public."WO Details" WHERE record_source=\'mes\'')).mappings().all():
                 wo_by_so[wo['sales_order']].append(wo)
             finished = {r['wo_number']: r['is_finished_goods'] for r in conn.execute(text('SELECT wo_number,is_finished_goods FROM public.production_overrides')).mappings().all()}
+            from mrp_system.transform.sales_order import normalize_wo_number
+            created_dates = {}
+            for entry in conn.execute(text('SELECT "QB Num" AS sales_order, MIN("Order Date") AS created_date FROM public.open_sales_orders GROUP BY "QB Num"')).mappings().all():
+                number = normalize_wo_number(str(entry['sales_order'] or '').strip())
+                created = pd.to_datetime(entry['created_date'], errors='coerce')
+                if pd.notna(created) and (number not in created_dates or created < created_dates[number]):
+                    created_dates[number] = created
             all_rows, detail = [], None
             for record in records:
                 number = record['sales_order']
@@ -139,7 +157,9 @@ def create_lt_planning(engine, source):
                 fingerprint, suggestions = (material_context(group, ledger, pods, number)
                                             if needs_material and not group.empty
                                             else ((review or {}).get('source_fingerprint', ''), []))
+                created_date, age_days, age_class = order_age(created_dates.get(number))
                 row = {'so': number, 'customer': customer,
+                       'created_date': created_date, 'age_days': age_days, 'age_class': age_class,
                        'status': record['workflow_status'], 'returned': record['returned_from_mes'],
                        'source_missing': not record['google_present'], 'review': review,
                        'ship_date': displayed_ship_date(group) or snapshot.get('ship_date', ''),

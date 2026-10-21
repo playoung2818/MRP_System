@@ -5,7 +5,7 @@
   <title>Planning · NTA MRP</title>
   <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="/static/lt-planning.css?v=2" rel="stylesheet"><link href="/static/so-review.css?v=1" rel="stylesheet">
+  <link href="/static/lt-planning.css?v=3" rel="stylesheet"><link href="/static/so-review.css?v=1" rel="stylesheet">
   <script src="/static/so-review.js?v=7" defer></script><script src="/static/lt-planning.js?v=4" defer></script>
 </head>
 <body>
@@ -26,11 +26,11 @@
   <section class="result-card">
     <div class="card-header">{% if not query %}<h2>{{ stage_labels[status] }}</h2>{% endif %}<span class="result-count">{{ rows|length }} orders</span></div>
     <form class="filters" method="get"><input type="hidden" name="status" value="{{ status }}"><div class="search"><label class="form-label" for="q">SO / customer · current MRP work</label><input class="form-control" id="q" name="q" value="{{ query }}" placeholder="Search SO or customer"></div><button class="btn btn-primary">Search</button><a class="btn btn-outline-secondary" href="{{ url_for('lt_planning.workspace', status=status) }}">Clear</a></form>
-    <div class="table-wrap"><table class="table"><thead><tr><th>Sales order</th><th>Customer</th>{% if query or status != 'needs_material_review' %}<th>Blocking items · uncovered / required</th>{% endif %}<th>{{ 'Status / action' if query else ('Review' if status == 'needs_material_review' else 'Production assignment') }}</th></tr></thead><tbody>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Sales order</th><th>Customer</th><th>SO Created Date</th>{% if query or status != 'needs_material_review' %}<th>Blocking items · uncovered / required</th>{% endif %}<th>{{ 'Status / action' if query else ('Review' if status == 'needs_material_review' else 'Production assignment') }}</th></tr></thead><tbody>
     {% for row in rows %}
       {% set active_blockers = row.review.blockers if row.review else [] %}
-      <tr class="{{ 'selected' if detail and detail.so == row.so else '' }}">
-        <td class="nowrap"><strong>{{ row.so }}</strong>{% if row.returned %}<div><span class="badge text-bg-warning">Returned from MES</span></div>{% endif %}<div class="hint">Ship date: {{ row.ship_date }}</div></td><td>{{ row.customer }}</td>
+      <tr class="{{ 'selected' if detail and detail.so == row.so else '' }} {{ row.age_class }}">
+        <td class="nowrap"><strong>{{ row.so }}</strong>{% if row.returned %}<div><span class="badge text-bg-warning">Returned from MES</span></div>{% endif %}<div class="hint">Ship date: {{ row.ship_date }}</div></td><td>{{ row.customer }}</td><td class="nowrap">{{ row.created_date or '—' }}{% if row.age_days is not none %}<div class="hint">{{ row.age_days }} days old</div>{% endif %}</td>
         {% if query or status != 'needs_material_review' %}<td class="{{ 'blocked' if active_blockers else '' }}">
           {% if not row.review %}<span class="text-muted">SO and material review required</span>
           {% else %}{% for b in active_blockers %}<div><strong>{{ b.item }}</strong>{% if b.pod_num %} <span class="hint">POD# {{ b.pod_num }}</span>{% endif %} · {{ b.uncovered_qty }} / {{ b.required_qty }} {% if b.reason %}<span class="hint">— {{ b.reason }}</span>{% endif %}{% if b.warning %}<div class="text-danger">{{ b.warning }}</div>{% endif %}</div>{% else %}<span class="text-success">No recorded material blockers</span>{% endfor %}
@@ -50,7 +50,7 @@
         {% endif %}
         </td>
       </tr>
-    {% else %}<tr><td colspan="{{ 3 if not query and status == 'needs_material_review' else 4 }}" class="text-muted text-center p-4">No sales orders match this view.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="{{ 4 if not query and status == 'needs_material_review' else 5 }}" class="text-muted text-center p-4">No sales orders match this view.</td></tr>{% endfor %}
     </tbody></table></div><div class="hint p-2 border-top">Loaded {{ loaded }}. Ship dates come from MRP CLI. After release, the SO leaves MRP and belongs to MES.</div>
   </section>
   {% if detail %}

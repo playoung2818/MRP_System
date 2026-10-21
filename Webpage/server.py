@@ -714,7 +714,7 @@ def _dashboard_alerts() -> list[dict[str, str]]:
         neg_item_count = (
             led.loc[
                 led["Date"].notna()
-                & led["Date"].ne(placeholder_date)
+                & led["Date"].lt(placeholder_date)
                 & led["Projected_NAV"].lt(0),
                 "Item",
             ]
@@ -743,7 +743,7 @@ def _negative_inventory_detail_rows(limit: int | None = None) -> tuple[list[str]
     placeholder_date = PLACEHOLDER_DATE
     neg = led.loc[
         led["Date"].notna()
-        & led["Date"].ne(placeholder_date)
+        & led["Date"].lt(placeholder_date)
         & led["Projected_NAV"].lt(0)
         & led["Item"].notna(),
         ["Item", "Date", "Projected_NAV"],

@@ -72,7 +72,7 @@ class WebUIAssetsTests(unittest.TestCase):
 
     def test_one_transparent_asset_per_snoopy_figure(self):
         assets = sorted(path.name for path in (WEB_ROOT / "static").glob("snoopy*"))
-        self.assertEqual(assets, ["snoopy-dancing-transparent.png", "snoopy-figure-transparent.png"])
+        self.assertEqual(assets, ["snoopy-figure-transparent.png"])
         for name in assets:
             header = (WEB_ROOT / "static" / name).read_bytes()[:26]
             self.assertEqual(header[:8], b"\x89PNG\r\n\x1a\n")

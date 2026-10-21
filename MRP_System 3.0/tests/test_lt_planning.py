@@ -11,7 +11,7 @@ from flask import Flask
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'Webpage'))
 from lt_materials import material_context, validate_blockers
-from lt_planning import create_lt_planning, requirements_frame
+from lt_planning import create_lt_planning, requirements_frame, order_age
 
 
 def frames(opening=2, inbound_date='2099-12-31', inbound_qty=20):
@@ -85,6 +85,7 @@ class WorkflowTests(unittest.TestCase):
                      'workflow_status':'needs_material_review','returned_from_mes':False,'google_present':True,
                      'review_incident_id':uuid4(),'material_review_id':None,'approved_order_signature':None}
         self.records=[self.staged]
+        self.source_dates=[]
         self.review=None; self.writes=[]; self.duplicate=None
         self.engine=MagicMock()
         self.conn=self.engine.begin.return_value.__enter__.return_value
@@ -103,6 +104,8 @@ class WorkflowTests(unittest.TestCase):
         result.scalar_one_or_none.return_value=None
         result.mappings.return_value.first.return_value=None
         result.mappings.return_value.all.return_value=[]
+        if 'MIN("Order Date") AS created_date' in sql:
+            result.mappings.return_value.all.return_value=self.source_dates
         if 'SELECT qb_num FROM public.' in sql: result.scalar_one_or_none.return_value=self.duplicate
         if 'SELECT * FROM public.approved_work_orders WHERE sales_order' in sql:
             result.mappings.return_value.first.return_value=self.staged
@@ -133,6 +136,34 @@ class WorkflowTests(unittest.TestCase):
 
     def history(self, table):
         return [(sql,args) for sql,args in self.writes if 'INSERT INTO public.'+table in sql]
+
+    def test_so_created_date_age_thresholds(self):
+        today=date(2026,7,1)
+        for created,expected in [('2026-06-24',''),('2026-06-23','so-age-warning'),
+                                 ('2026-06-17','so-age-warning'),('2026-06-16','so-age-danger')]:
+            with self.subTest(created=created):
+                self.assertEqual(order_age(created,today)[2],expected)
+        for missing in (None,'','invalid','2099-12-31'):
+            self.assertEqual(order_age(missing,today),('',None,''))
+
+    def test_planning_rows_display_source_creation_date_and_age_color(self):
+        self.existing_review()
+        for created,expected in [('2026-06-24',''),('2026-06-23','so-age-warning'),
+                                 ('2026-06-17','so-age-warning'),('2026-06-16','so-age-danger')]:
+            with self.subTest(created=created):
+                self.source_dates=[{'sales_order':'SO-1','created_date':created}]
+                html=self.client.get('/planning?status=needs_production_planning').text
+                self.assertIn('<th>SO Created Date</th>',html)
+                self.assertIn(created,html)
+                if expected:
+                    self.assertIn('class=" '+expected+'"',html)
+                else:
+                    self.assertNotIn('so-age-warning',html)
+                    self.assertNotIn('so-age-danger',html)
+        self.source_dates=[]
+        html=self.client.get('/planning?status=needs_production_planning').text
+        self.assertNotIn('so-age-danger',html)
+        self.assertIn('—',html)
 
     def test_material_requirements_only_include_work_not_already_covered(self):
         self.so.loc[0,'Qty(-)']=12
