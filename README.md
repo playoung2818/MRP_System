@@ -48,11 +48,12 @@ The workspace has only two active MRP views:
    assessment in one transaction. No reviewer name is required. Each successful CLI run stages new SO snapshots
    privately in MRP; they do not appear in MES yet.
 2. **Needs Production Planning:** a table, not a second detail page. It shows
-   recorded blockers, refreshed current blockers after shipment/inventory updates,
+   the exact recorded blockers from the latest database review,
    and an inline production-date assignment column. Enter the date, then click
    **Assign Production Date**; the button itself confirms the decision, with no
-   additional approval or blocker-override checkboxes. If data changed, assignment
-   also records a fresh material assessment; old blocker history is preserved.
+   additional approval or blocker-override checkboxes. List/search views and date
+   assignment do not recalculate or replace the saved assessment. Assignment links
+   the existing review; source ownership, item/quantity and concurrency checks remain.
    Notes are optional even with blockers; assignment with blockers is flagged in
    planning history. No operator name is required. Ship date is displayed exactly as imported by CLI, never entered.
 After assignment the SO leaves MRP and is **Released to MES**. Genuine changes to

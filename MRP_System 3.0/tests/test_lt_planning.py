@@ -160,14 +160,14 @@ class WorkflowTests(unittest.TestCase):
             self.client.get('/planning?status=needs_material_review')
             calculate.assert_not_called()
             self.assertEqual(self.client.get('/planning?status=needs_production_planning').status_code,200)
-            self.assertEqual(calculate.call_count,1)
+            calculate.assert_not_called()
 
-    def test_search_calculates_only_matching_rows(self):
+    def test_search_shows_saved_records_without_calculating(self):
         with patch('lt_planning.material_context', wraps=material_context) as calculate:
             self.client.get('/planning?q=does-not-match')
             calculate.assert_not_called()
             self.assertEqual(self.client.get('/planning?q=SO-1').status_code,200)
-            self.assertEqual(calculate.call_count,1)
+            calculate.assert_not_called()
 
     def test_only_two_active_stages_and_no_history(self):
         html=self.client.get('/planning').text
@@ -259,15 +259,37 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.post('assign',production_start='2026-07-10').status_code,400)
         self.publish.assert_not_called()
 
-    def test_updated_readiness_appends_same_incident_and_keeps_pod(self):
+    def test_assignment_uses_saved_review_without_recalculating_or_appending_assessment(self):
         self.existing_review([{'item':'PART-A','required_qty':10,'uncovered_qty':8,'reason':'No open POD','pod_num':'POD-123'}])
         self.review['source_fingerprint']='old'
-        response=self.post('assign',production_start='2026-07-10',notes='Shipment checked')
+        payload=self.payload(production_start='2026-07-10',notes='Shipment checked')
+        with patch('lt_planning.material_context', side_effect=AssertionError('No assignment recalculation')):
+            response=self.client.post('/lt_planning/assign',json=payload,headers={'X-CSRF-Token':'token'})
         self.assertEqual(response.status_code,200,response.text)
-        args=self.history('mrp_review_history')[0][1]
-        self.assertEqual(json.loads(args['blockers'])[0]['pod_num'],'POD-123')
-        self.assertEqual(args['incident'],str(self.staged['review_incident_id']))
-        self.assertEqual(self.history('lt_planning_history')[0][1]['review'],args['id'])
+        self.assertEqual(self.history('mrp_review_history'),[])
+        self.assertEqual(self.history('lt_planning_history')[0][1]['review'],str(self.review['id']))
+        self.assertTrue(self.history('lt_planning_history')[0][1]['override'])
+
+    def test_list_displays_exact_saved_blockers_even_when_calculation_would_differ(self):
+        self.existing_review([{'item':'SAVED-ONLY','required_qty':1,'uncovered_qty':1,'reason':'No open POD','pod_num':'POD-SAVED'}])
+        self.review['source_fingerprint']='old'
+        with patch('lt_planning.material_context', side_effect=AssertionError('No list recalculation')):
+            html=self.client.get('/planning?status=needs_production_planning').text
+        self.assertIn('SAVED-ONLY',html)
+        self.assertIn('POD-SAVED',html)
+        self.assertNotIn('Current calculated material status',html)
+        self.assertEqual(self.writes,[])
+
+    def test_blocker_saves_without_reason_input(self):
+        html=self.client.get('/planning?so=SO-1').text
+        self.assertNotIn('<th>Reason</th>',html)
+        blocker={'item':'PART-A','required_qty':10,'uncovered_qty':8,'pod_num':'POD-123'}
+        response=self.post(no_blockers=False,blockers=[blocker])
+        self.assertEqual(response.status_code,200,response.text)
+        saved=json.loads(self.history('mrp_review_history')[0][1]['blockers'])[0]
+        self.assertEqual(saved['reason'],'')
+        self.assertEqual(saved['item'],'PART-A')
+        self.assertEqual(saved['pod_num'],'POD-123')
 
     def test_pod_saved_and_invalid_length_rejected(self):
         blocker={'item':'PART-A','required_qty':10,'uncovered_qty':8,'reason':'No open POD','pod_num':' POD-123 '}
@@ -277,12 +299,22 @@ class WorkflowTests(unittest.TestCase):
 
     def test_source_missing_and_drop_ship_cannot_release(self):
         self.staged['google_present']=False
-        self.assertIn('disposition required',self.client.get('/planning').text)
+        self.assertNotIn('<strong>SO-1</strong>',self.client.get('/planning').text)
+        self.assertNotIn('<strong>SO-1</strong>',self.client.get('/planning?q=SO-1&so=SO-1').text)
         self.assertEqual(self.post().status_code,400)
         self.staged['google_present']=True
         self.staged['latest_snapshot']['inventory_site']=' Drop Ship '
         self.assertNotIn('<strong>SO-1</strong>',self.client.get('/planning').text)
         self.assertEqual(self.post().status_code,400)
+
+    def test_missing_source_material_review_not_counted_or_shown(self):
+        self.staged.update(google_present=False,previous_snapshot=self.staged['latest_snapshot'],latest_snapshot=None)
+        with patch('lt_planning.material_context', side_effect=AssertionError('Missing order must not be assessed')):
+            html=self.client.get('/planning?q=SO-1&so=SO-1').text
+        self.assertNotIn('<strong>SO-1</strong>',html)
+        self.assertNotIn('id="review-form"',html)
+        self.assertIn('<strong>0</strong><span>Needs Material Review</span>',html)
+        self.assertEqual(self.writes,[])
 
     def test_duplicate_is_idempotent(self):
         self.duplicate='SO-1'

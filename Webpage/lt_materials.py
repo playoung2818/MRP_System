@@ -131,8 +131,8 @@ def validate_blockers(rows, no_blockers, requirements):
         if abs(required - requirements[item]) > 0.000001:
             raise ValueError("Required quantity must match the SO component total. Reload if the SO changed.")
         reason = str(row.get("reason", "")).strip()
-        if reason not in REASONS:
-            raise ValueError("Select a blocking reason.")
+        if reason and reason not in REASONS:
+            raise ValueError("Invalid blocking reason.")
         pod_num = row.get('pod_num') or ''
         if not isinstance(pod_num, str) or len(pod_num.strip()) > 200:
             raise ValueError('POD# must be text up to 200 characters.')

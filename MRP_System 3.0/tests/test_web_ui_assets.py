@@ -49,12 +49,12 @@ class WebUIAssetsTests(unittest.TestCase):
         self.assertIn('href="/planning"', ui)
         self.assertNotIn('Review Sales Orders', ui)
 
-    def test_home_sidebar_has_four_main_modules(self):
+    def test_home_sidebar_has_three_main_modules(self):
         ui = runpy.run_path(str(WEB_ROOT / 'ui.py'))['INDEX_TPL']
         sidebar = ui.split('<aside class="sidebar">', 1)[1].split('</aside>', 1)[0]
         links = re.findall(r'<a class="nav-link[^\"]*" href="([^\"]+)"', sidebar)
         self.assertEqual(links, [
-            '/quotation_lookup', '/item_info', '/purchase_orders', '/planning',
+            '/quotation_lookup', '/item_info', '/purchase_orders',
         ])
 
     def test_planning_sidebar_has_only_two_active_stages(self):

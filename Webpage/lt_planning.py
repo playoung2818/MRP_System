@@ -3,12 +3,12 @@ import json
 import secrets
 from datetime import date, timezone
 from pathlib import Path
-from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
+from uuid import UUID, uuid4
 import pandas as pd
 from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from lt_materials import CUTOFF, REASONS, material_context, validate_blockers
+from lt_materials import CUTOFF, material_context, validate_blockers
 from so_review.combined import content_context, review_content
 from so_review.service import is_drop_ship_order
 
@@ -30,21 +30,6 @@ def displayed_ship_date(group):
     if group.empty or 'Ship Date' not in group:
         return ''
     return ', '.join(sorted(set(pd.to_datetime(group['Ship Date'], errors='coerce').dropna().dt.strftime('%Y-%m-%d'))))
-
-
-def current_blockers(suggestions, prior_review):
-    prior = {b['item']: b for b in (prior_review or {}).get('blockers', [])}
-    rows = []
-    for suggestion in suggestions:
-        if not suggestion['blocking']:
-            continue
-        blocker = {k: suggestion[k] for k in ('item', 'required_qty', 'uncovered_qty', 'reason')}
-        if prior.get(suggestion['item'], {}).get('pod_num'):
-            blocker['pod_num'] = prior[suggestion['item']]['pod_num']
-        if suggestion.get('warning'):
-            blocker['warning'] = suggestion['warning']
-        rows.append(blocker)
-    return rows
 
 
 def publish_to_mes(conn, qb_num, notes, returned=False):
@@ -141,24 +126,23 @@ def create_lt_planning(engine, source):
             for record in records:
                 number = record['sales_order']
                 snapshot = record['latest_snapshot'] or record['previous_snapshot'] or record['approved_snapshot'] or {}
-                if is_drop_ship_order(snapshot):
+                # The material-review queue contains current imported orders only.
+                # Keep missing-source records/WOs in the database, not this queue.
+                if is_drop_ship_order(snapshot) or (record['workflow_status'] == REVIEW and (not record['google_present'] or not record['latest_snapshot'])):
                     continue
                 group = requirements_frame(so, record, wo_by_so[number], finished.get(number, False))
                 review = reviews.get(number)
                 customer = snapshot.get('customer') or record['customer'] or ''
-                matches_query = query.casefold() in (number+' '+customer).casefold() if query else False
-                # Review-list rows do not display material calculations. Calculate
-                # only an open review or visible rows that need current blockers /
-                # assignment fingerprints; counts and sorting need no ledger replay.
-                needs_material = ((number == selected and record['workflow_status'] == REVIEW and record['google_present'])
-                                  or (matches_query if query else status == PLANNING and record['workflow_status'] == PLANNING))
-                fingerprint, suggestions = material_context(group, ledger, pods, number) if needs_material and not group.empty else ('', [])
-                stale = bool(needs_material and review and review['source_fingerprint'] != fingerprint)
+                # Saved assessments are authoritative on lists and during date
+                # assignment. Only opening a new material review calculates suggestions.
+                needs_material = number == selected and record['workflow_status'] == REVIEW and record['google_present']
+                fingerprint, suggestions = (material_context(group, ledger, pods, number)
+                                            if needs_material and not group.empty
+                                            else ((review or {}).get('source_fingerprint', ''), []))
                 row = {'so': number, 'customer': customer,
                        'status': record['workflow_status'], 'returned': record['returned_from_mes'],
                        'source_missing': not record['google_present'], 'review': review,
                        'ship_date': displayed_ship_date(group) or snapshot.get('ship_date', ''),
-                       'stale': stale, 'current_blockers': current_blockers(suggestions, review),
                        'assignment': {'so': number, 'fingerprint': fingerprint,
                                       'review_id': str(review['id']) if review else '',
                                       'submission_id': str(uuid4())}}
@@ -175,7 +159,7 @@ def create_lt_planning(engine, source):
         rows = [row for row in all_rows if (query.casefold() in (row['so']+' '+row['customer']).casefold() if query else row['status'] == status)]
         rows.sort(key=lambda row: (row['ship_date'].split(', ')[0] or '9999-12-31', row['so']))
         return render_template('lt_planning.html', rows=rows, counts=counts, status=status, query=query,
-                               detail=detail, loaded=loaded, reasons=REASONS, csrf_token=csrf(),
+                               detail=detail, loaded=loaded, csrf_token=csrf(),
                                review_submission=str(uuid4()), stage_labels=LABELS)
 
     @bp.post('/lt_planning/acknowledge_source')
@@ -220,10 +204,11 @@ def create_lt_planning(engine, source):
                 wo_records = conn.execute(text('SELECT items,is_shipped FROM public."WO Details" WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings().all()
                 finished_goods = conn.execute(text('SELECT is_finished_goods FROM public.production_overrides WHERE wo_number=:so'), {'so': number}).scalar_one_or_none() is True
                 group = requirements_frame(so, record, wo_records, finished_goods)
-                fingerprint, suggestions = material_context(group, ledger, pods, number)
-                if payload.get('fingerprint') != fingerprint:
-                    raise ValueError('MRP data changed since opening this form. Reload and review again.')
                 review = latest(conn, 'mrp_review_history', number)
+                if action == 'review':
+                    fingerprint, suggestions = material_context(group, ledger, pods, number)
+                    if payload.get('fingerprint') != fingerprint:
+                        raise ValueError('MRP data changed since opening this form. Reload and review again.')
                 if str(payload.get('review_id') or '') != (str(review['id']) if review else ''):
                     raise ValueError('Another review was saved. Reload before continuing.')
                 returned = bool(record['returned_from_mes'])
@@ -259,18 +244,6 @@ def create_lt_planning(engine, source):
                     from mrp_system.so_workflow import order_signature
                     if record['approved_order_signature'] != order_signature(record['latest_snapshot']):
                         raise ValueError('Items or ordered quantities changed. Return to material review.')
-                    if review['source_fingerprint'] != fingerprint:
-                        if any(r.get('warning') for r in suggestions):
-                            raise ValueError('Material data is incomplete. Correct it before assigning production.')
-                        blockers = current_blockers(suggestions, review)
-                        refresh_id = str(uuid5(NAMESPACE_URL, 'assignment-review:'+submission))
-                        conn.execute(text('''INSERT INTO public.mrp_review_history
-                            (id,qb_num,run_id,source_fingerprint,reviewed_by,no_blockers,blockers,system_suggestions,notes,incident_id,source_revision,review_kind)
-                            VALUES (CAST(:id AS uuid),:so,:run,:fingerprint,'Manual review',:none,CAST(:blockers AS jsonb),CAST(:suggestions AS jsonb),:notes,CAST(:incident AS uuid),:version,'readiness_refresh')'''),
-                            {'id': refresh_id,'so': number,'run': 'manual-'+refresh_id,'fingerprint': fingerprint,
-                             'none': not blockers,'blockers': json.dumps(blockers),'suggestions': json.dumps(suggestions),
-                             'notes': notes,'incident': str(record['review_incident_id']),'version': record['source_revision']})
-                        review = {**dict(review), 'id': refresh_id, 'blockers': blockers}
                     start = date.fromisoformat(str(payload.get('production_start', '')))
                     if start < date.today() or start.weekday() >= 5:
                         raise ValueError('Production date must be today or a future weekday.')

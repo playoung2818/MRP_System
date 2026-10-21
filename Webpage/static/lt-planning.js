@@ -62,9 +62,6 @@
     uncovered.type = "number"; uncovered.step = "any"; uncovered.min = "0.000001";
     uncovered.required = true; uncovered.className = "form-control";
     uncovered.setAttribute("aria-label", "Approved uncovered quantity");
-    const reason = document.createElement("select"); reason.className = "form-select"; reason.required = true;
-    reason.setAttribute("aria-label", "Blocking reason"); reason.append(option("", "Select reason"));
-    context.reasons.forEach(r => reason.append(option(r, r)));
     item.addEventListener("change", () => {
       const suggestion = context.suggestions.find(s => s.item === item.value);
       required.value = suggestion ? suggestion.required_qty : ""; uncovered.max = required.value;
@@ -72,13 +69,13 @@
     const remove = document.createElement("button"); remove.type = "button";
     remove.className = "btn btn-sm btn-outline-danger"; remove.textContent = "Remove";
     remove.addEventListener("click", () => tr.remove());
-    [item, pod, required, uncovered, reason, remove].forEach(el => {const td = document.createElement("td"); td.append(el); tr.append(td);});
-    tr.controls = {item, pod, required, uncovered, reason}; rows.append(tr); item.focus();
+    [item, pod, required, uncovered, remove].forEach(el => {const td = document.createElement("td"); td.append(el); tr.append(td);});
+    tr.controls = {item, pod, required, uncovered}; rows.append(tr); item.focus();
   });
   document.getElementById("review-form").addEventListener("submit", event => {
     event.preventDefault();
     const blockers = Array.from(rows.children, tr => ({item: tr.controls.item.value, pod_num: tr.controls.pod.value,
-      required_qty: Number(tr.controls.required.value), uncovered_qty: Number(tr.controls.uncovered.value), reason: tr.controls.reason.value}));
+      required_qty: Number(tr.controls.required.value), uncovered_qty: Number(tr.controls.uncovered.value)}));
     const noBlockers = document.getElementById("no-blockers").checked;
     if (noBlockers && blockers.length) return showError("Remove blocker rows before approving no material blockers.");
     if (!noBlockers && !blockers.length) return showError("Add blockers or explicitly approve no material blockers.");

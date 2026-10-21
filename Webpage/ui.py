@@ -244,7 +244,6 @@ INDEX_TPL = """
         <a class="nav-link" href="/quotation_lookup"><span class="nav-dot"></span><span>Quotation Lookup</span></a>
         <a class="nav-link" href="/item_info"><span class="nav-dot"></span><span>Item Information</span></a>
         <a class="nav-link" href="/purchase_orders"><span class="nav-dot"></span><span>Purchase Orders</span></a>
-        <a class="nav-link" href="/planning"><span class="nav-dot"></span><span>Planning</span></a>
       </div>
       <div class="sidebar-note">
         Review sales orders and materials, assign production dates, then send completed plans to MES.
