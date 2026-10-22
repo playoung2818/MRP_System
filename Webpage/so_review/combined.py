@@ -39,7 +39,7 @@ def content_context(row):
 
 def review_content(conn, number, payload):
     conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
-    row = conn.execute(text('SELECT * FROM public.approved_work_orders WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
+    row = conn.execute(text('SELECT * FROM public.sales_order_workflow WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
     if not row or not row['source_present'] or not row['latest_snapshot']:
         raise ValueError('Run MRP CLI to stage this sales order before reviewing it.')
     if is_drop_ship_order(row['latest_snapshot']):
@@ -70,7 +70,7 @@ def review_content(conn, number, payload):
     if not row.get('returned_from_mes') and any(qty > planned.get(item, 0) for item, qty in saved.items()):
         raise ValueError('SO quantities are below saved WO allocations. Resolve them before approval.')
     incoming = row['latest_snapshot']
-    conn.execute(text('''UPDATE public.approved_work_orders SET items=CAST(:items AS json),
+    conn.execute(text('''UPDATE public.sales_order_workflow SET items=CAST(:items AS json),
         customer=:customer, customer_po=:po, metadata_fields=CAST(:metadata AS json),
         approved_snapshot=CAST(:snapshot AS json), approved_at=CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
         revision=revision+1 WHERE sales_order=:so'''),

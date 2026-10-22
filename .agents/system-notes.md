@@ -16,7 +16,7 @@ The Planning search spans only the two current MRP-owned stages. MES-owned and
 closed SOs do not appear even when searched. There is no Planning Complete or
 history view; previous approvals remain queryable in the database.
 
-The shared `approved_work_orders.workflow_status` is authoritative in both apps:
+The shared `sales_order_workflow.workflow_status` is authoritative in both apps:
 `needs_material_review`, `needs_production_planning`, `released_to_mes`, `closed`.
 The workspace has only two active MRP views:
 
@@ -60,7 +60,7 @@ separate Review Sales Orders menu or independent approval step. Old `/sales_orde
 bookmarks redirect to Planning; old independent approval/sync submissions return
 HTTP 410. The combined form retains source diffs, stable item IDs, item ordering,
 manual rows, revision checks and saved-WO quantity safeguards.
-CLI runs stage new SOs in the existing `public.approved_work_orders` table as
+CLI runs stage new SOs in the existing `public.sales_order_workflow` table as
 `workflow_status='needs_material_review'`. SO-content review prepares the data;
 initial production-plan confirmation sets `workflow_status='released_to_mes'`. A
 returned revision is republished by its combined material/SO review instead.
@@ -80,7 +80,7 @@ records and saved WOs are preserved, not deleted.
 **Notes carry through the workflow:** the single **Notes** value entered during
 material review is prefilled in production assignment. It can be edited there;
 confirmation stores that final value in planning history and publishes it as
-`approved_work_orders.metadata_fields.notes`. MES displays it under **Notes** on
+`sales_order_workflow.metadata_fields.notes`. MES displays it under **Notes** on
 Production Planning and retains it when dates are adjusted. Prior review-history
 entries preserve their original notes rather than being overwritten. No new
 column or table is needed for this shared value.
@@ -95,7 +95,15 @@ MES releases use ordered requirements minus externally shipped quantities,
 without subtracting MES-recorded shipments twice. No automatic WO release or
 WO rewrite is performed. Historical execution timestamps remain unchanged.
 
-**Source presence:** `public.approved_work_orders.source_present` indicates
+**Shared SO table:** `public.sales_order_workflow` stores every workflow stage,
+not just approved orders. Existing installations must explicitly rename the former
+`approved_work_orders` table before starting upgraded services:
+`python -m mrp_system.cli.rename_sales_order_workflow` (preview), then `--apply`.
+The migration backs up rows and uses ALTER TABLE RENAME, retaining the same table,
+data and dependencies without creating or copying tables. Restart both services.
+If both old and new names exist, migration aborts instead of merging data.
+
+**Source presence:** `public.sales_order_workflow.source_present` indicates
 presence in the latest successfully staged eligible Open Sales Order import—not
 Google Sheets presence, approval, cancellation, or ownership. Existing installs
 with the old column name must run this explicit rename before starting upgraded

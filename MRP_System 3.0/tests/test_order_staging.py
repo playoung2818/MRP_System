@@ -150,7 +150,7 @@ class StagingTests(unittest.TestCase):
         conn.execute.return_value = result
         with self.assertRaisesRegex(ValueError, 'saved WO allocations'):
             publish_completed_order(conn, 'SO1')
-        self.assertFalse(any('UPDATE public.approved_work_orders' in str(c.args[0]) for c in conn.execute.call_args_list))
+        self.assertFalse(any('UPDATE public.sales_order_workflow' in str(c.args[0]) for c in conn.execute.call_args_list))
 
 
 if __name__ == '__main__':

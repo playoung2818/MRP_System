@@ -1,5 +1,8 @@
 # SO workflow cutover — 2026-10-20
 
+Historical note: on 2026-10-22, `approved_work_orders` was renamed in place to
+`sales_order_workflow`. The original names below describe the cutover at that time.
+
 The applications now share `public.approved_work_orders.workflow_status`.
 No new database tables were created. Existing review/planning histories and WO
 execution rows were not rewritten.

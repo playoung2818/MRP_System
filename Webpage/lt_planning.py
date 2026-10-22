@@ -126,7 +126,7 @@ def create_lt_planning(engine, source):
         so, ledger, pods, loaded = data(request.args.get('reload') == '1')
         query, selected = request.args.get('q', '').strip(), request.args.get('so', '').strip()
         with engine.connect() as conn:
-            records = conn.execute(text("SELECT * FROM public.approved_work_orders WHERE workflow_status IN ('needs_material_review','needs_production_planning') ORDER BY sales_order")).mappings().all()
+            records = conn.execute(text("SELECT * FROM public.sales_order_workflow WHERE workflow_status IN ('needs_material_review','needs_production_planning') ORDER BY sales_order")).mappings().all()
             reviews = {r['qb_num']: dict(r) for r in conn.execute(text('SELECT DISTINCT ON (qb_num) * FROM public.mrp_review_history ORDER BY qb_num, assessed_at DESC, id DESC')).mappings().all()}
             from collections import defaultdict
             wo_by_so = defaultdict(list)
@@ -210,10 +210,10 @@ def create_lt_planning(engine, source):
                 if duplicate is not None:
                     if duplicate != number:
                         raise ValueError('Invalid submission ID.')
-                    owner = conn.execute(text('SELECT workflow_status FROM public.approved_work_orders WHERE sales_order=:so'), {'so': number}).scalar_one_or_none()
+                    owner = conn.execute(text('SELECT workflow_status FROM public.sales_order_workflow WHERE sales_order=:so'), {'so': number}).scalar_one_or_none()
                     return jsonify(ok=True, so=number, next_status=PLANNING if owner == PLANNING else REVIEW,
                                    handed_off=owner != PLANNING)
-                record = conn.execute(text('SELECT * FROM public.approved_work_orders WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
+                record = conn.execute(text('SELECT * FROM public.sales_order_workflow WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
                 expected_status = REVIEW if action == 'review' else PLANNING
                 if not record or record['workflow_status'] != expected_status:
                     raise ValueError('This SO is not owned by this MRP step. Reload the workspace.')
@@ -255,9 +255,9 @@ def create_lt_planning(engine, source):
                         publish_to_mes(conn, number, notes, returned=True)
                     else:
                         from mrp_system.so_workflow import order_signature
-                        conn.execute(text("UPDATE public.approved_work_orders SET workflow_status='needs_production_planning', approved_order_signature=CAST(:signature AS jsonb) WHERE sales_order=:so"),
+                        conn.execute(text("UPDATE public.sales_order_workflow SET workflow_status='needs_production_planning', approved_order_signature=CAST(:signature AS jsonb) WHERE sales_order=:so"),
                                      {'so': number, 'signature': json.dumps(order_signature(record['latest_snapshot']))})
-                    conn.execute(text('UPDATE public.approved_work_orders SET material_review_id=CAST(:id AS uuid) WHERE sales_order=:so'), {'id': submission, 'so': number})
+                    conn.execute(text('UPDATE public.sales_order_workflow SET material_review_id=CAST(:id AS uuid) WHERE sales_order=:so'), {'id': submission, 'so': number})
                 else:
                     if not review or str(record['material_review_id']) != str(review['id']):
                         raise ValueError('Approve the current material review before assigning production.')
@@ -282,7 +282,7 @@ def create_lt_planning(engine, source):
                         VALUES (CAST(:id AS uuid),:so,CAST(:review AS uuid),:start,:ship,'Manual assignment',:override,:notes,CURRENT_TIMESTAMP)'''),
                         {'id': submission,'so': number,'review': str(review['id']),'start': start,'ship': ship,
                          'override': bool(review['blockers']),'notes': notes})
-                    conn.execute(text('UPDATE public.approved_work_orders SET material_review_id=CAST(:id AS uuid) WHERE sales_order=:so'), {'id': str(review['id']),'so': number})
+                    conn.execute(text('UPDATE public.sales_order_workflow SET material_review_id=CAST(:id AS uuid) WHERE sales_order=:so'), {'id': str(review['id']),'so': number})
             handed_off = action == 'assign' or returned
             return jsonify(ok=True, so=number, handed_off=handed_off, next_status=REVIEW if handed_off else PLANNING)
         except (ValueError, TypeError, KeyError) as exc:

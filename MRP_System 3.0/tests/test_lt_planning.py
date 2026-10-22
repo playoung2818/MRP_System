@@ -107,9 +107,9 @@ class WorkflowTests(unittest.TestCase):
         if 'MIN("Order Date") AS created_date' in sql:
             result.mappings.return_value.all.return_value=self.source_dates
         if 'SELECT qb_num FROM public.' in sql: result.scalar_one_or_none.return_value=self.duplicate
-        if 'SELECT * FROM public.approved_work_orders WHERE sales_order' in sql:
+        if 'SELECT * FROM public.sales_order_workflow WHERE sales_order' in sql:
             result.mappings.return_value.first.return_value=self.staged
-        elif 'SELECT * FROM public.approved_work_orders' in sql:
+        elif 'SELECT * FROM public.sales_order_workflow' in sql:
             result.mappings.return_value.all.return_value=[r for r in self.records if r['workflow_status'] in ('needs_material_review','needs_production_planning')]
         if 'SELECT * FROM public.mrp_review_history' in sql:
             result.mappings.return_value.first.return_value=self.review

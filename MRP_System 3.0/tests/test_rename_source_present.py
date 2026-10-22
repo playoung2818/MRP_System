@@ -29,7 +29,7 @@ def test_apply_renames_without_updating_business_rows(tmp_path):
     with patch('mrp_system.cli.rename_source_present.inspect', return_value=inspector_for(['google_present'])):
         assert 'Renamed' in rename_column(conn, apply=True, backup_dir=tmp_path)
     statements = [str(call.args[0]) for call in conn.execute.call_args_list]
-    assert statements[-1] == 'ALTER TABLE public.approved_work_orders RENAME COLUMN google_present TO source_present'
+    assert statements[-1] == 'ALTER TABLE public.sales_order_workflow RENAME COLUMN google_present TO source_present'
     assert not any(sql.startswith(('UPDATE', 'DELETE', 'INSERT', 'CREATE')) for sql in statements)
     assert json.loads(next(tmp_path.glob('*.json')).read_text(encoding='utf-8')) == rows
 

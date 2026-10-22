@@ -1,6 +1,6 @@
 """Stage CLI SOs privately; publish to MES only with a confirmed production plan.
 
-Uses existing approved_work_orders. No table creation and no automatic approval.
+Uses existing sales_order_workflow. No table creation and no automatic approval.
 """
 from collections import defaultdict, deque
 from copy import deepcopy
@@ -84,7 +84,7 @@ def stage_cli_orders(engine, frame):
     excluded_keys = set(frame['QB Num'].astype(str).str.strip()) - set(eligible['QB Num'].astype(str).str.strip())
     with engine.begin() as conn:
         conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
-        existing = {r['sales_order']: r for r in conn.execute(text('SELECT * FROM public.approved_work_orders FOR UPDATE')).mappings()}
+        existing = {r['sales_order']: r for r in conn.execute(text('SELECT * FROM public.sales_order_workflow FOR UPDATE')).mappings()}
         wo_by_so = defaultdict(list)
         for wo in conn.execute(text('SELECT sales_order, items, is_shipped FROM public."WO Details" WHERE record_source=\'mes\'')).mappings():
             wo_by_so[wo['sales_order']].append(wo)
@@ -101,7 +101,7 @@ def stage_cli_orders(engine, frame):
                                  and order_signature(proven) == old['approved_order_signature'])
                 # Missing from an open-order export is NOT proof of cancellation.
                 # Retain ownership and records, but block new releases pending disposition.
-                conn.execute(text('''UPDATE public.approved_work_orders SET previous_snapshot=COALESCE(latest_snapshot, previous_snapshot),
+                conn.execute(text('''UPDATE public.sales_order_workflow SET previous_snapshot=COALESCE(latest_snapshot, previous_snapshot),
                     latest_snapshot=NULL, source_present=FALSE,
                     workflow_status=CASE WHEN :excluded THEN 'closed' ELSE workflow_status END,
                     synced_at=CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
@@ -115,21 +115,21 @@ def stage_cli_orders(engine, frame):
             status, returned = next_state(old, incoming)
             incident = (str(uuid4()) if not old or status != old.get('workflow_status')
                         else str(old['review_incident_id']) if old.get('review_incident_id') else str(uuid4()))
-            conn.execute(text('''INSERT INTO public.approved_work_orders
+            conn.execute(text('''INSERT INTO public.sales_order_workflow
                 (sales_order, items, metadata_fields, previous_snapshot, latest_snapshot,
                  source_present, synced_at, source_revision, revision,
                  workflow_status, returned_from_mes, review_incident_id)
                 VALUES (:so, '[]', '{}', NULL, CAST(:snapshot AS json), TRUE,
                         CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 1, 0, :status, :returned, CAST(:incident AS uuid))
-                ON CONFLICT (sales_order) DO UPDATE SET previous_snapshot=COALESCE(approved_work_orders.latest_snapshot, approved_work_orders.previous_snapshot),
+                ON CONFLICT (sales_order) DO UPDATE SET previous_snapshot=COALESCE(sales_order_workflow.latest_snapshot, sales_order_workflow.previous_snapshot),
                     latest_snapshot=EXCLUDED.latest_snapshot, source_present=TRUE,
                     workflow_status=:status, returned_from_mes=:returned,
                     review_incident_id=CAST(:incident AS uuid),
                     synced_at=EXCLUDED.synced_at,
-                    source_revision=approved_work_orders.source_revision + :changed,
+                    source_revision=sales_order_workflow.source_revision + :changed,
                     metadata_fields=CASE WHEN :status = 'released_to_mes'
-                        THEN CAST(CAST(approved_work_orders.metadata_fields AS jsonb) || jsonb_build_object('ship_date', :ship) AS json)
-                        ELSE approved_work_orders.metadata_fields END'''),
+                        THEN CAST(CAST(sales_order_workflow.metadata_fields AS jsonb) || jsonb_build_object('ship_date', :ship) AS json)
+                        ELSE sales_order_workflow.metadata_fields END'''),
                 {'so': number, 'snapshot': json.dumps(incoming), 'changed': int(changed),
                  'status': status, 'returned': returned, 'incident': incident, 'ship': incoming.get('ship_date', '')})
     return len(orders)
@@ -138,7 +138,7 @@ def stage_cli_orders(engine, frame):
 def publish_completed_order(conn, number, notes=None, allow_reconciliation=False):
     """Caller owns transaction: publishing + schedule + planning history are atomic."""
     conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
-    row = conn.execute(text('SELECT * FROM public.approved_work_orders WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
+    row = conn.execute(text('SELECT * FROM public.sales_order_workflow WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
     if row is None or not row['source_present'] or not row['latest_snapshot']:
         raise ValueError('Run MRP CLI to stage this SO before completing production planning.')
     incoming = deepcopy(row['latest_snapshot'])
@@ -177,7 +177,7 @@ def publish_completed_order(conn, number, notes=None, allow_reconciliation=False
     metadata.update({k: incoming.get(k, '') for k in ('ship_date', 'terms', 'inventory_site')})
     if notes is not None:
         metadata['notes'] = notes
-    conn.execute(text('''UPDATE public.approved_work_orders SET customer=:customer, customer_po=:po,
+    conn.execute(text('''UPDATE public.sales_order_workflow SET customer=:customer, customer_po=:po,
         items=CAST(:items AS json), metadata_fields=CAST(:metadata AS json),
         approved_snapshot=CAST(:snapshot AS json), approved_at=CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
         workflow_status='released_to_mes', returned_from_mes=FALSE,
