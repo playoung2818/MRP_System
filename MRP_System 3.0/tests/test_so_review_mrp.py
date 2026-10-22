@@ -10,18 +10,19 @@ from flask import Flask
 WEB = Path(__file__).resolve().parents[2] / 'Webpage'
 sys.path.insert(0, str(WEB))
 from so_review import create_so_review
-from so_review.service import snapshot, differences, _normalize_review_rows
-from so_review.combined import content_context, review_content
+from so_review.service import _normalize_review_rows
+from so_review.combined import content_context, review_content, quantity_changes, quantity_signature
+from mrp_system.order_staging import staged_snapshot
 
 
 class SnapshotTests(unittest.TestCase):
     def test_reorder_and_quantity_edit_preserve_identity(self):
         source = {'sales_order': 'SO1', 'items': [{'item': 'A', 'quantity': 2}, {'item': 'B', 'quantity': 3}]}
-        first = snapshot(source)
+        first = staged_snapshot(source, None)
         source['items'] = [{'item': 'B', 'quantity': 4}, {'item': 'A', 'quantity': 2}]
-        second = snapshot(source, first)
+        second = staged_snapshot(source, first)
         self.assertEqual(second['items'][0]['id'], first['items'][1]['id'])
-        self.assertTrue(any('quantity' in d for d in differences(first, second)))
+        self.assertIn('b: 3 → 4 ordered', quantity_changes(quantity_signature(first), quantity_signature(second)))
 
     def test_invalid_manual_quantity_rejected(self):
         with self.assertRaises(ValueError):
@@ -30,11 +31,11 @@ class SnapshotTests(unittest.TestCase):
 
 class CombinedReviewTests(unittest.TestCase):
     def setUp(self):
-        snap = snapshot({'sales_order': 'SO1', 'customer': 'Customer', 'items': [
-            {'item': 'A', 'quantity': 2}, {'item': 'B', 'quantity': 3}]})
+        snap = staged_snapshot({'sales_order': 'SO1', 'customer': 'Customer', 'items': [
+            {'item': 'A', 'quantity': 2}, {'item': 'B', 'quantity': 3}]}, None)
         self.row = {'sales_order': 'SO1', 'latest_snapshot': snap, 'previous_snapshot': None,
                     'approved_snapshot': None, 'items': [], 'source_revision': 1, 'revision': 0,
-                    'google_present': True}
+                    'source_present': True}
         self.conn = MagicMock()
         self.result = MagicMock()
         self.result.mappings.return_value.first.return_value = self.row
@@ -55,16 +56,30 @@ class CombinedReviewTests(unittest.TestCase):
         payload['items'].reverse()
         review_content(self.conn, 'SO1', payload)
         sql, params = self.conn.execute.call_args.args
-        self.assertIn('is_active=FALSE', str(sql))
+        self.assertIn('revision=revision+1', str(sql))
+        self.assertNotIn('is_active', str(sql))
+        self.assertNotIn('released_to_mes', str(sql))
         self.assertLess(params['items'].index('"B"'), params['items'].index('"A"'))
         self.conn.commit.assert_not_called()  # Caller commits material + SO together.
 
     def test_drop_ship_so_cannot_be_reviewed(self):
-        self.row['latest_snapshot']['items'][1]['inventory_site'] = ' Drop ship '
+        for item in self.row['latest_snapshot']['items']:
+            item['inventory_site'] = ' Drop ship '
         self.assertIsNone(content_context(self.row))
         with self.assertRaisesRegex(ValueError, 'Drop Ship'):
             review_content(self.conn, 'SO1', self.payload())
         self.assertFalse(any(str(c.args[0]).lstrip().startswith('UPDATE') for c in self.conn.execute.call_args_list))
+
+    def test_mixed_so_review_contains_only_warehouse_lines(self):
+        self.row['latest_snapshot']['items'][1]['inventory_site'] = ' Drop ship '
+        context = content_context(self.row)
+        self.assertEqual([i['item'] for i in context['items']], ['A'])
+        self.assertEqual([i['item'] for i in context['source']['items']], ['A'])
+        payload = self.payload()
+        payload['items'] = [i for i in payload['items'] if i['item'] == 'A']
+        review_content(self.conn, 'SO1', payload)
+        params = self.conn.execute.call_args.args[1]
+        self.assertNotIn('Drop ship', params['snapshot'])
 
     def test_stale_so_revision_is_rejected(self):
         payload = self.payload()

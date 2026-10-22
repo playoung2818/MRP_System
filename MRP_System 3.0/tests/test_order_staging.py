@@ -45,7 +45,7 @@ class StagingTests(unittest.TestCase):
                                   {'id': 'service', 'item': 'Engineer Services', 'quantity': 1},
                                   {'id': 'tariff', 'item': ' Tariff Charge ', 'quantity': 1}])
         conn.execute.return_value.mappings.return_value.first.return_value = {
-            'google_present': True, 'latest_snapshot': incoming,
+            'source_present': True, 'latest_snapshot': incoming,
             'items': [{'id': 'manual-charge', 'item': ' shipping charge ', 'quantity': 1},
                       {'id': 'manual-service', 'item': ' ENGINEER SERVICES ', 'quantity': 1},
                       {'id': 'manual-tariff', 'item': 'TARIFF CHARGE', 'quantity': 1}]}
@@ -55,12 +55,14 @@ class StagingTests(unittest.TestCase):
         self.assertEqual([i['item'] for i in json.loads(params['items'])], ['A'])
         self.assertEqual([i['item'] for i in json.loads(params['snapshot'])['items']], ['A'])
 
-    def test_mixed_site_drop_ship_so_is_not_staged(self):
+    def test_mixed_site_drop_ship_so_stages_only_warehouse_lines(self):
         rows = self.source()
         drop = dict(rows.iloc[0], Item='System', **{'Inventory Site': ' Drop ship '})
         warehouse = dict(rows.iloc[0], **{'QB Num': 'SO2'})
         rows = pd.concat([rows, pd.DataFrame([drop, warehouse])], ignore_index=True)
-        self.assertEqual(set(cli_sources(rows)), {'SO2'})
+        sources = cli_sources(rows)
+        self.assertEqual(set(sources), {'SO1', 'SO2'})
+        self.assertNotIn('System', [i['item'] for i in sources['SO1']['items']])
 
     def test_previously_staged_drop_ship_so_is_deactivated(self):
         engine = MagicMock()
@@ -74,16 +76,18 @@ class StagingTests(unittest.TestCase):
         self.assertTrue(params['excluded'])
         self.assertEqual(params['so'], 'SO1')
 
-    def test_publication_rejects_existing_mixed_site_drop_ship_so(self):
+    def test_publication_excludes_drop_ship_line_from_mixed_so(self):
         conn = MagicMock()
         incoming = {'inventory_site': 'WH01S-NTA', 'items': [
             {'id': 'a', 'item': 'CPU', 'quantity': 1, 'inventory_site': 'WH01S-NTA'},
             {'id': 'b', 'item': 'System', 'quantity': 1, 'inventory_site': 'DROP SHIP'}]}
         conn.execute.return_value.mappings.return_value.first.return_value = {
-            'google_present': True, 'latest_snapshot': incoming, 'items': []}
-        with self.assertRaisesRegex(ValueError, 'Drop Ship'):
-            publish_completed_order(conn, 'SO1')
-        self.assertFalse(any('UPDATE public.approved_work_orders' in str(c.args[0]) for c in conn.execute.call_args_list))
+            'source_present': True, 'latest_snapshot': incoming, 'items': []}
+        conn.execute.return_value.mappings.return_value.__iter__.return_value = iter([])
+        publish_completed_order(conn, 'SO1')
+        params = conn.execute.call_args.args[1]
+        self.assertEqual([i['item'] for i in json.loads(params['items'])], ['CPU'])
+        self.assertEqual([i['item'] for i in json.loads(params['snapshot'])['items']], ['CPU'])
 
     def test_invalid_or_empty_source_does_not_start_transaction(self):
         engine = MagicMock()
@@ -97,20 +101,22 @@ class StagingTests(unittest.TestCase):
         conn.execute.return_value.mappings.return_value.__iter__.return_value = iter([])
         self.assertEqual(stage_cli_orders(engine, self.source()), 1)
         statements = [str(c.args[0]) for c in conn.execute.call_args_list]
-        self.assertIn('TRUE, FALSE', statements[-1])
+        self.assertEqual(conn.execute.call_args.args[1]['status'], 'needs_material_review')
+        self.assertNotIn('is_active', ''.join(statements))
         self.assertNotIn('production_overrides', ''.join(statements))
 
     def test_final_publication_activates_reviewed_content_and_preserves_allocations(self):
         conn = MagicMock()
         snapshot = staged_snapshot(cli_sources(self.source())['SO1'], None)
         result = MagicMock()
-        result.mappings.return_value.first.return_value = {'google_present': True, 'latest_snapshot': snapshot, 'items': []}
+        result.mappings.return_value.first.return_value = {'source_present': True, 'latest_snapshot': snapshot, 'items': []}
         result.mappings.return_value.__iter__.return_value = iter([])
         conn.execute.return_value = result
         publish_completed_order(conn, 'SO1', notes='Shipment confirmed\nKeep with order')
         sql, params = conn.execute.call_args.args
         self.assertEqual(json.loads(params['metadata'])['notes'], 'Shipment confirmed\nKeep with order')
-        self.assertIn('is_active=TRUE', str(sql))
+        self.assertIn("workflow_status='released_to_mes'", str(sql))
+        self.assertNotIn('is_active', str(sql))
         self.assertEqual(params['customer'], 'Customer')
         self.assertIn('"quantity": 3', params['items'])
 
@@ -118,7 +124,7 @@ class StagingTests(unittest.TestCase):
         conn = MagicMock()
         snapshot = staged_snapshot(cli_sources(self.source())['SO1'], None)
         result = MagicMock()
-        result.mappings.return_value.first.return_value = {'google_present': True, 'latest_snapshot': snapshot,
+        result.mappings.return_value.first.return_value = {'source_present': True, 'latest_snapshot': snapshot,
             'items': [], 'approved_order_signature': {'a': 5}}
         result.mappings.return_value.__iter__.return_value = iter([{'items': [{'item': 'A', 'quantity': 4}], 'is_shipped': False}])
         result.scalar_one_or_none.return_value = True
@@ -139,7 +145,7 @@ class StagingTests(unittest.TestCase):
         conn = MagicMock()
         snapshot = staged_snapshot(cli_sources(self.source())['SO1'], None)
         result = MagicMock()
-        result.mappings.return_value.first.return_value = {'google_present': True, 'latest_snapshot': snapshot, 'items': []}
+        result.mappings.return_value.first.return_value = {'source_present': True, 'latest_snapshot': snapshot, 'items': []}
         result.mappings.return_value.__iter__.return_value = iter([{'items': [{'item': 'A', 'quantity': 4}]}])
         conn.execute.return_value = result
         with self.assertRaisesRegex(ValueError, 'saved WO allocations'):

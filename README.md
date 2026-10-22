@@ -81,20 +81,21 @@ separate Review Sales Orders menu or independent approval step. Old `/sales_orde
 bookmarks redirect to Planning; old independent approval/sync submissions return
 HTTP 410. The combined form retains source diffs, stable item IDs, item ordering,
 manual rows, revision checks and saved-WO quantity safeguards.
-CLI runs stage new SOs in the existing `public.approved_work_orders` table with
-`is_active=FALSE`. SO-content review prepares the data but does not activate it.
-Initial production-plan confirmation publishes/activates the SO for MES. A
+CLI runs stage new SOs in the existing `public.approved_work_orders` table as
+`workflow_status='needs_material_review'`. SO-content review prepares the data;
+initial production-plan confirmation sets `workflow_status='released_to_mes'`. A
 returned revision is republished by its combined material/SO review instead.
 No new tables or copies of business rows are created. Source staging is performed
 by MRP CLI, not a separate web Google-sync step. Excluded SOs are closed, not deleted;
 missing SOs with active work require disposition.
 
-**Drop Ship exclusion:** if any source line has Inventory Site `Drop Ship`
-(case-insensitive, ignoring surrounding spaces), the entire SO is outside
-MRP/MES production scope, including its warehouse lines. CLI excludes it before
-ledger calculations/staging; previously staged orders are deactivated on the
-next CLI run. Planning and MES also filter existing snapshots immediately, and
-reject review/publication/scheduling of excluded SOs. Historical review/planning
+**Drop Ship exclusion:** source lines with Inventory Site `Drop Ship`
+(case-insensitive, ignoring surrounding spaces) are outside MRP/MES production
+scope. Warehouse lines on the same SO remain eligible. CLI filters only the
+Drop Ship lines before ledger calculations/staging; review and publication
+likewise retain only warehouse lines. Pure Drop Ship SOs remain excluded.
+Previously closed mixed-site SOs re-enter material review after reimport; the
+filter change does not silently approve or release them. Historical review/planning
 records and saved WOs are preserved, not deleted.
 
 **Notes carry through the workflow:** the single **Notes** value entered during
@@ -115,22 +116,29 @@ MES releases use ordered requirements minus externally shipped quantities,
 without subtracting MES-recorded shipments twice. No automatic WO release or
 WO rewrite is performed. Historical execution timestamps remain unchanged.
 
-**Explicit workflow migration (existing tables only):** run a preview first, then
-apply after inspecting it. MES startup checks for the workflow schema rather than
-silently backfilling approvals. The setup command is rerunnable and never resets
-already initialized ownership. It writes a pre-migration SO backup before apply.
+**Source presence:** `public.approved_work_orders.source_present` indicates
+presence in the latest successfully staged eligible Open Sales Order import—not
+Google Sheets presence, approval, cancellation, or ownership. Existing installs
+with the old column name must run this explicit rename before starting upgraded
+MRP/MES (preview by default; apply creates a private backup and preserves all values):
 
 ```powershell
 cd "MRP_System 3.0"
-python -m mrp_system.cli.setup_so_workflow --report ../reports/so_workflow_migration_preview.csv
-python -m mrp_system.cli.setup_so_workflow --apply --report ../reports/so_workflow_migration_preview.csv --backup-dir ../reports/private_backups
+python -m mrp_system.cli.rename_source_present
+python -m mrp_system.cli.rename_source_present --apply
 ```
 
-Legacy MES-approved SOs retain MES ownership even without MRP history. Legacy
-inactive/absent, never-reviewed orders remain archived, not active new work.
-A legacy outstanding-quantity approval is normalized as a comparison baseline
-only when it exactly matches the current outstanding source; its published WO
-requirements are not changed by migration.
+**Current schema:** the one-time ownership backfill and independent legacy
+approval/sync helpers have been removed. MES validates the current shared SO
+schema without adding approval columns, renaming legacy tables, or inferring
+ownership from old approval flags. Existing history and cutover backups remain
+unchanged. Ownership comes only from `workflow_status`; source eligibility is
+tracked separately by `source_present`.
+
+For a fresh installation, provision the current shared SO model and run the
+explicit LT planning schema setup below. Fresh history-table definitions include
+incident, source-revision, review-kind and handoff fields. Do not recreate
+existing business tables to upgrade a populated database.
 
 The two approved PostgreSQL tables are `public.mrp_review_history` (one row per
 manual approval, with an array of approved blocking components plus the system

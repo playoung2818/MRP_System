@@ -109,7 +109,7 @@ def create_lt_planning(engine, source):
     @bp.errorhandler(SQLAlchemyError)
     def database_error(exc):
         current_app.logger.exception('SO workflow database operation failed')
-        message = 'SO workflow unavailable. Check database access and run setup_so_workflow.'
+        message = 'SO workflow unavailable. Check database access and the shared SO workflow schema.'
         if request.method == 'POST':
             return jsonify(error=message), 503
         return render_template('lt_planning.html', db_error=message), 503
@@ -146,14 +146,14 @@ def create_lt_planning(engine, source):
                 snapshot = record['latest_snapshot'] or record['previous_snapshot'] or record['approved_snapshot'] or {}
                 # The material-review queue contains current imported orders only.
                 # Keep missing-source records/WOs in the database, not this queue.
-                if is_drop_ship_order(snapshot) or (record['workflow_status'] == REVIEW and (not record['google_present'] or not record['latest_snapshot'])):
+                if is_drop_ship_order(snapshot) or (record['workflow_status'] == REVIEW and (not record['source_present'] or not record['latest_snapshot'])):
                     continue
                 group = requirements_frame(so, record, wo_by_so[number], finished.get(number, False))
                 review = reviews.get(number)
                 customer = snapshot.get('customer') or record['customer'] or ''
                 # Saved assessments are authoritative on lists and during date
                 # assignment. Only opening a new material review calculates suggestions.
-                needs_material = number == selected and record['workflow_status'] == REVIEW and record['google_present']
+                needs_material = number == selected and record['workflow_status'] == REVIEW and record['source_present']
                 fingerprint, suggestions = (material_context(group, ledger, pods, number)
                                             if needs_material and not group.empty
                                             else ((review or {}).get('source_fingerprint', ''), []))
@@ -161,7 +161,7 @@ def create_lt_planning(engine, source):
                 row = {'so': number, 'customer': customer,
                        'created_date': created_date, 'age_days': age_days, 'age_class': age_class,
                        'status': record['workflow_status'], 'returned': record['returned_from_mes'],
-                       'source_missing': not record['google_present'], 'review': review,
+                       'source_missing': not record['source_present'], 'review': review,
                        'ship_date': displayed_ship_date(group) or snapshot.get('ship_date', ''),
                        'assignment': {'so': number, 'fingerprint': fingerprint,
                                       'review_id': str(review['id']) if review else '',
@@ -217,7 +217,7 @@ def create_lt_planning(engine, source):
                 expected_status = REVIEW if action == 'review' else PLANNING
                 if not record or record['workflow_status'] != expected_status:
                     raise ValueError('This SO is not owned by this MRP step. Reload the workspace.')
-                if not record['google_present'] or not record['latest_snapshot']:
+                if not record['source_present'] or not record['latest_snapshot']:
                     raise ValueError('SO missing from current source. Resolve its disposition before release.')
                 if is_drop_ship_order(record['latest_snapshot']):
                     raise ValueError('Drop Ship SOs are excluded from production planning.')

@@ -102,11 +102,10 @@ def stage_cli_orders(engine, frame):
                 # Missing from an open-order export is NOT proof of cancellation.
                 # Retain ownership and records, but block new releases pending disposition.
                 conn.execute(text('''UPDATE public.approved_work_orders SET previous_snapshot=COALESCE(latest_snapshot, previous_snapshot),
-                    latest_snapshot=NULL, google_present=FALSE,
+                    latest_snapshot=NULL, source_present=FALSE,
                     workflow_status=CASE WHEN :excluded THEN 'closed' ELSE workflow_status END,
-                    is_active=CASE WHEN :excluded THEN FALSE ELSE is_active END,
                     synced_at=CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
-                    source_revision=source_revision + CASE WHEN google_present THEN 1 ELSE 0 END
+                    source_revision=source_revision + CASE WHEN source_present THEN 1 ELSE 0 END
                     WHERE sales_order=:so'''), {'so': number, 'excluded': fulfilled or number in excluded_keys or is_drop_ship_order(
                         old.get('latest_snapshot') or old.get('previous_snapshot') or old.get('approved_snapshot'))})
                 continue
@@ -118,15 +117,15 @@ def stage_cli_orders(engine, frame):
                         else str(old['review_incident_id']) if old.get('review_incident_id') else str(uuid4()))
             conn.execute(text('''INSERT INTO public.approved_work_orders
                 (sales_order, items, metadata_fields, previous_snapshot, latest_snapshot,
-                 google_present, is_active, synced_at, source_revision, revision,
+                 source_present, synced_at, source_revision, revision,
                  workflow_status, returned_from_mes, review_incident_id)
-                VALUES (:so, '[]', '{}', NULL, CAST(:snapshot AS json), TRUE, FALSE,
+                VALUES (:so, '[]', '{}', NULL, CAST(:snapshot AS json), TRUE,
                         CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 1, 0, :status, :returned, CAST(:incident AS uuid))
                 ON CONFLICT (sales_order) DO UPDATE SET previous_snapshot=COALESCE(approved_work_orders.latest_snapshot, approved_work_orders.previous_snapshot),
-                    latest_snapshot=EXCLUDED.latest_snapshot, google_present=TRUE,
+                    latest_snapshot=EXCLUDED.latest_snapshot, source_present=TRUE,
                     workflow_status=:status, returned_from_mes=:returned,
                     review_incident_id=CAST(:incident AS uuid),
-                    is_active=(:status = 'released_to_mes'), synced_at=EXCLUDED.synced_at,
+                    synced_at=EXCLUDED.synced_at,
                     source_revision=approved_work_orders.source_revision + :changed,
                     metadata_fields=CASE WHEN :status = 'released_to_mes'
                         THEN CAST(CAST(approved_work_orders.metadata_fields AS jsonb) || jsonb_build_object('ship_date', :ship) AS json)
@@ -140,19 +139,21 @@ def publish_completed_order(conn, number, notes=None, allow_reconciliation=False
     """Caller owns transaction: publishing + schedule + planning history are atomic."""
     conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
     row = conn.execute(text('SELECT * FROM public.approved_work_orders WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
-    if row is None or not row['google_present'] or not row['latest_snapshot']:
+    if row is None or not row['source_present'] or not row['latest_snapshot']:
         raise ValueError('Run MRP CLI to stage this SO before completing production planning.')
     incoming = deepcopy(row['latest_snapshot'])
-    incoming['items'] = [i for i in incoming['items'] if not is_nonproduction_item(i.get('item'))]
+    incoming['items'] = [i for i in incoming['items'] if not is_nonproduction_item(i.get('item'))
+                         and str(i.get('inventory_site') or incoming.get('inventory_site') or '').strip().casefold() != 'drop ship']
     if not incoming['items']:
-        raise ValueError('This SO has no production items to publish.')
+        raise ValueError('This SO has no production items to publish (Drop Ship/non-production lines excluded).')
     if is_drop_ship_order(incoming):
         raise ValueError('Drop Ship sales orders are excluded from MRP and MES production planning.')
     by_id = {i['id']: deepcopy(i) for i in incoming['items']}
     items = []
     # Preserve MRP-reviewed order/manual rows while merging the latest source.
     for item in row['items'] or []:
-        if is_nonproduction_item(item.get('item')):
+        if (is_nonproduction_item(item.get('item')) or
+                str(item.get('inventory_site') or incoming.get('inventory_site') or '').strip().casefold() == 'drop ship'):
             continue
         if item.get('id') in by_id:
             items.append(by_id.pop(item['id']))
@@ -179,7 +180,7 @@ def publish_completed_order(conn, number, notes=None, allow_reconciliation=False
     conn.execute(text('''UPDATE public.approved_work_orders SET customer=:customer, customer_po=:po,
         items=CAST(:items AS json), metadata_fields=CAST(:metadata AS json),
         approved_snapshot=CAST(:snapshot AS json), approved_at=CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
-        is_active=TRUE, workflow_status='released_to_mes', returned_from_mes=FALSE,
+        workflow_status='released_to_mes', returned_from_mes=FALSE,
         approved_order_signature=CAST(:signature AS jsonb),
         reconciliation_required=:reconcile, reconciliation_details=CAST(:details AS jsonb),
         mes_released_at=COALESCE(mes_released_at, CURRENT_TIMESTAMP),

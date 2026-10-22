@@ -34,7 +34,7 @@ def transform_sales_order(df_sales_order: pd.DataFrame) -> pd.DataFrame:
     df = df[~df['Item'].map(is_nonproduction_item)]
     if "Inventory Site" in df.columns:
         df["Inventory Site"] = df["Inventory Site"].astype(str).str.strip()
-    # Any Drop Ship source line excludes the entire SO, including warehouse lines.
+    # Exclude Drop Ship lines without losing warehouse lines on the same SO.
     df = exclude_drop_ship_orders(df)
     # Other sites retain their existing downstream WH01S-NTA ledger/ATP scope.
     df["Item"] = df["Item"].map(normalize_item)

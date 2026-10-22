@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS public.mrp_review_history (
     blockers JSONB NOT NULL CHECK (jsonb_typeof(blockers) = 'array'),
     system_suggestions JSONB NOT NULL,
     notes TEXT NOT NULL DEFAULT '',
+    incident_id UUID,
+    source_revision INTEGER,
+    review_kind TEXT NOT NULL DEFAULT 'initial',
+    mes_sent_at TIMESTAMPTZ,
     CHECK ((no_blockers AND jsonb_array_length(blockers) = 0)
         OR (NOT no_blockers AND jsonb_array_length(blockers) > 0)),
     UNIQUE (id, qb_num)

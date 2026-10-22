@@ -5,11 +5,6 @@ from flask import Blueprint, jsonify, redirect, url_for
 def create_so_review(engine):
     bp = Blueprint('so_review', __name__)
 
-    @bp.record_once
-    def configure(state):
-        # Compatibility for the moved SO-review service; no DDL is performed.
-        state.app.extensions['so_review_engine'] = engine
-
     @bp.get('/sales_orders')
     def so_review_list():
         return redirect(url_for('lt_planning.workspace', status='needs_material_review'))

@@ -13,7 +13,7 @@ def source(qty=7, remaining=7, shipped=0):
 class WorkflowStateTests(unittest.TestCase):
     def old(self, status=MES):
         return {'workflow_status':status,'approved_order_signature':order_signature(source()),
-                'mes_released_at':'2026-10-01' if status==MES else None,'returned_from_mes':False,'google_present':True}
+                'mes_released_at':'2026-10-01' if status==MES else None,'returned_from_mes':False,'source_present':True}
 
     def test_new_order_needs_review(self):
         self.assertEqual(next_state(None,source()),(REVIEW,False))
@@ -37,7 +37,7 @@ class WorkflowStateTests(unittest.TestCase):
         self.assertEqual(next_state(old,source()),(REVIEW,True))
 
     def test_reappearing_archived_source_requires_review(self):
-        old=self.old(CLOSED); old['google_present']=False
+        old=self.old(CLOSED); old['source_present']=False
         self.assertEqual(next_state(old,source()),(REVIEW,False))
 
     def test_order_signature_ignores_nonproduction_lines_and_manual_extras(self):

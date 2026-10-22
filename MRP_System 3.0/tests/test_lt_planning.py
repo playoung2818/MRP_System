@@ -82,7 +82,7 @@ class WorkflowTests(unittest.TestCase):
                   'items':[{'id':'item-a','item':'PART-A','quantity':10,'configuration':'','inventory_site':''}]}
         self.staged={'sales_order':'SO-1','customer':'Acme','latest_snapshot':snapshot,'previous_snapshot':None,
                      'approved_snapshot':None,'items':[],'source_revision':1,'revision':0,'metadata_fields':{},
-                     'workflow_status':'needs_material_review','returned_from_mes':False,'google_present':True,
+                     'workflow_status':'needs_material_review','returned_from_mes':False,'source_present':True,
                      'review_incident_id':uuid4(),'material_review_id':None,'approved_order_signature':None}
         self.records=[self.staged]
         self.source_dates=[]
@@ -329,17 +329,17 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.post(no_blockers=False,blockers=[{**blocker,'pod_num':'X'*201}]).status_code,400)
 
     def test_source_missing_and_drop_ship_cannot_release(self):
-        self.staged['google_present']=False
+        self.staged['source_present']=False
         self.assertNotIn('<strong>SO-1</strong>',self.client.get('/planning').text)
         self.assertNotIn('<strong>SO-1</strong>',self.client.get('/planning?q=SO-1&so=SO-1').text)
         self.assertEqual(self.post().status_code,400)
-        self.staged['google_present']=True
+        self.staged['source_present']=True
         self.staged['latest_snapshot']['inventory_site']=' Drop Ship '
         self.assertNotIn('<strong>SO-1</strong>',self.client.get('/planning').text)
         self.assertEqual(self.post().status_code,400)
 
     def test_missing_source_material_review_not_counted_or_shown(self):
-        self.staged.update(google_present=False,previous_snapshot=self.staged['latest_snapshot'],latest_snapshot=None)
+        self.staged.update(source_present=False,previous_snapshot=self.staged['latest_snapshot'],latest_snapshot=None)
         with patch('lt_planning.material_context', side_effect=AssertionError('Missing order must not be assessed')):
             html=self.client.get('/planning?q=SO-1&so=SO-1').text
         self.assertNotIn('<strong>SO-1</strong>',html)

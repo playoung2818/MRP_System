@@ -41,7 +41,7 @@ def next_state(old, incoming):
     if not old:
         return REVIEW, False
     status = old.get('workflow_status') or REVIEW
-    if status == CLOSED and not old.get('google_present'):
+    if status == CLOSED and not old.get('source_present'):
         return REVIEW, bool(old.get('mes_released_at'))
     baseline = old.get('approved_order_signature')
     changed = baseline is not None and baseline != order_signature(incoming)
