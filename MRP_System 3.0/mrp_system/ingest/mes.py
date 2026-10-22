@@ -9,7 +9,7 @@ COLUMNS = ['sales_order', 'item', 'inventory_site', 'quantity', 'shipped_quantit
 
 
 def fetch_mes_quantities(sales_orders):
-    url = os.environ.get('MES_WO_QUANTITIES_URL', 'http://localhost:5001/api/wo-quantities')
+    url = os.environ.get('MES_WO_QUANTITIES_URL', 'http://192.168.60.215:5001/api/wo-quantities')
     numbers = sorted({normalize_wo_number(str(number).strip()) for number in sales_orders if str(number).strip()})
     rows = []
     for offset in range(0, len(numbers), 100):

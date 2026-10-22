@@ -98,7 +98,19 @@ def build_events(so: pd.DataFrame, sap_exp: pd.DataFrame, pod: pd.DataFrame | No
         pod_events["Item"] = _norm_key(pod_events["Item"])
         pod_events = pod_events.reindex(columns=cols)
 
-    events = pd.concat([inbound, pod_events, outbound], ignore_index=True, sort=False)
+    # Empty/all-null contributors should not participate in concat dtype inference.
+    # Restore the full event schema afterwards; no movement rows are discarded.
+    parts = []
+    for frame in (inbound, pod_events, outbound):
+        if frame.empty:
+            continue
+        part = frame.dropna(axis=1, how="all")
+        # Keep numeric identifiers as identifiers (123, not 123.0) when another
+        # contributor has no values for the same metadata column.
+        metadata_types = {column: object for column in part if column not in {"Date", "Delta"}}
+        parts.append(part.astype(metadata_types))
+    events = (pd.concat(parts, ignore_index=True, sort=False).reindex(columns=cols) #reindex creates any missing ones, filling their rows with NaN
+              if parts else pd.DataFrame(columns=cols))
     excluded_pods = {str(k).strip() for k in POD_SITE.keys() if str(k).strip()}
     if excluded_pods:
         event_pod_no = events["QB Num"].fillna("").astype(str).str.strip()

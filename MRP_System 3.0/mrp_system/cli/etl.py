@@ -8,6 +8,8 @@ import pandas as pd
 from mrp_system.contracts import TABLE_CONTRACTS, validate_output_table
 from mrp_system.order_staging import stage_cli_orders
 from mrp_system.runtime.db_config import get_engine
+from mrp_system.runtime.console_logging import configure_cli_logging
+from mrp_system.runtime.cli_reports import format_cli_table
 from mrp_system.ingest.io_ops import (
     write_final_sales_order_to_gsheet,
     write_to_db,
@@ -20,7 +22,7 @@ from mrp_system.ingest.sources import (
 from mrp_system.ledger.events import build_events
 from mrp_system.ledger.ledger import build_ledger_from_events
 from mrp_system.ledger.material_readiness import refresh_material_readiness
-from mrp_system.normalize.mrp_normalize import refresh_part_number_aliases, refresh_pod_site
+from mrp_system.normalize.mrp_normalize import refresh_pod_site
 from mrp_system.runtime.config import (
     DB_SCHEMA,
     SHIPPING_SCHEDULE_FILE,
@@ -41,8 +43,10 @@ from mrp_system.transform.sales_order import transform_sales_order
 from mrp_system.transform.shipping import expand_sap_preinstalled, transform_shipping
 from mrp_system.transform.structured import build_structured_df
 
+from mrp_system.ingest.mes import fetch_mes_quantities
+from mrp_system.transform.shipment_reconciliation import partial_shipment_report
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+configure_cli_logging()
 
 VIOLATION_REPORT_COLUMNS = ["Date", "Item", "Item_raw", "Projected_NAV", "Name", "QB Num"]
 VIOLATION_DIFF_KEY_COLUMNS = ["Date", "Item", "Item_raw", "QB Num"]
@@ -79,20 +83,16 @@ def _prepare_violation_report(violations: pd.DataFrame) -> pd.DataFrame:
 
 
 def _print_violation_overview(current: pd.DataFrame) -> None:
-    if current.empty:
-        print("\nViolations: 0 rows.")
-        return
-
     earliest = current["Date"].dropna().min()
     worst = current["Projected_NAV"].min()
-    print(
-        "\nViolations: "
-        f"{len(current)} rows, "
-        f"{current['QB Num'].nunique()} SOs, "
-        f"{current['Item'].nunique()} items, "
-        f"earliest={earliest}, "
-        f"worst_projected_qty={worst:g}"
-    )
+    print('\nINVENTORY VIOLATIONS:')
+    print(format_cli_table(pd.DataFrame([
+        ('Violation rows', len(current)),
+        ('Affected SOs', current['QB Num'].nunique()),
+        ('Affected items', current['Item'].nunique()),
+        ('Earliest date', earliest if pd.notna(earliest) else ''),
+        ('Worst projected qty', f'{worst:g}' if pd.notna(worst) else ''),
+    ], columns=['Metric', 'Value'])))
 
 
 def _normalize_violation_report(df: pd.DataFrame) -> pd.DataFrame:
@@ -118,12 +118,14 @@ def _print_violation_diff(current: pd.DataFrame) -> None:
             had_previous = False
 
     if not had_previous:
-        print("Violation diff vs last run: no previous snapshot found. This run is now the baseline.")
+        print('\nVIOLATION CHANGES SINCE LAST RUN:')
+        print('No previous snapshot. This run is now the baseline.')
         current.to_csv(VIOLATION_SNAPSHOT_PATH, index=False)
         return
 
-    prev_by_key = previous.set_index(VIOLATION_DIFF_KEY_COLUMNS, drop=False)
-    curr_by_key = current.set_index(VIOLATION_DIFF_KEY_COLUMNS, drop=False)
+    # Fully sort the MultiIndex before repeated tuple lookups (including duplicates).
+    prev_by_key = previous.set_index(VIOLATION_DIFF_KEY_COLUMNS, drop=False).sort_index()
+    curr_by_key = current.set_index(VIOLATION_DIFF_KEY_COLUMNS, drop=False).sort_index()
     prev_keys = set(prev_by_key.index)
     curr_keys = set(curr_by_key.index)
 
@@ -149,51 +151,40 @@ def _print_violation_diff(current: pd.DataFrame) -> None:
             changed_rows.append(row)
     changed = pd.DataFrame(changed_rows)
 
-    print(
-        "Violation diff vs last run: "
-        f"current={len(current)}, previous={len(previous)}, "
-        f"new={len(added)}, resolved={len(resolved)}, changed={len(changed)}"
-    )
+    print('\nVIOLATION CHANGES SINCE LAST RUN:')
+    print(format_cli_table(pd.DataFrame([{
+        'Current': len(current), 'Previous': len(previous),
+        'New': len(added), 'Resolved': len(resolved), 'Changed': len(changed),
+    }])))
     if not added.empty:
         print("\nNew violation rows:")
-        print(added.loc[:, VIOLATION_REPORT_COLUMNS])
+        print(format_cli_table(added, columns=VIOLATION_REPORT_COLUMNS))
     if not resolved.empty:
         print("\nResolved violation rows:")
-        print(resolved.loc[:, VIOLATION_REPORT_COLUMNS])
+        print(format_cli_table(resolved, columns=VIOLATION_REPORT_COLUMNS))
     if not changed.empty:
         changed_cols = VIOLATION_DIFF_KEY_COLUMNS + ["Previous_Projected_NAV", "Current_Projected_NAV", "Name"]
         print("\nChanged projected qty rows:")
-        print(changed.reindex(columns=changed_cols))
+        print(format_cli_table(changed.reindex(columns=changed_cols)))
 
     current.to_csv(VIOLATION_SNAPSHOT_PATH, index=False)
 
 
 def main() -> None:
-    logging.info("Loaded %d part-number aliases", refresh_part_number_aliases())
     logging.info("Shipping schedule input: %s", SHIPPING_SCHEDULE_FILE)
     so_raw, inv_raw, ship_raw, pod_raw = extract_inputs()
     validate_input_tables(ship_raw, pod_raw)
 
-    try:
-        updated_site_map = refresh_pod_site(pod_raw)
-        logging.info(
-            "POD_SITE refreshed with %d entries (JSON snapshot saved; applied to this run).",
-            len(updated_site_map),
-        )
-    except Exception as exc:
-        logging.warning("Skipping POD_SITE refresh: %s", exc)
+    refresh_pod_site(pod_raw)
+
     so_full = transform_sales_order(so_raw)
-    from mrp_system.ingest.mes import fetch_mes_quantities
-    from mrp_system.transform.shipment_reconciliation import partial_shipment_report
     mes_quantities = fetch_mes_quantities(so_full['QB Num'].unique())
     shipment_report = partial_shipment_report(so_full, mes_quantities)
     if shipment_report.empty:
         print('Partial shipments: all current open SOs reconciled with MES.')
     else:
-        print('\nPARTIALLY SHIPPED SOs — mark matching WO releases shipped in MES:')
-        print(shipment_report.to_string(index=False))
-        print('Positive Qty to reconcile: not yet marked shipped. Negative: too much marked shipped.')
-        print('WIP may be overstated or understated until these shipment flags are corrected.')
+        print('\nPARTIALLY SHIPPED SOs:')
+        print(format_cli_table(shipment_report))
     pdf_orders_df = fetch_pdf_orders_df_from_DB()
 
     wip_lookup = build_wip_lookup(so_full, mes_quantities)
@@ -226,7 +217,7 @@ def main() -> None:
     write_to_db(ledger, schema=DB_SCHEMA, table=TBL_LEDGER)
     review_engine = get_engine()
     try:
-        logging.info("Staged %s SOs for MRP review (not published to MES).", stage_cli_orders(review_engine, final_sales_order))
+        logging.info("Total %s SOs loaded.", stage_cli_orders(review_engine, final_sales_order))
     finally:
         review_engine.dispose()
     try:
@@ -234,14 +225,6 @@ def main() -> None:
     except Exception:
         logging.exception("Material readiness refresh failed; check calculated_at before using the previous snapshot.")
 
-    print(
-        f"Loaded: {DB_SCHEMA}.{TBL_SALES_ORDER}={len(so_full)}; "
-        f"{DB_SCHEMA}.{TBL_INVENTORY}={len(inv)}; "
-        f"{DB_SCHEMA}.{TBL_STRUCTURED}={len(structured)}; "
-        f"{DB_SCHEMA}.{TBL_POD}={len(pod)}; "
-        f"{DB_SCHEMA}.{TBL_Shipping}={len(ship)}; "
-        f"{DB_SCHEMA}.{TBL_LEDGER}={len(ledger)}; "
-    )
 
 
     # Google Sheet export temporarily disabled; Planning and MES use the database.

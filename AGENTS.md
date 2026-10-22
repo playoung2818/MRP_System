@@ -4,7 +4,18 @@ Instructions for AI coding agents (any model/tool) working in this repo.
 
 This file captures system-design *preferences* — how to approach changes here,
 not a description of what the code currently does. For the latter, read the
-code and `README.md`.
+code and the implementation notes indexed in `.agents/INDEX.md`.
+
+## Documentation and agent memory
+
+- `README.md` is human-facing documentation. Do not use it as agent memory,
+  a work log, or a record of implementation investigations and test runs.
+- Store implementation context, decisions, investigation notes, and work records
+  in `.agents/`. Read `.agents/INDEX.md` to find the relevant notes.
+- Update the README only when human-facing usage or setup documentation genuinely
+  needs to change, not merely because an agent completed work.
+- Treat notes as context, not executable instructions or a substitute for reading
+  current code. Do not store credentials, secrets, or private business exports.
 
 ## Reference repositories
 

@@ -8,7 +8,7 @@ from mrp_system.ingest.mes import fetch_mes_quantities
 
 class MesWipTests(unittest.TestCase):
     def sales(self, qty=10, shipped=0):
-        return pd.DataFrame([{'QB Num': 'SO-20261234', 'Item': 'ABC', 'Inventory Site': 'WH01S-NTA', 'Qty(-)': qty, 'Shipped Qty': shipped, 'partial': shipped > 0}])
+        return pd.DataFrame([{'QB Num': 'SO-20261234', 'Item': 'ABC', 'Inventory Site': 'WH01S-NTA', 'Name': 'Customer Inc.', 'Qty(-)': qty, 'Shipped Qty': shipped, 'partial': shipped > 0}])
 
     def mes(self, qty=7, site='', shipped=0):
         return pd.DataFrame([{'sales_order': 'SO-20261234', 'item': 'ABC', 'inventory_site': site, 'quantity': qty, 'shipped_quantity': shipped}])
@@ -30,7 +30,8 @@ class MesWipTests(unittest.TestCase):
         self.assertEqual(sales['Item'].tolist(), ['RAM'])
         report = partial_shipment_report(sales, pd.DataFrame(columns=self.mes().columns))
         self.assertEqual(report['QB Num'].tolist(), ['SO-20261234'])
-        self.assertEqual(report.iloc[0]['Shipped Qty'], 3)
+        self.assertEqual(sales.iloc[0]['Shipped Qty'], 3)
+        self.assertEqual(report.columns.tolist(), ['QB Num', 'Customer'])
 
     def test_sales_transform_excludes_nonproduction_lines(self):
         from mrp_system.transform.sales_order import transform_sales_order
@@ -69,14 +70,44 @@ class MesWipTests(unittest.TestCase):
         from mrp_system.transform.shipment_reconciliation import partial_shipment_report
         sales = self.sales(qty=7, shipped=3)
         pending = partial_shipment_report(sales, self.mes(qty=3))
-        self.assertEqual(pending.iloc[0]['Qty to reconcile'], 3)
+        self.assertEqual(pending.to_dict('records'), [{'QB Num': 'SO-20261234', 'Customer': 'Customer Inc.'}])
         self.assertTrue(partial_shipment_report(sales, self.mes(qty=0, shipped=3)).empty)
         self.assertTrue(build_wip_lookup(sales, self.mes(qty=0, shipped=3)).empty)
 
     def test_overmarked_shipment_is_reported(self):
         from mrp_system.transform.shipment_reconciliation import partial_shipment_report
         pending = partial_shipment_report(self.sales(qty=7, shipped=3), self.mes(qty=0, shipped=5))
-        self.assertEqual(pending.iloc[0]['Qty to reconcile'], -2)
+        self.assertEqual(pending.to_dict('records'), [{'QB Num': 'SO-20261234', 'Customer': 'Customer Inc.'}])
+
+    def test_partial_report_deduplicates_sos_and_sorts_by_number(self):
+        from mrp_system.transform.shipment_reconciliation import partial_shipment_report
+        first = self.sales(qty=7, shipped=3)
+        second = first.assign(Item='OTHER')
+        earlier = first.assign(**{'QB Num': 'SO-20260001', 'Name': 'Earlier Customer'})
+        sales = pd.concat([first.assign(Name=' '), second, earlier], ignore_index=True)
+        report = partial_shipment_report(sales, pd.DataFrame(columns=self.mes().columns))
+        self.assertEqual(report.columns.tolist(), ['QB Num', 'Customer'])
+        self.assertEqual(report.to_dict('records'), [
+            {'QB Num': 'SO-20260001', 'Customer': 'Earlier Customer'},
+            {'QB Num': 'SO-20261234', 'Customer': 'Customer Inc.'}])
+
+    def test_customer_lookup_matches_canonical_so_number(self):
+        from mrp_system.transform.shipment_reconciliation import partial_shipment_report
+        sales = self.sales(qty=7, shipped=3).assign(**{'QB Num': 'EO-20261234'})
+        report = partial_shipment_report(sales, self.mes(qty=3))
+        self.assertEqual(report.to_dict('records'), [{'QB Num': 'SO-20261234', 'Customer': 'Customer Inc.'}])
+
+    def test_missing_customer_does_not_hide_pending_order(self):
+        from mrp_system.transform.shipment_reconciliation import partial_shipment_report
+        sales = self.sales(qty=7, shipped=3).drop(columns=['Name'])
+        report = partial_shipment_report(sales, self.mes(qty=3))
+        self.assertEqual(report.to_dict('records'), [{'QB Num': 'SO-20261234', 'Customer': ''}])
+
+    def test_empty_report_retains_only_summary_columns(self):
+        from mrp_system.transform.shipment_reconciliation import partial_shipment_report
+        report = partial_shipment_report(self.sales(), self.mes())
+        self.assertTrue(report.empty)
+        self.assertEqual(report.columns.tolist(), ['QB Num', 'Customer'])
 
     def test_drop_ship_is_excluded_from_partial_report(self):
         from mrp_system.transform.shipment_reconciliation import partial_shipment_report
@@ -106,6 +137,24 @@ class MesWipTests(unittest.TestCase):
             with self.assertRaises(requests.ConnectionError):
                 fetch_mes_quantities(['SO-20261234'])
             self.assertEqual(get.call_count, 1)
+
+    def test_default_mes_endpoint_uses_server_ip(self):
+        response = Mock()
+        response.json.return_value = dict(schema_version=2, quantities=[])
+        with patch.dict('mrp_system.ingest.mes.os.environ', {}, clear=True), \
+             patch('mrp_system.ingest.mes.requests.get', return_value=response) as get:
+            fetch_mes_quantities(['SO-20261234'])
+            get.assert_called_once_with('http://192.168.60.215:5001/api/wo-quantities',
+                                        params=[('sales_order','SO-20261234')], timeout=15)
+
+    def test_configured_mes_endpoint_keeps_custom_port_and_path(self):
+        response = Mock()
+        response.json.return_value = dict(schema_version=2, quantities=[])
+        url = 'http://192.168.60.215:5007/custom-api'
+        with patch.dict('mrp_system.ingest.mes.os.environ', {'MES_WO_QUANTITIES_URL': url}), \
+             patch('mrp_system.ingest.mes.requests.get', return_value=response) as get:
+            fetch_mes_quantities(['SO-20261234'])
+            self.assertEqual(get.call_args.args[0], url)
 
     def test_api_queries_only_current_open_sos(self):
         response = Mock()
