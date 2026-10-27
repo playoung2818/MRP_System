@@ -200,6 +200,13 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.client.get('/planning?q=SO-1').status_code,200)
             calculate.assert_not_called()
 
+    def test_production_table_uses_taller_viewport_without_changing_material_table(self):
+        html=self.client.get('/planning?status=needs_production_planning').text
+        self.assertIn('class="table-wrap production-planning-table"',html)
+        self.assertIn('/static/lt-planning.css?v=4',html)
+        html=self.client.get('/planning?status=needs_material_review').text
+        self.assertNotIn('class="table-wrap production-planning-table"',html)
+
     def test_only_two_active_stages_and_no_history(self):
         html=self.client.get('/planning').text
         self.assertIn('Needs Material Review',html)
@@ -241,6 +248,98 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(args['version'],1)
         self.assertFalse(self.publish.called)
         self.assertTrue(any("workflow_status='needs_production_planning'" in sql for sql,_ in self.writes))
+
+    def test_initial_review_has_hidden_immediate_assignment_controls(self):
+        html=self.client.get('/planning?so=SO-1').text
+        self.assertIn('id="review-production-panel" class="mb-3" hidden',html)
+        self.assertIn('id="review-production-start" name="production_start" type="date" disabled',html)
+        self.assertIn('id="review-submit"',html)
+        self.assertIn('/static/lt-planning.js?v=5',html)
+        self.staged['returned_from_mes']=True
+        html=self.client.get('/planning?so=SO-1').text
+        self.assertNotIn('id="review-production-panel"',html)
+        self.assertNotIn('id="review-production-start"',html)
+
+    def test_no_blocker_review_can_assign_and_publish_atomically(self):
+        response=self.post(production_start='2026-07-10',notes='Ready for assembly')
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertTrue(response.json['handed_off'])
+        self.assertEqual(response.json['next_status'],'needs_material_review')
+        self.content_review.assert_called_once()
+        self.publish.assert_called_once_with(self.conn,'SO-1','Ready for assembly')
+        material=self.history('mrp_review_history')[0][1]
+        planning=self.history('lt_planning_history')[0][1]
+        self.assertTrue(material['none'])
+        self.assertTrue(material['handoff'])
+        self.assertEqual(json.loads(material['blockers']),[])
+        self.assertEqual(planning['review'],material['id'])
+        self.assertEqual(planning['id'],material['id'])
+        self.assertEqual(planning['start'],date(2026,7,10))
+        self.assertEqual(planning['notes'],material['notes'])
+        self.assertFalse(planning['override'])
+        self.engine.begin.assert_called_once()
+        self.assertEqual(len(self.history('mrp_review_history')),1)
+        self.assertEqual(len(self.history('lt_planning_history')),1)
+        self.assertTrue(any('INSERT INTO public.production_overrides' in sql for sql,_ in self.writes))
+
+    def test_combined_assignment_requires_explicit_no_blockers(self):
+        blocker={'item':'PART-A','required_qty':10,'uncovered_qty':8}
+        for extra in ({'no_blockers':False,'blockers':[blocker]},
+                      {'no_blockers':False,'blockers':[]},
+                      {'no_blockers':True,'blockers':[blocker]}):
+            with self.subTest(extra=extra):
+                response=self.post(production_start='2026-07-10',**extra)
+                self.assertEqual(response.status_code,400,response.text)
+        self.assertEqual(self.writes,[])
+        self.content_review.assert_not_called()
+        self.publish.assert_not_called()
+
+    def test_combined_assignment_validates_date_before_saving_review(self):
+        self.so.loc[0,'Ship Date']='2026-07-15'
+        for start in ('2026-06-30','2026-07-11','2026-07-20',''):
+            with self.subTest(start=start):
+                response=self.post(production_start=start,ship_date='2099-12-31')
+                self.assertEqual(response.status_code,400,response.text)
+        self.assertEqual(self.writes,[])
+        self.content_review.assert_not_called()
+        self.publish.assert_not_called()
+        self.assertEqual(self.post(production_start='2026-07-10').status_code,200)
+        self.assertEqual(self.history('lt_planning_history')[0][1]['ship'],date(2026,7,15))
+
+    def test_combined_assignment_cannot_reschedule_returned_revision(self):
+        self.staged['returned_from_mes']=True
+        response=self.post(production_start='2026-07-10')
+        self.assertEqual(response.status_code,400,response.text)
+        self.assertEqual(self.writes,[])
+        self.publish.assert_not_called()
+
+    def test_combined_assignment_rejects_stale_material_review(self):
+        self.assertEqual(self.post(production_start='2026-07-10',fingerprint='old').status_code,400)
+        self.assertEqual(self.writes,[])
+        self.content_review.assert_not_called()
+        self.publish.assert_not_called()
+
+    def test_combined_assignment_retry_does_not_duplicate_histories(self):
+        payload=self.payload(production_start='2026-07-10')
+        response=self.client.post('/lt_planning/review',json=payload,headers={'X-CSRF-Token':'token'})
+        self.assertEqual(response.status_code,200,response.text)
+        self.duplicate='SO-1'
+        self.staged['workflow_status']='released_to_mes'
+        response=self.client.post('/lt_planning/review',json=payload,headers={'X-CSRF-Token':'token'})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(len(self.history('mrp_review_history')),1)
+        self.assertEqual(len(self.history('lt_planning_history')),1)
+        self.assertEqual(self.publish.call_count,1)
+
+    def test_combined_publication_failure_rolls_back_and_never_writes_schedule(self):
+        self.publish.side_effect=ValueError('Saved allocation conflict')
+        response=self.post(production_start='2026-07-10')
+        self.assertEqual(response.status_code,400,response.text)
+        self.assertFalse(any('production_overrides' in sql for sql,_ in self.writes))
+        self.assertEqual(self.history('lt_planning_history'),[])
+        # SQLAlchemy engine.begin() receives the exception and rolls back the
+        # earlier SO/material-review writes in this same transaction.
+        self.assertIs(self.engine.begin.return_value.__exit__.call_args.args[0],ValueError)
 
     def test_returned_review_publishes_without_production_date_or_new_plan(self):
         self.staged['returned_from_mes']=True

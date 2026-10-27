@@ -24,7 +24,8 @@
       const url = new URL(window.location.href);
       url.searchParams.delete("reload"); url.searchParams.delete("assigned"); url.searchParams.delete("so");
       url.searchParams.delete("q");
-      url.searchParams.set("status", result.next_status || "needs_material_review");
+      url.searchParams.set("status", action === "review"
+        ? "needs_material_review" : (result.next_status || "needs_material_review"));
       url.hash = ""; window.location.assign(url.toString());
     } catch (error) {
       showError(error.message || "Network error. Retry the same form; duplicate submissions are protected.");
@@ -43,6 +44,27 @@
   if (!contextElement) return;
   const context = JSON.parse(contextElement.textContent);
   const rows = document.getElementById("blocker-rows");
+  const noBlockersInput = document.getElementById("no-blockers");
+  const productionPanel = document.getElementById("review-production-panel");
+  const productionInput = document.getElementById("review-production-start");
+  const reviewSubmit = document.getElementById("review-submit");
+  const reviewHint = document.getElementById("review-save-hint");
+  const defaultLabel = reviewSubmit.textContent;
+  const defaultHint = reviewHint.textContent;
+  function updateImmediateAssignment() {
+    const assignNow = noBlockersInput.checked && Boolean(productionPanel);
+    if (productionPanel) {
+      productionPanel.hidden = !assignNow;
+      productionInput.disabled = !assignNow;
+      productionInput.required = assignNow;
+    }
+    reviewSubmit.textContent = assignNow ? "Save Review & Assign Production Date" : defaultLabel;
+    reviewHint.textContent = assignNow
+      ? "Saves the SO review, material review and production date together, then releases this SO to MES."
+      : defaultHint;
+  }
+  noBlockersInput.addEventListener("change", updateImmediateAssignment);
+  updateImmediateAssignment();
   function option(value, label) {
     const el = document.createElement("option"); el.value = value; el.textContent = label; return el;
   }
@@ -76,13 +98,16 @@
     event.preventDefault();
     const blockers = Array.from(rows.children, tr => ({item: tr.controls.item.value, pod_num: tr.controls.pod.value,
       required_qty: Number(tr.controls.required.value), uncovered_qty: Number(tr.controls.uncovered.value)}));
-    const noBlockers = document.getElementById("no-blockers").checked;
+    const noBlockers = noBlockersInput.checked;
     if (noBlockers && blockers.length) return showError("Remove blocker rows before approving no material blockers.");
     if (!noBlockers && !blockers.length) return showError("Add blockers or explicitly approve no material blockers.");
+    const assignNow = noBlockers && Boolean(productionInput);
+    if (assignNow && !productionInput.value) return showError("Select a production start date before saving.");
     const itemRows = document.getElementById("approved-item-rows");
     save(event.target, "review", {so: context.so, fingerprint: context.fingerprint,
       review_id: context.review_id, submission_id: context.review_submission, blockers,
       no_blockers: noBlockers,
+      ...(assignNow ? {production_start: productionInput.value} : {}),
       notes: document.getElementById("review-notes").value,
       order_content: {...context.order_versions, items: itemRows ? JSON.parse(itemRows.value || "[]") : []}});
   });

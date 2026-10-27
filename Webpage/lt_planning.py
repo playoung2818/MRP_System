@@ -232,10 +232,20 @@ def create_lt_planning(engine, source):
                 if str(payload.get('review_id') or '') != (str(review['id']) if review else ''):
                     raise ValueError('Another review was saved. Reload before continuing.')
                 returned = bool(record['returned_from_mes'])
+                assign_now = action == 'review' and 'production_start' in payload
+                if assign_now and (returned or payload.get('no_blockers') is not True or payload.get('blockers')):
+                    raise ValueError('Immediate production assignment requires an initial review with no material blockers.')
                 if 'notes' not in payload:
                     notes = str(((record['metadata_fields'] or {}).get('notes', '') if returned else (review or {}).get('notes', '')) or '')
                 if len(notes) > 4000:
                     raise ValueError('Notes must be under 4,000 characters.')
+                if action == 'assign' or assign_now:
+                    start = date.fromisoformat(str(payload.get('production_start', '')))
+                    if start < date.today() or start.weekday() >= 5:
+                        raise ValueError('Production date must be today or a future weekday.')
+                    ship = source_ship_date(group)
+                    if ship and start > ship:
+                        raise ValueError('Production start must not follow the imported ship date.')
                 if action == 'review':
                     requirements = {r['item']: r['required_qty'] for r in suggestions}
                     blockers = validate_blockers(payload.get('blockers', []), payload.get('no_blockers') is True, requirements)
@@ -245,11 +255,11 @@ def create_lt_planning(engine, source):
                          incident_id,source_revision,review_kind,mes_sent_at)
                         VALUES (CAST(:id AS uuid),:so,:run,:fingerprint,'Manual review',:none,
                          CAST(:blockers AS jsonb),CAST(:suggestions AS jsonb),:notes,CAST(:incident AS uuid),
-                         :version,:kind,CASE WHEN :returned THEN CURRENT_TIMESTAMP ELSE NULL END)'''),
+                         :version,:kind,CASE WHEN :handoff THEN CURRENT_TIMESTAMP ELSE NULL END)'''),
                         {'id': submission, 'so': number, 'run': 'manual-'+submission, 'fingerprint': fingerprint,
                          'none': not blockers, 'blockers': json.dumps(blockers), 'suggestions': json.dumps(suggestions),
                          'notes': notes, 'incident': str(record['review_incident_id']), 'version': record['source_revision'],
-                         'kind': 'returned_from_mes' if returned else 'initial', 'returned': returned})
+                         'kind': 'returned_from_mes' if returned else 'initial', 'handoff': returned or assign_now})
                     if returned:
                         # Existing production date/finished-goods state and WOs are untouched.
                         publish_to_mes(conn, number, notes, returned=True)
@@ -264,12 +274,9 @@ def create_lt_planning(engine, source):
                     from mrp_system.so_workflow import order_signature
                     if record['approved_order_signature'] != order_signature(record['latest_snapshot']):
                         raise ValueError('Items or ordered quantities changed. Return to material review.')
-                    start = date.fromisoformat(str(payload.get('production_start', '')))
-                    if start < date.today() or start.weekday() >= 5:
-                        raise ValueError('Production date must be today or a future weekday.')
-                    ship = source_ship_date(group)
-                    if ship and start > ship:
-                        raise ValueError('Production start must not follow the imported ship date.')
+                if action == 'assign' or assign_now:
+                    assigned_review_id = submission if assign_now else str(review['id'])
+                    assigned_blockers = [] if assign_now else review['blockers']
                     publish_to_mes(conn, number, notes)
                     conn.execute(text('''INSERT INTO public.production_overrides
                         (wo_number,production_date,is_finished_goods,schedule_updated_at,schedule_updated_by,finished_goods_updated_at,finished_goods_updated_by)
@@ -280,10 +287,10 @@ def create_lt_planning(engine, source):
                     conn.execute(text('''INSERT INTO public.lt_planning_history
                         (id,qb_num,review_id,planned_production_start,assigned_ship_date,assigned_by,blocker_override,notes,mes_sent_at)
                         VALUES (CAST(:id AS uuid),:so,CAST(:review AS uuid),:start,:ship,'Manual assignment',:override,:notes,CURRENT_TIMESTAMP)'''),
-                        {'id': submission,'so': number,'review': str(review['id']),'start': start,'ship': ship,
-                         'override': bool(review['blockers']),'notes': notes})
-                    conn.execute(text('UPDATE public.sales_order_workflow SET material_review_id=CAST(:id AS uuid) WHERE sales_order=:so'), {'id': str(review['id']),'so': number})
-            handed_off = action == 'assign' or returned
+                        {'id': submission,'so': number,'review': assigned_review_id,'start': start,'ship': ship,
+                         'override': bool(assigned_blockers),'notes': notes})
+                    conn.execute(text('UPDATE public.sales_order_workflow SET material_review_id=CAST(:id AS uuid) WHERE sales_order=:so'), {'id': assigned_review_id,'so': number})
+            handed_off = action == 'assign' or assign_now or returned
             return jsonify(ok=True, so=number, handed_off=handed_off, next_status=REVIEW if handed_off else PLANNING)
         except (ValueError, TypeError, KeyError) as exc:
             return jsonify(error=str(exc)), 400

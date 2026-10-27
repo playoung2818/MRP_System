@@ -68,3 +68,30 @@ Do not treat test results below as a current production audit.
   numeric PO exclusion, report formatting, snapshot behavior, ledger ordering,
   console contrast, and shipment reconciliation. No full ETL was executed and no
   live database writes or schema changes were performed for this cleanup.
+
+## 2026-10-26 — Immediate production assignment after no-blocker review
+
+- On an initial material-review form, checking the existing no-material-blockers
+  checkbox reveals a required production date and changes the submit button to
+  `Save Review & Assign Production Date`. Unchecking hides/disables that field
+  and restores the normal review action. No extra confirmation/operator input.
+- One review POST can save SO content, append material review, assign production,
+  append planning history linked to that exact new review, and publish to MES in
+  the same locked transaction. Both history rows use the submission UUID in their
+  separate tables, allowing retry protection through the existing review ID.
+- Combined submission requires explicit no-blockers approval and an empty blocker
+  list. Date validation is unchanged: today/future weekday, no later than a known
+  imported ship date. Validate before saving review rows. Failures roll back the
+  transaction; publication failure never reaches schedule/history assignment.
+- The material-review handoff timestamp is populated for this immediate release.
+  Standard blocked reviews still proceed to Needs Production Planning. A legacy
+  review-only API request without a date remains supported and does not release.
+- Returned-from-MES reviews do not show a date field and reject an attempted
+  combined reschedule; revision approval retains existing schedules/FG/WOs.
+- Current workflow code uses `public.sales_order_workflow`; older notes mentioning
+  `approved_work_orders` are historical names, not a reason to recreate tables.
+- Updated JS cache version to v5. Validation: 84 targeted tests passed, including
+  checkbox/payload behavior via Node, date/owner/stale-review checks, duplicate
+  submission and rollback-context tests. Live read-only review GET returned 200
+  and contained the new controls/script version. No live POST/database writes or
+  schema changes were performed. README and unrelated runtime path edits retained.
