@@ -40,6 +40,12 @@ class MaterialSuggestionTests(unittest.TestCase):
         _,suggestions=material_context(so,ledger,pods,'SO-1','2026-05-01')
         self.assertEqual([r['item'] for r in suggestions],['PART-A'])
 
+    def test_education_discount_is_not_a_material_requirement(self):
+        so,ledger,pods=frames()
+        so=pd.concat([so,pd.DataFrame([{'QB Num':'SO-1','Item':' EdUcAtIoN Discount ','Qty(-)':1}])],ignore_index=True)
+        _,suggestions=material_context(so,ledger,pods,'SO-1','2026-05-01')
+        self.assertEqual([r['item'] for r in suggestions],['PART-A'])
+
     def test_ship_date_and_own_demand_rescheduling_do_not_invalidate_material_review(self):
         so,ledger,pods=frames()
         original=material_context(so,ledger,pods,'SO-1','2026-05-01')[0]
@@ -193,6 +199,31 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.client.get('/planning?status=needs_production_planning').status_code,200)
             calculate.assert_not_called()
 
+    def test_sidebar_has_no_instructional_footer(self):
+        html=self.client.get('/planning').text
+        self.assertNotIn('class="sidebar-footer"',html)
+        self.assertNotIn('Review the SO and materials together.',html)
+        self.assertNotIn('MES receives completed plans.',html)
+        self.assertIn('Loaded test.',html)
+
+    def test_search_form_is_in_sidebar_and_keeps_stage_and_query(self):
+        for stage in ('needs_material_review','needs_production_planning'):
+            with self.subTest(stage=stage):
+                html=self.client.get('/planning',query_string={'status':stage,'q':'SO-1'}).text
+                sidebar=html.split('<aside class="app-sidebar">',1)[1].split('</aside>',1)[0]
+                main=html.split('<main id="workspace">',1)[1]
+                self.assertIn('class="sidebar-search"',sidebar)
+                self.assertIn('role="search"',sidebar)
+                self.assertIn('name="status" value="'+stage+'"',sidebar)
+                self.assertIn('id="q" name="q" type="search" value="SO-1"',sidebar)
+                self.assertNotIn('<button',sidebar)
+                self.assertNotIn('>Clear</a>',sidebar)
+                self.assertIn('placeholder="SO / customer · Enter"',sidebar)
+                self.assertNotIn('id="q"',main)
+                self.assertNotIn('class="filters"',html)
+                self.assertEqual(html.count('id="q"'),1)
+                self.assertIn('/static/lt-planning.css?v=10',html)
+
     def test_search_shows_saved_records_without_calculating(self):
         with patch('lt_planning.material_context', wraps=material_context) as calculate:
             self.client.get('/planning?q=does-not-match')
@@ -200,12 +231,37 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.client.get('/planning?q=SO-1').status_code,200)
             calculate.assert_not_called()
 
-    def test_production_table_uses_taller_viewport_without_changing_material_table(self):
+    def test_both_stages_use_the_same_table_layout(self):
+        self.existing_review()
+        for stage in ('needs_material_review','needs_production_planning'):
+            with self.subTest(stage=stage):
+                html=self.client.get('/planning',query_string={'status':stage}).text
+                self.assertIn('class="table-wrap"',html)
+                self.assertNotIn('production-planning-table',html)
+                self.assertIn('/static/lt-planning.css?v=10',html)
+                self.assertIn('class="result-card planning-orders-card"',html)
+                if stage == 'needs_production_planning':
+                    self.assertIn('Blocking items · uncovered / required',html)
+                    self.assertIn('class="inline-plan-form"',html)
+                    self.assertIn('Assign Production Date',html)
+        css=(Path(__file__).resolve().parents[2]/'Webpage'/'static'/'lt-planning.css').read_text()
+        self.assertIn('.table-wrap{width:100%;height:var(--planning-table-height,60vh);min-height:240px;overflow:auto}',css)
+        self.assertIn('.table{width:100%;',css)
+        self.assertNotIn('calc(100dvh - 300px)',css)
+        self.assertIn('.planning-orders-card{margin-bottom:0}',css)
+        self.assertNotIn('production-planning-table',css)
+
+    def test_production_assignment_controls_are_compact_and_keep_notes(self):
+        self.existing_review()
+        self.review['notes']='Keep this note\nAnd this line'
         html=self.client.get('/planning?status=needs_production_planning').text
-        self.assertIn('class="table-wrap production-planning-table"',html)
-        self.assertIn('/static/lt-planning.css?v=4',html)
-        html=self.client.get('/planning?status=needs_material_review').text
-        self.assertNotIn('class="table-wrap production-planning-table"',html)
+        self.assertIn('name="notes" rows="1"',html)
+        self.assertIn('Keep this note\nAnd this line</textarea>',html)
+        self.assertIn('class="visually-hidden" for="notes-1"',html)
+        self.assertNotIn('btn-primary mt-2',html)
+        css=(Path(__file__).resolve().parents[2]/'Webpage'/'static'/'lt-planning.css').read_text()
+        self.assertIn('.inline-plan-form{position:relative;display:flex;align-items:center;',css)
+        self.assertIn('resize:vertical',css)
 
     def test_only_two_active_stages_and_no_history(self):
         html=self.client.get('/planning').text
@@ -254,7 +310,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('id="review-production-panel" class="mb-3" hidden',html)
         self.assertIn('id="review-production-start" name="production_start" type="date" disabled',html)
         self.assertIn('id="review-submit"',html)
-        self.assertIn('/static/lt-planning.js?v=5',html)
+        self.assertIn('/static/lt-planning.js?v=6',html)
         self.staged['returned_from_mes']=True
         html=self.client.get('/planning?so=SO-1').text
         self.assertNotIn('id="review-production-panel"',html)

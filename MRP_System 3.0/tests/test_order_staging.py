@@ -34,7 +34,9 @@ class StagingTests(unittest.TestCase):
         service_only = dict(service, **{'QB Num': 'SO-SERVICE'})
         tariff = dict(charge, Item=' TaRiFf Charge ')
         tariff_only = dict(tariff, **{'QB Num': 'SO-TARIFF'})
-        orders = cli_sources(pd.concat([rows, pd.DataFrame([charge, charge_only, service, service_only, tariff, tariff_only])], ignore_index=True))
+        discount = dict(charge, Item=' EdUcAtIoN Discount ')
+        discount_only = dict(discount, **{'QB Num': 'SO-DISCOUNT'})
+        orders = cli_sources(pd.concat([rows, pd.DataFrame([charge, charge_only, service, service_only, tariff, tariff_only, discount, discount_only])], ignore_index=True))
         self.assertEqual(set(orders), {'SO1'})
         self.assertEqual([i['item'] for i in orders['SO1']['items']], ['A'])
 
@@ -43,12 +45,14 @@ class StagingTests(unittest.TestCase):
         incoming = staged_snapshot(cli_sources(self.source())['SO1'], None)
         incoming['items'].extend([{'id': 'charge', 'item': 'Shipping Charge', 'quantity': 1},
                                   {'id': 'service', 'item': 'Engineer Services', 'quantity': 1},
-                                  {'id': 'tariff', 'item': ' Tariff Charge ', 'quantity': 1}])
+                                  {'id': 'tariff', 'item': ' Tariff Charge ', 'quantity': 1},
+                                  {'id': 'discount', 'item': ' Education Discount ', 'quantity': 1}])
         conn.execute.return_value.mappings.return_value.first.return_value = {
             'source_present': True, 'latest_snapshot': incoming,
             'items': [{'id': 'manual-charge', 'item': ' shipping charge ', 'quantity': 1},
                       {'id': 'manual-service', 'item': ' ENGINEER SERVICES ', 'quantity': 1},
-                      {'id': 'manual-tariff', 'item': 'TARIFF CHARGE', 'quantity': 1}]}
+                      {'id': 'manual-tariff', 'item': 'TARIFF CHARGE', 'quantity': 1},
+                      {'id': 'manual-discount', 'item': 'EDUCATION DISCOUNT', 'quantity': 1}]}
         conn.execute.return_value.mappings.return_value.__iter__.return_value = iter([])
         publish_completed_order(conn, 'SO1')
         params = conn.execute.call_args.args[1]

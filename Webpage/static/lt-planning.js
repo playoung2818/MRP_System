@@ -3,6 +3,32 @@
   const csrfElement = document.getElementById("planning-csrf");
   if (!csrfElement) return;
   const csrf = JSON.parse(csrfElement.textContent);
+  const listCard = document.querySelectorAll(".planning-orders-card")[0];
+  if (listCard) {
+    const tableWrap = listCard.querySelector(".table-wrap");
+    const workspace = document.getElementById("workspace");
+    const footer = tableWrap.nextElementSibling;
+    function fitTableToWindow() {
+      const mainStyle = window.getComputedStyle(workspace);
+      const cardStyle = window.getComputedStyle(listCard);
+      const top = tableWrap.getBoundingClientRect().top + window.scrollY;
+      const bottom = (footer ? footer.getBoundingClientRect().height : 0)
+        + (parseFloat(mainStyle.paddingBottom) || 0)
+        + (parseFloat(cardStyle.marginBottom) || 0)
+        + (parseFloat(cardStyle.borderBottomWidth) || 0);
+      const height = Math.max(240, Math.floor(window.innerHeight - top - bottom));
+      tableWrap.style.setProperty("--planning-table-height", `${height}px`);
+    }
+    const scheduleFit = () => window.requestAnimationFrame(fitTableToWindow);
+    window.addEventListener("resize", scheduleFit);
+    window.addEventListener("load", scheduleFit);
+    if (window.ResizeObserver) {
+      const observer = new window.ResizeObserver(scheduleFit);
+      document.querySelectorAll(".brand-header, .summary-grid, #save-message").forEach(el => observer.observe(el));
+      if (footer) observer.observe(footer);
+    }
+    scheduleFit();
+  }
   function showError(message) {
     const box = document.getElementById("save-message");
     box.className = "alert alert-danger"; box.textContent = message;

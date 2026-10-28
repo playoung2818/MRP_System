@@ -43,7 +43,8 @@ class WorkflowStateTests(unittest.TestCase):
     def test_order_signature_ignores_nonproduction_lines_and_manual_extras(self):
         incoming=source()
         incoming['items'] += [{'item':'Engineer Services','quantity':1},{'item':'Shipping Charge','quantity':1},
-                              {'id':'manual-x','item':'Extra','quantity':2}, {'item':' Tariff Charge ','quantity':1}]
+                              {'id':'manual-x','item':'Extra','quantity':2}, {'item':' Tariff Charge ','quantity':1},
+                              {'item':' Education Discount ','quantity':1}]
         self.assertEqual(order_signature(incoming),order_signature(source()))
 
     def test_reordering_duplicate_lines_does_not_change_product_requirement(self):

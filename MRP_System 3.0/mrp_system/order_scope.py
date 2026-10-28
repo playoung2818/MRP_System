@@ -3,7 +3,7 @@
 
 def is_nonproduction_item(item):
     return str(item or '').strip().casefold() in {
-        'shipping charge', 'forwarding charge', 'tariff (estimation)', 'tariff charge', 'engineer services',
+        'shipping charge', 'forwarding charge', 'tariff (estimation)', 'tariff charge', 'engineer services', 'education discount',
     }
 
 

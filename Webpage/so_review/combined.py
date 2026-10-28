@@ -9,9 +9,11 @@ from .service import _normalize_review_rows, review_items, is_drop_ship_order
 
 
 def warehouse_source(source):
+    from mrp_system.order_scope import is_nonproduction_item
     source = deepcopy(source or {})
     source['items'] = [i for i in source.get('items', [])
-                       if str(i.get('inventory_site') or source.get('inventory_site') or '').strip().casefold() != 'drop ship']
+                       if not is_nonproduction_item(i.get('item'))
+                       and str(i.get('inventory_site') or source.get('inventory_site') or '').strip().casefold() != 'drop ship']
     return source
 
 

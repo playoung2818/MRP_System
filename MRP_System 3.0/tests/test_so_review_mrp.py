@@ -2,6 +2,7 @@
 from copy import deepcopy
 from pathlib import Path
 import sys
+import subprocess
 import unittest
 from unittest.mock import MagicMock
 
@@ -16,6 +17,19 @@ from mrp_system.order_staging import staged_snapshot
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_review_helpers_import_before_pipeline_path_bootstrap(self):
+        code = '''import builtins
+original = builtins.__import__
+def guarded(name, *args, **kwargs):
+    if name.startswith("mrp_system"):
+        raise ImportError("Pipeline policy imports must be deferred until server path setup")
+    return original(name, *args, **kwargs)
+builtins.__import__ = guarded
+from so_review.combined import warehouse_source
+'''
+        result=subprocess.run([sys.executable,'-c',code],cwd=WEB,capture_output=True,text=True,timeout=20)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
     def test_reorder_and_quantity_edit_preserve_identity(self):
         source = {'sales_order': 'SO1', 'items': [{'item': 'A', 'quantity': 2}, {'item': 'B', 'quantity': 3}]}
         first = staged_snapshot(source, None)
@@ -80,6 +94,24 @@ class CombinedReviewTests(unittest.TestCase):
         review_content(self.conn, 'SO1', payload)
         params = self.conn.execute.call_args.args[1]
         self.assertNotIn('Drop ship', params['snapshot'])
+
+    def test_discount_in_existing_snapshot_is_excluded_from_review_and_save(self):
+        self.row['latest_snapshot']['items'].append({
+            'id':'discount','item':' Education Discount ','quantity':1,
+            'configuration':'','inventory_site':'WH01S-NTA'})
+        self.row['items']=[{'id':'manual-discount','item':'EDUCATION DISCOUNT','quantity':1}]
+        original=deepcopy(self.row)
+        context=content_context(self.row)
+        self.assertEqual([i['item'] for i in context['source']['items']],['A','B'])
+        self.assertEqual([i['item'] for i in context['items']],['A','B'])
+        self.assertFalse(any('discount' in change.casefold() for change in context['changes']))
+        self.assertEqual(self.row,original)
+        payload=self.payload()
+        payload['items']=context['items']
+        review_content(self.conn,'SO1',payload)
+        params=self.conn.execute.call_args.args[1]
+        self.assertNotIn('discount',params['snapshot'].casefold())
+        self.assertNotIn('discount',params['items'].casefold())
 
     def test_stale_so_revision_is_rejected(self):
         payload = self.payload()

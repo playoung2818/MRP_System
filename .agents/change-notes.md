@@ -95,3 +95,122 @@ Do not treat test results below as a current production audit.
   submission and rollback-context tests. Live read-only review GET returned 200
   and contained the new controls/script version. No live POST/database writes or
   schema changes were performed. README and unrelated runtime path edits retained.
+
+## Planning sidebar search
+
+- Moved the existing SO/customer GET search from the main results card into the
+  Planning sidebar below the brand. Search submits natively on Enter; there are
+  no Search/Clear buttons. Empty the field and press Enter to reset. Current query,
+  current stage, and cross-stage current-MRP search behavior are preserved.
+- Added compact sidebar form styling and vertical sidebar overflow; mobile
+  sidebar layout is retained.
+- Validation: 49 Planning/UI/JS tests passed, including search location and
+  stage/query preservation. No backend/database changes.
+
+## Shared Planning table layout
+
+- Production Planning uses the same `.table-wrap` layout as Material Review.
+  Both use a CSS height variable measured from actual available browser space,
+  with a 60vh no-JS fallback and a 240px minimum. Scrolling and sticky headers
+  remain. A prior hard-coded 300px header allowance was removed because it could
+  not reliably align the card bottom across browser sizes and header reflows.
+  Tables explicitly use full width without relying on CDN CSS.
+  Removed the production-only 65vh minimum/75vh maximum override.
+- Blocker details and inline date/notes assignment controls remain unchanged.
+- CSS cache version is v10; JS cache version is v6. Validation: 51 Planning/UI/JS
+  tests passed, including
+  identical wrapper styling and retention of production assignment controls.
+  No backend/database changes; README is unchanged.
+
+## Live-browser verification and compact production rows
+
+- Checked the actual 192.168.60.215:5002 Planning pages in headless Edge at
+  1440x1000, with DOM measurements and screenshots (temporary files outside Git).
+- Both stages already had 700px table viewports. The real density difference was
+  the stacked assignment form: production rows were about 164px, versus 50px in
+  material review; only four production rows were fully visible.
+- Production assignment date, Notes, and Assign button now share a horizontal
+  flex row. Notes retains its accessible label, saved multiline contents, and
+  vertical resizing, but starts at one visible line. No extra submission controls
+  or changes to date/material/ownership validation.
+- Verified the updated live page again: same 700px viewport, production rows
+  about 54–89px for the sampled rows, and eleven fully visible rows. Material
+  Review remained unchanged at thirteen visible rows. Counts are measurements
+  for the tested viewport/current dataset, not fixed UI guarantees.
+- CSS cache version v9. All browser checks were GET/read-only; no assignment was
+  submitted. Screenshots contain operational data and must not be committed.
+
+## Viewport bottom alignment and invisible-label overflow
+
+- `lt-planning.js` sizes the primary `.planning-orders-card .table-wrap` from its
+  document-space top, actual footer height, main bottom padding, and card border/
+  margin. Recalculate on window resize/load and ResizeObserver updates for the
+  header, summaries, error area, and footer. Scroll position does not change the
+  allocation. The card has no trailing margin, but a selected review keeps its
+  normal gap beneath the primary card.
+- Actual Edge inspection found a second root cause: absolutely positioned
+  `.visually-hidden` labels in unpositioned assignment forms caused document
+  overflow outside the scrollable table. At a 1000px viewport, Production Planning
+  had a 2109px document despite the card itself being near the viewport bottom.
+  `position:relative` on `.inline-plan-form` contains those labels correctly.
+- Rechecked both live stages at 1440x1000, 1920x1080, and 1920x1440. Card bottoms
+  were consistently about 21px above the viewport bottom (normal 20px padding
+  plus rounding), and document height equaled viewport height in all six checks.
+- Dedicated Node regression covers measured heights, resize, header/footer reflow,
+  scroll independence, and the small-screen minimum. No live POST/DB writes.
+
+## Education Discount is nonproduction
+
+- Added exact, trimmed, case-insensitive `Education Discount` exclusion to the
+  shared MRP production policy and MES execution policy, alongside charges/services.
+  CLI import/staging, material requirements, order signatures and publication use
+  this classification; similarly named real products are not excluded by prefix.
+- Combined review's `warehouse_source` now filters all nonproduction lines as well
+  as Drop Ship lines. This handles existing cached snapshots immediately without
+  rewriting source snapshots, saved history, schedules, or WOs in the database.
+- Keep the MRP policy import inside `warehouse_source`, not at module scope:
+  `server.py` imports web review helpers before adding the pipeline directory to
+  sys.path. Added a subprocess regression test for that startup order. A reload
+  startup failure was corrected and the MRP web process restored.
+- SO-20261613 live GET returned 200 with 14 production items and no Education
+  Discount; ownership remained Needs Material Review. No stored approval
+  signatures contained the discount at the time of the read-only check.
+- Validation: 108 targeted MRP tests passed (one existing obsolete whole-SO Drop
+  Ship test deselected), plus four pure MES scope tests. The MES tests perform no
+  app startup, database/table creation, or live writes. No full CLI or live POST
+  was executed. Raw imported rows are filtered on the next normal CLI run;
+  original snapshots/history are not manually deleted.
+
+## Sidebar footer removal
+
+- Removed the three-line Planning sidebar instruction footer at the user's
+  request. Navigation/search and the table's loaded-data/source footer remain.
+- Validation: 53 Planning/UI/JS tests passed, including absence of the sidebar
+  text and retention of loaded-data information. No workflow/database changes.
+
+## MES API connection-refused recovery
+
+- A CLI failure against 192.168.60.215:5001 was caused by MES being stopped;
+  no Python MES web process was running. MRP on port 5002 remained available.
+- Read-only schema preflight confirmed all four MES model tables and their columns
+  already existed, the multiple-WO migration was applied, and the startup legacy
+  seed had zero candidates. No table creation was needed or authorized.
+- Started the existing MES run.py web process with its existing protected settings,
+  ensuring the database connection host was 192.168.60.215. Startup log is outside
+  the repository in the user's temporary directory; no credentials recorded here.
+- Verified API HTTP 200/schema v2, then ran only MRP's real fetch_mes_quantities
+  against the current imported SO identifiers: 158 identifiers, 283 quantity rows
+  at that check. These counts are point-in-time verification, not fixed totals.
+- Did not rerun ETL, replace imported/ledger tables, or bypass MES with zero WIP.
+
+## WIP lookup diagnostic: malformed saved SO identifiers
+
+- Read-only tracing found that a trailing apostrophe in a saved MES WO's
+  `sales_order` can exclude it from WIP: the API filters by exact SO identifiers
+  before MRP's downstream identifier normalization runs. A canonical request
+  returns no row while a request with the malformed stored identifier returns it.
+- Do not assume missing WIP is a quantity arithmetic/cap problem. Check raw saved
+  SO identifiers as well as canonical values and current import/site membership.
+- No WO records were corrected during this investigation; obtain confirmation
+  before repairing a saved SO reference. Operational IDs/quantities are omitted
+  from this note.
