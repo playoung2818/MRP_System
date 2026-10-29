@@ -57,17 +57,11 @@ def build_structured_df(
     final_sales_order["Item"] = final_sales_order["Item"].map(normalize_item)
     final_sales_order = final_sales_order.loc[:, ~final_sales_order.columns.duplicated()]
 
-    from .inventory import match_mes_quantities
-    picked = match_mes_quantities(df_sales_order, mes_quantities)
-    picked = picked[['QB Num', 'Item', 'Inventory Site', 'WIP_Qty', 'Qty(-)', 'partial']]
+    from .inventory import execution_metrics
+    picked = execution_metrics(df_sales_order, mes_quantities)
     final_sales_order['QB Num'] = final_sales_order['QB Num'].astype(str).map(normalize_wo_number)
+    final_sales_order['Inventory Site'] = final_sales_order['Inventory Site'].fillna('').astype(str).str.strip()
     df_order_picked = final_sales_order.merge(picked, on=['QB Num', 'Item', 'Inventory Site'], how='left')
-    qty = df_order_picked['WIP_Qty'].fillna(0)
-    df_order_picked['Picked_Flag'] = qty.gt(0)
-    df_order_picked['partial'] = df_order_picked['partial'].astype('boolean').fillna(False).astype(bool)
-    partially_picked = qty.gt(0) & qty.lt(df_order_picked['Qty(-)'])
-    df_order_picked['Picked'] = np.where(qty.le(0), 'No', np.where(partially_picked, 'Partial', 'Picked'))
-    df_order_picked.drop(columns=['WIP_Qty', 'Qty(-)'], inplace=True)
 
     inv_plus = inventory_df.copy()
     for c in ["On Hand", "On Sales Order", "On PO", "Reorder Pt (Min)", "Sales/Week", "Available"]:
@@ -92,9 +86,12 @@ def build_structured_df(
     # WIP (picked, not yet shipped) is computed once in build_wip_lookup(), already scoped to
     # WH01S-NTA, and merged in above via inv_plus as "WIP_Qty" — just look it up here rather
     # than recomputing it from df_order_picked a second time with its own site filter.
-    structured_df["Picked_Qty"] = pd.to_numeric(structured_df.get("WIP_Qty", 0), errors="coerce").fillna(0)
+    # Keep per-order WIP separate from item-wide WIP. The legacy Picked_Qty
+    # column now means this SO/item/site's active WIP, never the item-wide total.
+    structured_df["Picked_Qty"] = structured_df["SO WIP Qty"].fillna(0)
     structured_df["On Hand"] = pd.to_numeric(structured_df.get("On Hand", 0), errors="coerce").fillna(0)
-    structured_df["On Hand - WIP"] = (structured_df["On Hand"] - structured_df["Picked_Qty"]).clip(lower=0)
+    item_wip = pd.to_numeric(structured_df.get("WIP_Qty", pd.Series(0, index=structured_df.index)), errors="coerce").fillna(0)
+    structured_df["On Hand - WIP"] = structured_df["On Hand"] - item_wip
 
     filtered = df_pod[~df_pod["Name"].isin(EXCLUDED_PREINSTALLED_PO_VENDORS)]
     result = filtered.groupby("Item", as_index=False)["Qty(+)"].sum()

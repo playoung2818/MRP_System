@@ -203,14 +203,50 @@ Do not treat test results below as a current production audit.
   at that check. These counts are point-in-time verification, not fixed totals.
 - Did not rerun ETL, replace imported/ledger tables, or bypass MES with zero WIP.
 
-## WIP lookup diagnostic: malformed saved SO identifiers
+## WIP lookup diagnostic: intentionally excluded saved SO references
 
-- Read-only tracing found that a trailing apostrophe in a saved MES WO's
-  `sales_order` can exclude it from WIP: the API filters by exact SO identifiers
-  before MRP's downstream identifier normalization runs. A canonical request
-  returns no row while a request with the malformed stored identifier returns it.
-- Do not assume missing WIP is a quantity arithmetic/cap problem. Check raw saved
-  SO identifiers as well as canonical values and current import/site membership.
-- No WO records were corrected during this investigation; obtain confirmation
-  before repairing a saved SO reference. Operational IDs/quantities are omitted
-  from this note.
+- The user clarified that a trailing apostrophe in a saved MES WO's `sales_order`
+  intentionally excludes returned-to-warehouse stock while retaining the WO.
+  Do not "repair" these references or normalize them back into active WIP.
+- Exact raw-reference filtering happens before downstream normalization. A
+  canonical request excludes the suffixed record. The disputed item total was
+  correct; the apparent discrepancy came from comparing outstanding demand to
+  actual MES WIP on a partially picked order, not from the returned WO.
+- Operational IDs/quantities are omitted from this note. No WO records were
+  changed during the investigation.
+
+## MRP execution metrics aligned with MES
+
+- `match_mes_quantities` keeps original Ordered Qty separate from source
+  outstanding/inferred Shipped Qty and MES physical shipments. WIP is saved
+  unshipped release quantity, without a source-outstanding cap. Awaiting pick is
+  original ordered minus saved unshipped and physically shipped quantities.
+- Over-execution is flagged for review, not silently truncated or auto-corrected.
+  Source shipment reconciliation remains compatible; the existing source
+  `Shipped Qty` field is not relabelled or treated as physical MES shipment.
+- Shared `execution_metrics` yields one SO/item/site summary. Structured output
+  retains both per-SO `SO WIP Qty` and item-wide `WIP_Qty`; legacy `Picked_Qty`
+  now denotes per-SO active WIP. On Hand minus WIP uses the item-wide total and
+  does not silently clamp negative stock. New numeric columns have output types.
+- MES-derived inventory WIP replaces stale input WIP, including zero/empty
+  lookup results. Both DB-read and downstream adapters preserve exact raw SO
+  exclusions before normalization, including intentional apostrophes.
+- Item-detail, SO drilldown, and inventory lookup tables display Ordered,
+  Picked (WIP), Awaiting Pick, Physically Shipped, and Source Outstanding
+  separately. They read existing MES WO facts on lookup (no HTTP dependency,
+  writes, schema changes, or new tables); repeated source lines are grouped once.
+  Full source site membership is consulted before inferring legacy missing WO
+  sites, rather than guessing from the WH01S-only structured view.
+  Full structured metrics will also persist on the next ordinary CLI run.
+- Actual headless Edge verification confirmed the displayed partial-pick split,
+  zero WIP for the intentionally excluded WO, and correct summed item WIP. The
+  execution table uses horizontal scrolling to avoid deeply wrapped item names.
+  Screenshots remain in the user's temporary directory, outside Git.
+- Validation: 230 tests passed; four unrelated existing cases deselected
+  (mixed-site Drop Ship, runtime path, shipping spelling, source-rename target).
+  One legacy test module was ignored because its rename-sales-order-workflow
+  module is absent. Existing shipping concat warnings remain unrelated.
+  Read-only full-snapshot transformations and output contract validation passed;
+  no current item WIP totals changed under the new uncapped calculation and no
+  execution groups exceeded ordered quantities at that check. No full ETL,
+  migration, live assignment, business-record update, or table creation ran.

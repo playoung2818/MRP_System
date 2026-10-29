@@ -11,7 +11,7 @@ from urllib.parse import quote
 from flask import Flask, request, render_template_string, jsonify, abort, redirect, url_for, send_file, Response
 import pandas as pd
 import numpy as np
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 from openpyxl import load_workbook
 
 from unassigned_so import COLUMNS as UNASSIGNED_COLUMNS, NUMERIC_COLUMNS as UNASSIGNED_NUMERIC_COLUMNS, unassigned_orders, report_rows
@@ -35,6 +35,9 @@ if str(MRP_MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MRP_MODULE_DIR))
 
 from mrp_system.normalize.mrp_normalize import normalize_item, refresh_part_number_aliases
+from mrp_system.transform.inventory import execution_metrics, EXECUTION_COLUMNS
+from mrp_system.transform.sales_order import normalize_wo_number
+from mrp_system.ingest.mes import quantities_from_saved_wos
 from mrp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from mrp_system.runtime.db_config import get_engine, DATABASE_DSN
 from mrp_system.quotation_cards import load_item_cards
@@ -893,15 +896,50 @@ def _wo_status_by_qb_num() -> dict[str, str]:
 
     return so.groupby("QB Num")["Picked"].agg(_status_for_group).to_dict()
 
+def _execution_metrics_for_orders(sales: pd.DataFrame) -> pd.DataFrame:
+    """Read MES facts without requiring its HTTP service or writing any records."""
+    numbers = sorted(set(sales['QB Num'].astype(str).map(normalize_wo_number)))
+    statement = text('''SELECT sales_order, items, is_shipped, record_source
+                        FROM public."WO Details"
+                        WHERE record_source = 'mes' AND sales_order IN :numbers''')
+    statement = statement.bindparams(bindparam('numbers', expanding=True))
+    with engine.connect() as connection:
+        records = list(connection.execute(statement, {'numbers': numbers}).mappings())
+    # Structured rows contain only WH01S-NTA. Consult the full source scope so a
+    # legacy WO with no site is never guessed onto WH01S when another site exists.
+    source = _read_table('public', 'open_sales_orders')
+    source['QB Num'] = source['QB Num'].astype(str).map(normalize_wo_number)
+    source['Item'] = source['Item'].astype(str).str.strip().map(normalize_item)
+    scope = sales[['QB Num', 'Item']].copy()
+    scope['QB Num'] = scope['QB Num'].astype(str).map(normalize_wo_number)
+    scope['Item'] = scope['Item'].astype(str).str.strip().map(normalize_item)
+    source = source.merge(scope.drop_duplicates(), on=['QB Num', 'Item'], how='inner', validate='many_to_one')
+    return execution_metrics(source, quantities_from_saved_wos(records, numbers))
+
+
 def _so_table_for_item(item: str) -> tuple[list[str], list[dict], dict[str, int | float | None]]:
-    need_cols = ["Name", "QB Num", "Item", "Qty(-)", "On Hand - WIP", "Ship Date", "Picked"]
+    need_cols = ["Name", "QB Num", "Item", "Ordered Qty", "Picked (WIP)",
+                 "Awaiting Pick Qty", "Physically Shipped Qty", "Source Outstanding Qty",
+                 "On Hand - WIP", "Ship Date", "Picked"]
     g = SO_INV[SO_INV["Item"] == item].copy()
+    if 'On Hand - WIP' not in g and 'In Stock(Inventory)' in g:
+        g['On Hand - WIP'] = g['In Stock(Inventory)']
+    if not g.empty:
+        metrics = _execution_metrics_for_orders(g)
+        keys = ['QB Num', 'Item', 'Inventory Site']
+        g['QB Num'] = g['QB Num'].astype(str).map(normalize_wo_number)
+        g['Inventory Site'] = g['Inventory Site'].fillna('').astype(str).str.strip()
+        # The display represents SO/item/site totals once, even for repeated lines.
+        g = g.drop(columns=[*EXECUTION_COLUMNS, 'partial'], errors='ignore')
+        g = g.drop_duplicates(keys).merge(metrics, on=keys, how='left', validate='one_to_one')
+        g['Ordered Qty'] = g['SO Ordered Qty']
+        g['Picked (WIP)'] = g['SO WIP Qty']
+        if g['Execution Issue'].any():
+            g['Execution Check'] = g['Execution Issue'].map({True: 'Review: saved quantities exceed ordered', False: ''})
+            need_cols.append('Execution Check')
     for c in need_cols:
         if c not in g.columns:
             g[c] = ""
-    # Fallback for WIP column if missing in data
-    if "On Hand - WIP" not in SO_INV.columns and "In Stock(Inventory)" in SO_INV.columns:
-        g["On Hand - WIP"] = SO_INV.loc[g.index, "In Stock(Inventory)"]
     if "Ship Date" in g.columns:
         ship_dates = pd.to_datetime(g["Ship Date"], errors="coerce")
         g = (
@@ -1520,7 +1558,7 @@ def so_lines():
         title=f"On Sales Order â€” {item}",
         columns=columns,
         rows=rows,
-        extra_note="Source: public.wo_structured",
+        extra_note="Source: imported SO quantities and MES saved WO execution.",
         on_po=on_po_val,
         open_po_columns=[],
         open_po_rows=[],
@@ -1586,7 +1624,7 @@ def item_details():
         po_rows=rows_po,
         open_po_columns=open_po_cols,
         open_po_rows=open_po_rows,
-        extra_note_so="Source: public.wo_structured",
+        extra_note_so="Source: imported SO quantities and MES saved WO execution.",
         extra_note_po='Source: SAP"',
         extra_note_open_po='Source: Quickbooks',
         so_total_on_sales=so_totals.get("on_sales_order"),

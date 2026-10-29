@@ -916,6 +916,8 @@ ITEM_TPL = """
     :root{ --hdr:#f8fafc; }
     body{ padding:28px; background:#f7fafc; color:#0f172a; }
     .card-lite{ border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.06); }
+    .execution-table td{white-space:nowrap}
+    .execution-table th{min-width:88px}
     .table td, .table th{ vertical-align:middle; }
     .table-responsive{ max-height:70vh; overflow:auto; }
     .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); }
@@ -951,7 +953,7 @@ ITEM_TPL = """
         </div>
         <div class="card-body">
           <div class="table-responsive">
-            <table class="table table-sm table-bordered table-hover align-middle">
+            <table class="table table-sm table-bordered table-hover align-middle execution-table">
               <thead class="table-light text-uppercase small text-muted">
                 <tr>
                   {% for c in so_columns %}
