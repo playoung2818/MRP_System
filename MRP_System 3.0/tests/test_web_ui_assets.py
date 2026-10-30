@@ -61,6 +61,7 @@ class WebUIAssetsTests(unittest.TestCase):
         from flask import Flask, render_template
         app = Flask(__name__, template_folder=str(WEB_ROOT / 'templates'))
         app.add_url_rule('/planning', endpoint='lt_planning.workspace', view_func=lambda: '')
+        app.jinja_env.filters['canonical_item'] = lambda value: value
         with app.test_request_context('/planning'):
             html = render_template('lt_planning.html', db_error='test', status='needs_material_review')
         sidebar = html.split('<nav class="sidebar-nav"', 1)[1].split('</nav>', 1)[0]

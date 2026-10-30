@@ -250,3 +250,80 @@ Do not treat test results below as a current production audit.
   no current item WIP totals changed under the new uncapped calculation and no
   execution groups exceeded ordered quantities at that check. No full ETL,
   migration, live assignment, business-record update, or table creation ran.
+
+## Production Planning full-page table toggle
+
+- Added an Expand table button to the top-right of Needs Production Planning's
+  card only. It fills the browser viewport; Exit full page or Escape restores
+  the normal layout. This is an in-page expansion, not browser fullscreen.
+- No form replacement or navigation occurs: unsaved dates/notes and table scroll
+  stay intact. Background controls become inert and their prior states are
+  restored on exit; save errors remain visible over the expanded card.
+- CSS v11 / JS v7. Validation: 56 Planning/UI/JS tests passed. Actual headless
+  Edge at 1440x1000 measured the expanded card at x=0,y=0,width=1440,height=1000.
+  Escape restored the original card dimensions and background focus access;
+  unsaved inputs retained the same nodes and values. Browser-only test values
+  were restored; no forms submitted or business/database records changed.
+- Preserved preexisting edits to Webpage/lt_planning.py and its tests.
+- Follow-up: replaced visible button text with the user's supplied expand icon,
+  saved as static/planning-expand.jpg. Retained hidden accessible text and dynamic
+  action labels/tooltips without replacing the image on toggle. CSS v12 / JS v8;
+  56 tests and actual Edge expand/Escape/input-retention checks passed again.
+- Superseded the JPEG with the user's supplied inline Tabler arrows-maximize SVG.
+  Removed the newly added unused JPEG asset. Accessible labels and toggle behavior
+  remain unchanged; 56 Planning/UI/JS tests passed.
+- Icon size subsequently reduced to 18px at the user's request.
+
+## Production Planning single Save: notes-only or assignment
+
+- Replaced the inline assignment button with Save and made its date optional.
+  A blank date posts notes-only; an entered date uses the existing validated,
+  transactional production assignment/MES handoff. Initial combined review and
+  returned-revision behavior remain unchanged.
+- `/lt_planning/notes` uses CSRF, shared advisory/row locks, ownership/source and
+  exact review/signature/version checks. It does not load/reassess material data,
+  publish to MES, change blockers, update schedules/FG/WOs, or alter review rows.
+- Draft notes and an append-only note-event journal live inside the existing
+  workflow metadata_fields (`planning_note`, `planning_note_history`). Events
+  carry submission UUID, assessment link, versions and UTC timestamp. No new
+  table/schema required. Empty notes can explicitly clear the current draft.
+- Retries with an identical submission are idempotent; altered UUID reuse and
+  stale notes versions are rejected. Assignment also checks the draft version
+  and carries saved notes when omitted from an API request. Note versions do not
+  reset content/source revision, ownership, assessment timestamps, or history.
+- Lists render the current assessment-scoped draft. Notes-only success stays on
+  the same page, updates the form's version/submission context, and shows
+  "Notes saved · date not assigned". Edits typed during a request are retained
+  and flagged unsaved. Full-page mode and other unsaved rows are retained.
+- CSS v14 / JS v9. Validation: 62 targeted Planning/UI/JS tests and 239 broader
+  tests passed, with the same four unrelated legacy cases deselected and one
+  missing-module legacy test file ignored. Existing shipping concat warnings
+  remain unrelated. Actual Edge verified native blank-date submission and inline
+  confirmation using a mocked fetch response, followed by expand/Escape/input
+  retention checks. Live GET verified the controls; no real POST, business-data
+  update, ETL, migration, or database-table creation was performed.
+- Follow-up: removed the persistent Date optional hint. Clicking Save with a
+  blank date now asks for confirmation that only notes will save, with no date
+  assignment or MES handoff. Cancel sends no request and retains typed notes;
+  dated saves do not prompt. JS v10; 62 targeted Planning/UI/JS tests passed.
+
+## Canonical Planning item display
+
+- User requested canonical inventory spelling, not all-uppercase formatting.
+  Planning renders saved blockers, allocation labels, readiness suggestions and
+  existing review item labels using alias resolution plus case-insensitive lookup
+  of the exact inventory_status.Part_Number spelling. Unknown items retain their
+  existing spelling. No blockers, quantities, reasons, assessments, or history
+  are rewritten or recalculated to resolve display names.
+- The inventory-name lookup is read-only and cached for 60 seconds; explicit
+  Reload invalidates it. New blocker option labels are canonical but their raw
+  submitted values remain unchanged. Review inputs retain original values in
+  data attributes so canonical display alone cannot amend source/manual item
+  identifiers; explicit manual edits still submit the entered value.
+- This is a user-authorized display-only exception to the earlier instruction
+  to show saved blocker text verbatim; the saved assessments remain authoritative.
+- Planning JS v11 / review JS v8. Validation: 77 targeted Planning/review/UI/JS
+  tests passed, including exact casing, aliases, unknown items, cached refresh,
+  unchanged saved blocker records, and original review payload preservation.
+  Live GET verified the two CPU blocker labels use the inventory's lowercase i.
+  No live POST, data correction, migration, or table creation was performed.

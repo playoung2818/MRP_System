@@ -19,7 +19,12 @@
   }
   function fieldValue(row, selector, label) {
     const field = row.querySelector(selector);
-    if (field) return field.value || '';
+    if (field) {
+      // Canonical display labels must not silently amend saved/source item names.
+      if (selector === '.review-item' && field.dataset.originalItem !== undefined
+          && field.value === field.dataset.displayItem) return field.dataset.originalItem;
+      return field.value || '';
+    }
     const cell = row.querySelector(`[data-label="${label}"]`);
     return cell ? cell.textContent.trim() : '';
   }

@@ -9,6 +9,12 @@ human-facing root README. Repository-wide behavior rules remain in `AGENTS.md`.
 - [Change notes](change-notes.md): recent decisions, changes, validation, and known
   limitations. Add future work records here or create a focused note and index it.
 
+- [SO Planning KPI](planning-kpi.md): calendar-day definitions, legacy coverage,
+  creation-date retention, read-only dashboard, navigation, and validation.
+
+- [Purchase orders and receiving](purchase-receiving.md): POD search/detail,
+  append-only receiving, workbook/manual validation, locking, and tests.
+
 Read the relevant notes before making related changes, then verify current code.
 Historical schema commands are not authorization to create database tables.
 Never put credentials, secret configuration values, or private business exports

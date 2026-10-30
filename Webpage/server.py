@@ -40,6 +40,7 @@ from mrp_system.transform.sales_order import normalize_wo_number
 from mrp_system.ingest.mes import quantities_from_saved_wos
 from mrp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from mrp_system.runtime.db_config import get_engine, DATABASE_DSN
+from planning_kpi import create_planning_kpi
 from mrp_system.quotation_cards import load_item_cards
 from mrp_system.purchase_order_lookup import purchase_orders
 from mrp_system.runtime.constants import PLACEHOLDER_DATE
@@ -1111,6 +1112,7 @@ def _lt_planning_source(force=False):
 
 
 app.register_blueprint(create_lt_planning(engine, _lt_planning_source))
+app.register_blueprint(create_planning_kpi(engine))
 
 # initial load
 _load_from_db(force=True)

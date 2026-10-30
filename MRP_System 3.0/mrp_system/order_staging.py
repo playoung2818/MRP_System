@@ -12,6 +12,7 @@ import pandas as pd
 from sqlalchemy import text
 from mrp_system.transform.sales_order import normalize_wo_number
 from mrp_system.order_scope import exclude_drop_ship_orders, is_drop_ship_order, is_nonproduction_item
+from mrp_system.planning_kpi import source_created_dates, retain_creation_date
 
 
 def _identity(item):
@@ -81,6 +82,7 @@ def stage_cli_orders(engine, frame):
     orders = cli_sources(frame)  # Validate everything before touching shared rows.
     production = frame.loc[~frame['Item'].map(is_nonproduction_item)]
     eligible = exclude_drop_ship_orders(production)
+    creation_dates = source_created_dates(eligible)
     excluded_keys = set(frame['QB Num'].astype(str).str.strip()) - set(eligible['QB Num'].astype(str).str.strip())
     with engine.begin() as conn:
         conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
@@ -119,7 +121,7 @@ def stage_cli_orders(engine, frame):
                 (sales_order, items, metadata_fields, previous_snapshot, latest_snapshot,
                  source_present, synced_at, source_revision, revision,
                  workflow_status, returned_from_mes, review_incident_id)
-                VALUES (:so, '[]', '{}', NULL, CAST(:snapshot AS json), TRUE,
+                VALUES (:so, '[]', CAST(:metadata AS json), NULL, CAST(:snapshot AS json), TRUE,
                         CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 1, 0, :status, :returned, CAST(:incident AS uuid))
                 ON CONFLICT (sales_order) DO UPDATE SET previous_snapshot=COALESCE(sales_order_workflow.latest_snapshot, sales_order_workflow.previous_snapshot),
                     latest_snapshot=EXCLUDED.latest_snapshot, source_present=TRUE,
@@ -128,9 +130,10 @@ def stage_cli_orders(engine, frame):
                     synced_at=EXCLUDED.synced_at,
                     source_revision=sales_order_workflow.source_revision + :changed,
                     metadata_fields=CASE WHEN :status = 'released_to_mes'
-                        THEN CAST(CAST(sales_order_workflow.metadata_fields AS jsonb) || jsonb_build_object('ship_date', :ship) AS json)
-                        ELSE sales_order_workflow.metadata_fields END'''),
+                        THEN CAST(CAST(:metadata AS jsonb) || jsonb_build_object('ship_date', :ship) AS json)
+                        ELSE CAST(:metadata AS json) END'''),
                 {'so': number, 'snapshot': json.dumps(incoming), 'changed': int(changed),
+                 'metadata': json.dumps(retain_creation_date((old or {}).get('metadata_fields'), creation_dates.get(number))),
                  'status': status, 'returned': returned, 'incident': incident, 'ship': incoming.get('ship_date', '')})
     return len(orders)
 

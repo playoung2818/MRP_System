@@ -92,6 +92,7 @@ class WorkflowTests(unittest.TestCase):
                      'review_incident_id':uuid4(),'material_review_id':None,'approved_order_signature':None}
         self.records=[self.staged]
         self.source_dates=[]
+        self.inventory_names=[]
         self.review=None; self.writes=[]; self.duplicate=None
         self.engine=MagicMock()
         self.conn=self.engine.begin.return_value.__enter__.return_value
@@ -110,6 +111,8 @@ class WorkflowTests(unittest.TestCase):
         result.scalar_one_or_none.return_value=None
         result.mappings.return_value.first.return_value=None
         result.mappings.return_value.all.return_value=[]
+        if 'SELECT "Part_Number" FROM public.inventory_status' in sql:
+            result.mappings.return_value.all.return_value=[{'Part_Number': name} for name in self.inventory_names]
         if 'MIN("Order Date") AS created_date' in sql:
             result.mappings.return_value.all.return_value=self.source_dates
         if 'SELECT qb_num FROM public.' in sql: result.scalar_one_or_none.return_value=self.duplicate
@@ -123,6 +126,130 @@ class WorkflowTests(unittest.TestCase):
             result.mappings.return_value.all.return_value=[self.review] if self.review else []
         if sql.lstrip().startswith(('INSERT','UPDATE')): self.writes.append((sql,params))
         return result
+
+    def save_notes(self, **extra):
+        return self.post('notes', source_revision=1, revision=0, notes_version='', notes='Follow up', **extra)
+
+    def apply_note_write(self):
+        metadata = next(params['metadata'] for sql, params in reversed(self.writes) if 'SET metadata_fields=' in sql)
+        self.staged['metadata_fields'] = json.loads(metadata)
+
+    def test_notes_only_does_not_assign_publish_or_recalculate(self):
+        self.existing_review()
+        response = self.save_notes()
+        self.assertEqual(response.status_code,200,response.json)
+        self.assertFalse(response.json['handed_off'])
+        self.assertEqual(response.json['next_status'],'needs_production_planning')
+        self.assertEqual(len(self.writes),1)
+        self.assertIn('SET metadata_fields=',self.writes[0][0])
+        self.assertEqual(self.staged['workflow_status'],'needs_production_planning')
+        self.source.assert_not_called()
+        self.publish.assert_not_called()
+        self.content_review.assert_not_called()
+        self.assertEqual(self.history('mrp_review_history'),[])
+        self.assertEqual(self.history('lt_planning_history'),[])
+        self.apply_note_write()
+        self.assertEqual(self.staged['metadata_fields']['planning_note']['notes'],'Follow up')
+        self.assertEqual(len(self.staged['metadata_fields']['planning_note_history']),1)
+        self.assertEqual(self.review['notes'],'')
+        self.assertIn('>Follow up</textarea>',self.client.get('/planning?status=needs_production_planning').text)
+
+    def test_note_edits_append_and_retries_do_not_append_twice(self):
+        self.existing_review()
+        first = self.save_notes().json
+        self.apply_note_write()
+        payload = self.payload(source_revision=1,revision=0,notes_version=first['notes_version'],notes='Second note')
+        headers={'X-CSRF-Token':'token'}
+        second=self.client.post('/lt_planning/notes',json=payload,headers=headers)
+        self.assertEqual(second.status_code,200,second.json)
+        self.apply_note_write()
+        self.assertEqual([event['notes'] for event in self.staged['metadata_fields']['planning_note_history']],['Follow up','Second note'])
+        writes=len(self.writes)
+        retry=self.client.post('/lt_planning/notes',json=payload,headers=headers)
+        self.assertEqual(retry.status_code,200,retry.json)
+        self.assertEqual(len(self.writes),writes)
+        self.assertEqual(retry.json['notes_version'],second.json['notes_version'])
+        payload['notes']='Different payload with reused UUID'
+        self.assertEqual(self.client.post('/lt_planning/notes',json=payload,headers=headers).status_code,400)
+
+    def test_notes_reject_stale_tabs_and_stale_assignment(self):
+        self.existing_review()
+        first=self.save_notes().json
+        self.apply_note_write()
+        writes=len(self.writes)
+        self.assertEqual(self.save_notes().status_code,400)
+        self.assertEqual(self.post('assign',production_start='2026-07-06',notes='stale').status_code,400)
+        self.assertEqual(len(self.writes),writes)
+        self.publish.assert_not_called()
+        response=self.post('assign',production_start='2026-07-06',notes_version=first['notes_version'])
+        self.assertEqual(response.status_code,200,response.json)
+        self.assertEqual(self.publish.call_args.args[2],'Follow up')
+
+    def test_notes_reject_owner_source_review_and_version_changes(self):
+        self.existing_review()
+        original=dict(self.staged)
+        for update in ({'workflow_status':'released_to_mes'}, {'source_present':False},
+                       {'material_review_id':uuid4()}, {'source_revision':2}, {'revision':2},
+                       {'approved_order_signature':{'part-a':99}}):
+            self.staged.update(original)
+            self.staged.update(update)
+            response=self.save_notes()
+            self.assertEqual(response.status_code,400,(update,response.json))
+            self.assertEqual(self.writes,[])
+        self.publish.assert_not_called()
+
+    def test_notes_csrf_limits_empty_clear_and_date_guard(self):
+        self.existing_review()
+        self.assertEqual(self.client.post('/lt_planning/notes',json=self.payload(notes='test')).status_code,403)
+        self.assertEqual(self.post('notes',notes='x'*4001).status_code,400)
+        self.assertEqual(self.save_notes(production_start='2026-07-06').status_code,400)
+        response=self.post('notes',source_revision=1,revision=0,notes_version='',notes='')
+        self.assertEqual(response.status_code,200,response.json)
+        self.assertEqual(response.json['notes'],'')
+
+    def test_assignment_retains_original_creation_date_in_same_transaction(self):
+        self.existing_review()
+        self.so['Order Date']='2020-10-01'
+        self.staged['metadata_fields']={'notes':'Preserve unrelated metadata'}
+        response=self.post('assign',production_start='2026-07-06')
+        self.assertEqual(response.status_code,200,response.json)
+        capture=next((sql,params) for sql,params in self.writes if 'jsonb_build_object(\'planning_kpi\'' in sql)
+        self.assertEqual(json.loads(capture[1]['kpi'])['created_date'],'2020-10-01')
+        self.assertIn('COALESCE(metadata_fields::jsonb',capture[0])
+        self.assertEqual(self.staged['metadata_fields']['notes'],'Preserve unrelated metadata')
+        self.assertEqual(len(self.history('lt_planning_history')),1)
+
+    def test_canonical_blocker_display_preserves_saved_history(self):
+        self.existing_review([{'item':'I7-9700E','required_qty':10,'uncovered_qty':8,'reason':'No open POD'}])
+        self.inventory_names=['i7-9700E']
+        with patch('lt_planning.material_context',wraps=material_context) as calculate:
+            html=self.client.get('/planning?status=needs_production_planning').text
+            calculate.assert_not_called()
+        self.assertIn('<strong>i7-9700E</strong>',html)
+        self.assertNotIn('<strong>I7-9700E</strong>',html)
+        self.assertEqual(self.review['blockers'][0]['item'],'I7-9700E')
+        self.assertEqual(self.writes,[])
+        self.client.get('/planning?status=needs_production_planning')
+        queries=[str(call.args[0]) for call in self.read_conn.execute.call_args_list]
+        self.assertEqual(sum('SELECT "Part_Number" FROM public.inventory_status' in sql for sql in queries),1)
+        self.inventory_names=['i7-9700e']
+        html=self.client.get('/planning?status=needs_production_planning&reload=1').text
+        self.assertIn('<strong>i7-9700e</strong>',html)
+        self.assertEqual(self.review['blockers'][0]['item'],'I7-9700E')
+
+    def test_canonical_display_aliases_and_unknown_names(self):
+        self.inventory_names=['Part-Canonical']
+        display=self.app.jinja_env.filters['canonical_item']
+        with patch('mrp_system.normalize.mrp_normalize.normalize_item',side_effect=lambda value:'PART-CANONICAL' if value=='old-alias' else value):
+            self.assertEqual(display('old-alias'),'Part-Canonical')
+            self.assertEqual(display('UNKNOWN-Manually-entered'),'UNKNOWN-Manually-entered')
+
+    def test_loaded_timestamp_displays_whole_seconds(self):
+        from datetime import datetime
+        self.source.side_effect=lambda force:(self.so,self.ledger,self.pods,datetime(2026,10,29,14,45,13,395892),None)
+        html=self.client.get('/planning').text
+        self.assertIn('Loaded 2026-10-29 14:45:13.',html)
+        self.assertNotIn('395892',html)
 
     def existing_review(self, blockers=None):
         fingerprint,_=material_context(self.so,self.ledger,self.pods,'SO-1')
@@ -199,6 +326,17 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.client.get('/planning?status=needs_production_planning').status_code,200)
             calculate.assert_not_called()
 
+    def test_production_table_has_full_page_toggle_only_on_production_stage(self):
+        html=self.client.get('/planning?status=needs_production_planning').text
+        self.assertIn('id="planning-expand-table"',html)
+        self.assertIn('aria-controls="planning-orders-card" aria-expanded="false"',html)
+        self.assertIn('icon-tabler-arrows-maximize',html)
+        self.assertIn('stroke="currentColor"',html)
+        self.assertNotIn('planning-expand.jpg',html)
+        self.assertIn('aria-label="Expand table" title="Expand table"',html)
+        self.assertIn('data-expand-label>Expand table</span>',html)
+        self.assertNotIn('id="planning-expand-table"',self.client.get('/planning?status=needs_material_review').text)
+
     def test_sidebar_has_no_instructional_footer(self):
         html=self.client.get('/planning').text
         self.assertNotIn('class="sidebar-footer"',html)
@@ -222,7 +360,7 @@ class WorkflowTests(unittest.TestCase):
                 self.assertNotIn('id="q"',main)
                 self.assertNotIn('class="filters"',html)
                 self.assertEqual(html.count('id="q"'),1)
-                self.assertIn('/static/lt-planning.css?v=10',html)
+                self.assertIn('/static/lt-planning.css?v=14',html)
 
     def test_search_shows_saved_records_without_calculating(self):
         with patch('lt_planning.material_context', wraps=material_context) as calculate:
@@ -238,12 +376,14 @@ class WorkflowTests(unittest.TestCase):
                 html=self.client.get('/planning',query_string={'status':stage}).text
                 self.assertIn('class="table-wrap"',html)
                 self.assertNotIn('production-planning-table',html)
-                self.assertIn('/static/lt-planning.css?v=10',html)
+                self.assertIn('/static/lt-planning.css?v=14',html)
                 self.assertIn('class="result-card planning-orders-card"',html)
                 if stage == 'needs_production_planning':
                     self.assertIn('Blocking items · uncovered / required',html)
                     self.assertIn('class="inline-plan-form"',html)
-                    self.assertIn('Assign Production Date',html)
+                    self.assertIn('>Save</button>',html)
+                    self.assertNotIn('Date optional',html)
+                    self.assertNotIn('name="production_start" type="date" required',html)
         css=(Path(__file__).resolve().parents[2]/'Webpage'/'static'/'lt-planning.css').read_text()
         self.assertIn('.table-wrap{width:100%;height:var(--planning-table-height,60vh);min-height:240px;overflow:auto}',css)
         self.assertIn('.table{width:100%;',css)
@@ -310,7 +450,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('id="review-production-panel" class="mb-3" hidden',html)
         self.assertIn('id="review-production-start" name="production_start" type="date" disabled',html)
         self.assertIn('id="review-submit"',html)
-        self.assertIn('/static/lt-planning.js?v=6',html)
+        self.assertIn('/static/lt-planning.js?v=11',html)
         self.staged['returned_from_mes']=True
         html=self.client.get('/planning?so=SO-1').text
         self.assertNotIn('id="review-production-panel"',html)

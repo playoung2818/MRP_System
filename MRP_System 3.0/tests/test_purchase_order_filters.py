@@ -60,6 +60,10 @@ def test_source_dropdown_options_and_pagination_preserve_filters():
         )
     assert response.status_code == 200
     html = response.get_data(as_text=True)
+    assert 'name="pod_num"' in html
+    assert 'name="qb_num"' not in html
+    assert '<span>QB Num' not in html
+    assert '<span>POD#' in html
     assert 'data-open-filter="source_names"' in html
     assert 'id="menu-source_names"' in html
     assert "Search source names" in html

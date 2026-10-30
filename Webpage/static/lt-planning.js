@@ -20,6 +20,38 @@
       tableWrap.style.setProperty("--planning-table-height", `${height}px`);
     }
     const scheduleFit = () => window.requestAnimationFrame(fitTableToWindow);
+    const expandButton = document.getElementById("planning-expand-table");
+    if (expandButton) {
+      const backgroundState = new Map();
+      function setExpanded(expanded) {
+        if (expanded) {
+          document.querySelectorAll(".app-sidebar, #workspace > :not(.planning-orders-card):not(#save-message)").forEach(el => {
+            backgroundState.set(el, el.inert);
+            el.inert = true;
+          });
+        } else {
+          backgroundState.forEach((inert, el) => { el.inert = inert; });
+          backgroundState.clear();
+        }
+        listCard.classList.toggle("is-expanded", expanded);
+        document.body.classList.toggle("planning-table-expanded", expanded);
+        expandButton.setAttribute("aria-expanded", String(expanded));
+        const label = expanded ? "Exit full page" : "Expand table";
+        expandButton.querySelector("[data-expand-label]").textContent = label;
+        expandButton.setAttribute("aria-label", label);
+        expandButton.setAttribute("title", label);
+        scheduleFit();
+      }
+      expandButton.addEventListener("click", () => {
+        setExpanded(!listCard.classList.contains("is-expanded"));
+      });
+      document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !event.isComposing && listCard.classList.contains("is-expanded")) {
+          setExpanded(false);
+          expandButton.focus();
+        }
+      });
+    }
     window.addEventListener("resize", scheduleFit);
     window.addEventListener("load", scheduleFit);
     if (window.ResizeObserver) {
@@ -37,6 +69,8 @@
   async function save(form, action, payload) {
     const button = form.querySelector('button[type="submit"]');
     button.disabled = true;
+    const status = form.querySelector(".inline-save-status");
+    if (status) status.textContent = "Saving…";
     try {
       const response = await fetch(`/lt_planning/${action}`, {
         method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf},
@@ -47,6 +81,17 @@
       }
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to save.");
+      if (action === "notes") {
+        const context = JSON.parse(form.dataset.context);
+        form.dataset.context = JSON.stringify({...context,
+          notes_version: result.notes_version, submission_id: result.submission_id});
+        const unchanged = form.elements.notes.value === payload.notes;
+        if (unchanged) form.elements.notes.value = result.notes;
+        if (status) status.textContent = unchanged
+          ? "Notes saved · date not assigned" : "Earlier notes saved · unsaved changes";
+        button.disabled = false;
+        return;
+      }
       const url = new URL(window.location.href);
       url.searchParams.delete("reload"); url.searchParams.delete("assigned"); url.searchParams.delete("so");
       url.searchParams.delete("q");
@@ -56,14 +101,21 @@
     } catch (error) {
       showError(error.message || "Network error. Retry the same form; duplicate submissions are protected.");
       button.disabled = false;
+      if (status) status.textContent = "Not saved";
     }
   }
   document.querySelectorAll(".inline-plan-form").forEach(form => {
     form.addEventListener("submit", event => {
       event.preventDefault();
       const fields = form.elements;
-      save(form, "assign", {...JSON.parse(form.dataset.context),
+      if (!fields.production_start.value && !window.confirm(
+        "No production date selected. Save notes only? This SO will stay in Needs Production Planning and will not be sent to MES."
+      )) return;
+      save(form, fields.production_start.value ? "assign" : "notes", {...JSON.parse(form.dataset.context),
         production_start: fields.production_start.value, notes: fields.notes.value});
+    });
+    form.addEventListener("input", () => {
+      form.querySelector(".inline-save-status").textContent = "Unsaved changes";
     });
   });
   const contextElement = document.getElementById("planning-context");
@@ -99,7 +151,7 @@
     const item = document.createElement("select");
     item.className = "form-select item-select"; item.required = true;
     item.setAttribute("aria-label", "Blocking component"); item.append(option("", "Select component"));
-    context.suggestions.forEach(s => item.append(option(s.item, s.item)));
+    context.suggestions.forEach(s => item.append(option(s.item, s.display_item || s.item)));
     const pod = document.createElement("input");
     pod.type = "text"; pod.className = "form-control"; pod.maxLength = 200;
     pod.placeholder = "POD# (optional)"; pod.setAttribute("aria-label", "POD number");

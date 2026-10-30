@@ -5,8 +5,8 @@
   <title>Planning · NTA MRP</title>
   <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="/static/lt-planning.css?v=10" rel="stylesheet"><link href="/static/so-review.css?v=1" rel="stylesheet">
-  <script src="/static/so-review.js?v=7" defer></script><script src="/static/lt-planning.js?v=6" defer></script>
+  <link href="/static/lt-planning.css?v=14" rel="stylesheet"><link href="/static/so-review.css?v=1" rel="stylesheet">
+  <script src="/static/so-review.js?v=8" defer></script><script src="/static/lt-planning.js?v=11" defer></script>
 </head>
 <body>
 <a href="#workspace" class="skip-link">Skip to workspace</a>
@@ -21,14 +21,16 @@
   <nav class="sidebar-nav" aria-label="Planning stages">
     {% for key, label in [('needs_material_review','Needs Material Review'),('needs_production_planning','Needs Production Planning')] %}<a class="{{ 'active' if status == key else '' }}" href="{{ url_for('lt_planning.workspace', status=key) }}">{{ label }}</a>{% endfor %}
   </nav>
+  <div class="nav-section-label">REPORTS</div>
+  <nav class="sidebar-nav" aria-label="Reports"><a href="/planning/kpi">SO Planning KPI</a></nav>
 </aside>
 <main id="workspace">
   <header class="brand-header"><div><div class="page-eyebrow">PLANNING</div><h1 class="page-title">Planning</h1><p class="page-description">Review SOs and blockers → assign production → publish to MES.</p></div><a class="btn btn-outline-secondary" href="{{ url_for('lt_planning.workspace', reload=1, status=status or 'needs_material_review', so=request.args.get('so',''), q=request.args.get('q','')) }}">Reload MRP data</a></header>
   <div id="save-message" role="status" aria-live="polite"></div>
   {% if db_error %}<div class="alert alert-danger">{{ db_error }}</div>{% else %}
   <div class="summary-grid">{% for key,label in stage_labels.items() %}<a class="summary-card {{ 'active' if status == key else '' }}" href="{{ url_for('lt_planning.workspace', status=key) }}"><strong>{{ counts[key] }}</strong><span>{{ label }}</span></a>{% endfor %}</div>
-  <section class="result-card planning-orders-card">
-    <div class="card-header">{% if not query %}<h2>{{ stage_labels[status] }}</h2>{% endif %}<span class="result-count">{{ rows|length }} orders</span></div>
+  <section class="result-card planning-orders-card" id="planning-orders-card">
+    <div class="card-header">{% if not query %}<h2>{{ stage_labels[status] }}</h2>{% endif %}<div class="planning-table-actions"><span class="result-count">{{ rows|length }} orders</span>{% if status == 'needs_production_planning' %}<button type="button" class="btn btn-sm btn-outline-secondary" id="planning-expand-table" aria-controls="planning-orders-card" aria-expanded="false" aria-label="Expand table" title="Expand table"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="planning-expand-icon icon icon-tabler icons-tabler-outline icon-tabler-arrows-maximize" aria-hidden="true" focusable="false"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M16 4l4 0l0 4" /><path d="M14 10l6 -6" /><path d="M8 20l-4 0l0 -4" /><path d="M4 20l6 -6" /><path d="M16 20l4 0l0 -4" /><path d="M14 14l6 6" /><path d="M8 4l-4 0l0 4" /><path d="M4 4l6 6" /></svg><span class="visually-hidden" data-expand-label>Expand table</span></button>{% endif %}</div></div>
     <div class="table-wrap"><table class="table"><thead><tr><th>Sales order</th><th>Customer</th><th>SO Created Date</th>{% if query or status != 'needs_material_review' %}<th>Blocking items · uncovered / required</th>{% endif %}<th>{{ 'Status / action' if query else ('Review' if status == 'needs_material_review' else 'Production assignment') }}</th></tr></thead><tbody>
     {% for row in rows %}
       {% set active_blockers = row.review.blockers if row.review else [] %}
@@ -36,7 +38,7 @@
         <td class="nowrap"><strong>{{ row.so }}</strong>{% if row.returned %}<div><span class="badge text-bg-warning">Returned from MES</span></div>{% endif %}<div class="hint">Ship date: {{ row.ship_date }}</div></td><td>{{ row.customer }}</td><td class="nowrap">{{ row.created_date or '—' }}{% if row.age_days is not none %}<div class="hint">{{ row.age_days }} days old</div>{% endif %}</td>
         {% if query or status != 'needs_material_review' %}<td class="{{ 'blocked' if active_blockers else '' }}">
           {% if not row.review %}<span class="text-muted">SO and material review required</span>
-          {% else %}{% for b in active_blockers %}<div><strong>{{ b.item }}</strong>{% if b.pod_num %} <span class="hint">POD# {{ b.pod_num }}</span>{% endif %} · {{ b.uncovered_qty }} / {{ b.required_qty }} {% if b.reason %}<span class="hint">— {{ b.reason }}</span>{% endif %}{% if b.warning %}<div class="text-danger">{{ b.warning }}</div>{% endif %}</div>{% else %}<span class="text-success">No recorded material blockers</span>{% endfor %}
+          {% else %}{% for b in active_blockers %}<div><strong>{{ b.item|canonical_item }}</strong>{% if b.pod_num %} <span class="hint">POD# {{ b.pod_num }}</span>{% endif %} · {{ b.uncovered_qty }} / {{ b.required_qty }} {% if b.reason %}<span class="hint">— {{ b.reason }}</span>{% endif %}{% if b.warning %}<div class="text-danger">{{ b.warning }}</div>{% endif %}</div>{% else %}<span class="text-success">No recorded material blockers</span>{% endfor %}
           <div class="hint mt-1">Reviewed {{ row.review.assessed_at|lt_utc }}</div>
           {% endif %}
         </td>{% endif %}
@@ -46,21 +48,21 @@
         {% elif row.status == 'needs_material_review' %}<a class="btn btn-sm btn-primary" href="{{ url_for('lt_planning.workspace', status=row.status, so=row.so, q=query) }}#material-review">Review SO & Materials</a>
         {% elif row.status == 'needs_production_planning' %}
           <form class="inline-plan-form" data-context="{{ row.assignment|tojson|forceescape }}">
-            <label class="visually-hidden" for="production-{{ loop.index }}">Production date for {{ row.so }}</label><input class="form-control" id="production-{{ loop.index }}" name="production_start" type="date" required>
-            <label class="visually-hidden" for="notes-{{ loop.index }}">Notes</label><textarea class="form-control" id="notes-{{ loop.index }}" name="notes" rows="1" maxlength="4000" placeholder="Notes" aria-label="Notes for {{ row.so }}">{{ row.review.notes if row.review else '' }}</textarea>
-            <button class="btn btn-sm btn-primary" type="submit">Assign Production Date</button>
+            <label class="visually-hidden" for="production-{{ loop.index }}">Production date for {{ row.so }}</label><input class="form-control" id="production-{{ loop.index }}" name="production_start" type="date" title="Optional: leave blank to save notes only">
+            <label class="visually-hidden" for="notes-{{ loop.index }}">Notes</label><textarea class="form-control" id="notes-{{ loop.index }}" name="notes" rows="1" maxlength="4000" placeholder="Notes" aria-label="Notes for {{ row.so }}">{{ row.notes }}</textarea>
+            <div class="inline-plan-save"><button class="btn btn-sm btn-primary" type="submit" title="Save notes only when the date is blank; assign production when a date is entered">Save</button><span class="inline-save-status hint" role="status" aria-live="polite"></span></div>
           </form>
         {% endif %}
         </td>
       </tr>
     {% else %}<tr><td colspan="{{ 4 if not query and status == 'needs_material_review' else 5 }}" class="text-muted text-center p-4">No sales orders match this view.</td></tr>{% endfor %}
-    </tbody></table></div><div class="hint p-2 border-top">Loaded {{ loaded }}. Ship dates come from MRP CLI. After release, the SO leaves MRP and belongs to MES.</div>
+    </tbody></table></div><div class="hint p-2 border-top">Loaded {{ loaded }}. After release, the SO leaves MRP and belongs to MES.</div>
   </section>
   {% if detail %}
   <section class="result-card" id="material-review"><div class="card-header"><h2>{{ detail.so }} · Review Sales Order & Materials</h2></div><div class="card-body">
     {% if not detail.content %}<div class="alert alert-warning">Run MRP CLI to stage this sales order. Its SO content and material review must be saved together.</div>{% endif %}
     {% if detail.returned %}<div class="alert alert-warning"><strong>Returned from MES</strong> — review the revised items and ordered quantities. Existing WOs and production dates are preserved. Approval returns this SO directly to MES.</div>{% endif %}
-    {% if detail.allocations %}<h3 class="h6">Existing WO allocations</h3><ul>{% for item in detail.allocations %}<li>{{ item.item }} × {{ item.quantity }}</li>{% endfor %}</ul><p class="hint">Conflicting allocations will require reconciliation in MES; approval does not rewrite WOs.</p>{% endif %}
+    {% if detail.allocations %}<h3 class="h6">Existing WO allocations</h3><ul>{% for item in detail.allocations %}<li>{{ item.item|canonical_item }} × {{ item.quantity }}</li>{% endfor %}</ul><p class="hint">Conflicting allocations will require reconciliation in MES; approval does not rewrite WOs.</p>{% endif %}
     <form id="review-form"><fieldset {{ 'disabled' if not detail.eligible or not detail.content else '' }}>
       {% if detail.content %}
       <div class="metric-grid"><div class="metric"><div class="label">Customer</div>{{ detail.content.source.customer }}</div><div class="metric"><div class="label">Customer PO</div>{{ detail.content.source.customer_po }}</div><div class="metric"><div class="label">Ship date · from MRP CLI</div>{{ detail.ship_date }}</div><div class="metric"><div class="label">Terms</div>{{ detail.content.source.terms }}</div></div>
@@ -68,10 +70,10 @@
       <h3 class="h6">Sales-order items</h3><input type="hidden" id="approved-item-order"><input type="hidden" id="approved-item-rows">
       <div class="data-toolbar"><span class="hint">Review quantities, configuration and item order before approving materials.</span><div class="d-flex gap-2"><button class="btn btn-outline-secondary" type="button" id="add-review-row">Add manual item</button><button class="btn btn-outline-secondary" type="button" id="restore-sheet-order">Use source order</button></div></div>
       <div class="table-responsive"><table class="table approval-table"><thead><tr><th>Order</th><th>Item</th><th>Ordered qty</th><th>Site</th><th>Move</th></tr></thead><tbody id="approved-items">
-        {% for item in detail.content['items'] %}{% set manual = item.id.startswith('manual-') %}<tr data-item-id="{{ item.id }}"><td><span class="approval-drag" draggable="true">☰</span> <span class="approval-number">{{ loop.index }}</span></td><td><input class="form-control review-item" value="{{ item.item }}" {{ '' if manual else 'readonly' }} required><input type="hidden" class="review-configuration" value="{{ item.configuration }}"><div class="hint">{{ item.configuration }}</div></td><td><input class="form-control review-quantity" type="number" min="0" step="1" value="{{ item.quantity }}" {{ '' if manual else 'readonly' }} required></td><td><input class="form-control review-site" value="{{ item.inventory_site }}" {{ '' if manual else 'readonly' }}></td><td class="nowrap"><button type="button" class="btn btn-sm btn-outline-secondary approval-up" aria-label="Move up">↑</button> <button type="button" class="btn btn-sm btn-outline-secondary approval-down" aria-label="Move down">↓</button><button type="button" class="btn btn-sm btn-outline-danger approval-delete" {{ '' if manual else 'hidden' }}>Remove</button></td></tr>{% endfor %}
+        {% for item in detail.content['items'] %}{% set manual = item.id.startswith('manual-') %}<tr data-item-id="{{ item.id }}"><td><span class="approval-drag" draggable="true">☰</span> <span class="approval-number">{{ loop.index }}</span></td><td><input class="form-control review-item" value="{{ item.item|canonical_item }}" data-original-item="{{ item.item }}" data-display-item="{{ item.item|canonical_item }}" {{ '' if manual else 'readonly' }} required><input type="hidden" class="review-configuration" value="{{ item.configuration }}"><div class="hint">{{ item.configuration }}</div></td><td><input class="form-control review-quantity" type="number" min="0" step="1" value="{{ item.quantity }}" {{ '' if manual else 'readonly' }} required></td><td><input class="form-control review-site" value="{{ item.inventory_site }}" {{ '' if manual else 'readonly' }}></td><td class="nowrap"><button type="button" class="btn btn-sm btn-outline-secondary approval-up" aria-label="Move up">↑</button> <button type="button" class="btn btn-sm btn-outline-secondary approval-down" aria-label="Move down">↓</button><button type="button" class="btn btn-sm btn-outline-danger approval-delete" {{ '' if manual else 'hidden' }}>Remove</button></td></tr>{% endfor %}
       </tbody></table></div><script type="application/json" id="sheet-item-order">{{ detail.content.source['items']|map(attribute='id')|list|tojson }}</script>
       {% endif %}
-      <h3 class="h6 mt-4">System-calculated material readiness</h3><p class="hint">Requirements exclude outstanding work already covered by unambiguous WO allocations or previously finished goods. Unreconciled shipment attribution is treated conservatively; review the existing WOs above.</p><div class="table-responsive"><table class="table"><thead><tr><th>Item</th><th class="num">Required</th><th class="num">Uncovered</th><th>Assessment</th></tr></thead><tbody>{% for s in detail.suggestions %}<tr><td>{{ s.item }}{% if s.warning %}<div class="text-danger">{{ s.warning }}</div>{% endif %}<div class="hint">Open POD: {{ s.open_po_qty }} · unknown date: {{ s.unknown_date_po_qty }}</div></td><td class="num">{{ s.required_qty }}</td><td class="num">{{ s.uncovered_qty }}</td><td>{{ s.reason if s.blocking else 'Ready ' ~ s.ready_date }}</td></tr>{% endfor %}</tbody></table></div>
+      <h3 class="h6 mt-4">System-calculated material readiness</h3><p class="hint">Requirements exclude outstanding work already covered by unambiguous WO allocations or previously finished goods. Unreconciled shipment attribution is treated conservatively; review the existing WOs above.</p><div class="table-responsive"><table class="table"><thead><tr><th>Item</th><th class="num">Required</th><th class="num">Uncovered</th><th>Assessment</th></tr></thead><tbody>{% for s in detail.suggestions %}<tr><td>{{ s.item|canonical_item }}{% if s.warning %}<div class="text-danger">{{ s.warning }}</div>{% endif %}<div class="hint">Open POD: {{ s.open_po_qty }} · unknown date: {{ s.unknown_date_po_qty }}</div></td><td class="num">{{ s.required_qty }}</td><td class="num">{{ s.uncovered_qty }}</td><td>{{ s.reason if s.blocking else 'Ready ' ~ s.ready_date }}</td></tr>{% endfor %}</tbody></table></div>
       <h3 class="h6 mt-4">Record blocking items</h3><p class="hint">System suggestions are not automatically approved. Enter your conclusion below.</p>
       <div class="table-responsive"><table class="table blocker-form-table"><thead><tr><th>Blocking item</th><th>POD#</th><th>Required qty</th><th>Uncovered qty</th><th></th></tr></thead><tbody id="blocker-rows"></tbody></table></div>
       <button class="btn btn-outline-secondary mt-2" type="button" id="add-blocker">+ Add blocking item</button>

@@ -1,4 +1,4 @@
-"""Read-only, paginated purchase-order search."""
+"""Paginated purchase-order search, exports, and POD-scoped receiving."""
 
 from datetime import date, datetime
 from io import BytesIO
@@ -26,12 +26,13 @@ COLUMNS = [
 def build_query(args):
     filters = []
     params = {}
-    for field, column in [("qb_num", "QB Num"), ("source_name", "Source Name")]:
+    for field, column in [("pod_num", "POD#"), ("qb_num", "QB Num"), ("source_name", "Source Name")]:
         value = args.get(field, "").strip()
         if value:
             # Literal substring matching: %, _ and backslash are not wildcards.
             params[field] = "%" + value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-            filters.append(f'"{column}" ILIKE :{field}')
+            filters.append(f'("POD#" ILIKE :{field} OR "QB Num" ILIKE :{field})' if field == 'pod_num'
+                           else f'"{column}" ILIKE :{field}')
     for field, column in [("deliv_date", "Deliv Date"), ("ship_date", "Ship Date"), ("source_names", "Source Name")]:
         values = args.get(field, [])
         if isinstance(values, str):
@@ -79,9 +80,11 @@ def display_value(value):
 def request_filters():
     """Read the same filters for the paginated view and full Excel export."""
     args = {key: request.args.get(key, default).strip() for key, default in [
-        ("qb_num", ""), ("source_name", ""), ("deliv_date", ""), ("ship_date", ""),
+        ("pod_num", ""), ("source_name", ""), ("deliv_date", ""), ("ship_date", ""),
         ("sort", "deliv_date"), ("direction", "asc"), ("page", "1"),
     ]}
+    # POD# and QB Num are one identifier; old bookmarked QB filters still work.
+    args['pod_num'] = args['pod_num'] or request.args.get('qb_num', '').strip()
     for field in ("deliv_date", "ship_date", "source_names"):
         args[field] = [value.strip() for value in request.args.getlist(field) if value.strip()]
     return args
@@ -137,6 +140,9 @@ def lookup():
                     sql = select_sql(where, sort_col, direction) + " LIMIT :limit OFFSET :offset"
                     raw = conn.execute(text(sql), {**params, "limit": PAGE_SIZE, "offset": (page - 1) * PAGE_SIZE}).mappings()
                     rows = [{col: display_value(row[col]) for col in COLUMNS} for row in raw]
+                    for row in rows:
+                        if row['POD#'] in ('', '—'):
+                            row['POD#'] = row['QB Num']
         finally:
             engine.dispose()
     except ValueError as exc:
@@ -149,7 +155,9 @@ def lookup():
         return "/purchase_orders?" + urlencode({**args, "page": number}, doseq=True)
 
     return render_template_string(
-        TEMPLATE, filters=args, filter_options=filter_options, rows=rows, columns=COLUMNS, total=total, page=page, pages=pages,
+        TEMPLATE, filters=args, filter_options=filter_options, rows=rows,
+        columns=['POD#'] + [col for col in COLUMNS if col not in ('QB Num', 'POD#')],
+        total=total, page=page, pages=pages,
         previous=page_url(page - 1), following=page_url(page + 1), error=error,
         first=(page - 1) * PAGE_SIZE + 1 if rows else 0,
         last=(page - 1) * PAGE_SIZE + len(rows) if rows else 0,
@@ -259,14 +267,14 @@ TEMPLATE = """
 <main class="workspace-main" id="workspace-content">
 <div class="workspace-breadcrumb"><a href="/">Workspace</a><span>/</span><span>Purchase Orders</span></div>
 <header class="workspace-header"><div><h1 class="workspace-title">Purchase orders</h1>
-<p class="workspace-description">Find open purchase-order details and review delivery and shipping dates.</p></div>
+<p class="workspace-description">Search POD#, open a purchase order, and receive parts with a reviewed receiving-log entry.</p></div>
 <span class="workspace-loaded">Loaded {{ loaded_at }}</span></header>
 <form id="po-search" class="workspace-search po-filters" method="get">
 <input type="hidden" name="sort" value="{{ filters.sort }}">
 <input type="hidden" name="direction" value="{{ filters.direction }}">
 {% for field in ['deliv_date','ship_date','source_names'] %}{% for value in filters[field] %}<input type="hidden" name="{{ field }}" value="{{ value }}">{% endfor %}{% endfor %}
-{% for field, label, kind in [('qb_num','QB Num','text'),('source_name','Source Name','text')] %}
-<div><label class="form-label" for="{{ field }}">{{ label }}</label><input class="form-control" id="{{ field }}" name="{{ field }}" type="{{ kind }}" value="{{ filters[field] }}" {% if kind == 'text' %}placeholder="Contains…"{% endif %}></div>
+{% for field, label, kind in [('pod_num','POD#','text'),('source_name','Source Name','text')] %}
+<div><label class="form-label" for="{{ field }}">{{ label }}</label><input class="form-control" id="{{ field }}" name="{{ field }}" type="{{ kind }}" value="{{ filters[field] }}" {% if kind == 'text' %}placeholder="{{ 'Full POD# or number' if field == 'pod_num' else 'Contains…' }}"{% endif %}></div>
 {% endfor %}
 <div class="po-actions">
 <button class="btn btn-primary" type="submit">Search</button><a class="btn btn-outline-secondary" href="/purchase_orders">Clear filters</a>
@@ -281,7 +289,7 @@ TEMPLATE = """
 <th scope="col" class="{{ 'text-end' if col in numeric else '' }}" {% if date_field %}aria-sort="{{ ('ascending' if filters.direction == 'asc' else 'descending') if filters.sort == date_field else 'none' }}"{% endif %}>
 <div class="po-heading"><span>{{ 'Delivery Date' if col == 'Deliv Date' else col }}{% if date_field and filters.sort == date_field %} {{ '?' if filters.direction == 'asc' else '?' }}{% endif %}</span>
 {% if date_field %}<button type="button" class="po-filter-toggle {{ 'is-filtered' if filters[date_field] else '' }}" data-open-filter="{{ date_field }}" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu-{{ date_field }}" aria-label="Filter and sort {{ 'Delivery Date' if col == 'Deliv Date' else col }}{{ ', filter active' if filters[date_field] else '' }}">?</button>{% endif %}</div></th>{% endfor %}</tr></thead>
-<tbody>{% for row in rows %}<tr>{% for col in columns %}<td class="{{ 'text-end' if col in numeric else '' }} {{ 'po-long' if col in ['Memo','Shipping Schedule Item','Shipping Schedule Reference'] else '' }}">{{ row[col] }}</td>{% endfor %}</tr>
+<tbody>{% for row in rows %}<tr>{% for col in columns %}<td class="{{ 'text-end' if col in numeric else '' }} {{ 'po-long' if col in ['Memo','Shipping Schedule Item','Shipping Schedule Reference'] else '' }}">{% if col in ['QB Num','POD#'] and row['POD#'] != '—' %}<a href="{{ url_for('purchase_orders.pod_detail',pod_number=row['POD#']) }}" title="Open POD and receive parts">{{ row[col] }}</a>{% else %}{{ row[col] }}{% endif %}</td>{% endfor %}</tr>
 {% else %}<tr><td colspan="{{ columns|length }}" class="text-center text-muted py-4">{{ 'Results unavailable.' if error else 'No purchase orders match these filters.' }}</td></tr>{% endfor %}</tbody>
 </table></div></div><div class="po-pages"><span class="text-muted">Showing {{ first }}–{{ last }} of {{ total }}</span>
 <div class="d-flex align-items-center gap-3">{% if page > 1 %}<a href="{{ previous }}">Previous</a>{% endif %}<span>Page {{ page }} of {{ pages }}</span>{% if page < pages %}<a href="{{ following }}">Next</a>{% endif %}</div></div></section>
@@ -372,3 +380,8 @@ TEMPLATE = """
 </script>
 </body></html>
 """
+
+# Register detail/receiving routes on the same blueprint; no application startup
+# or schema creation is imported from the separate port-5000 receiving service.
+from mrp_system.purchase_receiving import register_receiving_routes
+register_receiving_routes(purchase_orders)

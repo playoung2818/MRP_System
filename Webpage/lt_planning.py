@@ -1,7 +1,8 @@
 """Current MRP work only. History remains append-only in the database."""
 import json
 import secrets
-from datetime import date, timezone
+from time import monotonic
+from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 import pandas as pd
@@ -14,6 +15,14 @@ from so_review.service import is_drop_ship_order
 
 REVIEW, PLANNING = 'needs_material_review', 'needs_production_planning'
 LABELS = {REVIEW: 'Needs Material Review', PLANNING: 'Needs Production Planning'}
+
+
+def planning_note(record, review):
+    """Draft planning notes are scoped to the exact saved material assessment."""
+    draft = (record.get('metadata_fields') or {}).get('planning_note') or {}
+    if review and draft.get('review_id') == str(review['id']):
+        return str(draft.get('notes') or ''), str(draft.get('id') or '')
+    return str((review or {}).get('notes') or ''), ''
 
 
 def order_age(created, today=None):
@@ -91,6 +100,21 @@ def requirements_frame(so, record, wo_records=(), finished_goods=False):
 def create_lt_planning(engine, source):
     bp = Blueprint('lt_planning', __name__, template_folder=str(Path(__file__).parent / 'templates'))
 
+    display_names, display_loaded_at = {}, None
+
+    @bp.app_template_filter('canonical_item')
+    def canonical_item(value):
+        nonlocal display_names, display_loaded_at
+        from mrp_system.normalize.mrp_normalize import normalize_item
+        if display_loaded_at is None or monotonic() - display_loaded_at >= 60:
+            with engine.connect() as conn:
+                names = conn.execute(text('SELECT "Part_Number" FROM public.inventory_status ORDER BY "Part_Number"')).mappings().all()
+            display_names = {str(row['Part_Number']).strip().casefold(): str(row['Part_Number']).strip()
+                             for row in names if row['Part_Number']}
+            display_loaded_at = monotonic()
+        normalized = normalize_item(value)
+        return display_names.get(str(normalized).casefold(), normalized)
+
     @bp.app_template_filter('lt_utc')
     def utc_timestamp(value):
         return value.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
@@ -117,6 +141,9 @@ def create_lt_planning(engine, source):
     @bp.get('/lt_planning')
     @bp.get('/planning')
     def workspace():
+        nonlocal display_loaded_at
+        if request.args.get('reload') == '1':
+            display_loaded_at = None
         status = request.args.get('status', REVIEW)
         status = {'needs_review': REVIEW, 'reviewed': PLANNING, 'all': REVIEW}.get(status, status)
         if status == 'planning_complete' or request.args.get('assigned') == '1':
@@ -162,15 +189,19 @@ def create_lt_planning(engine, source):
                        'created_date': created_date, 'age_days': age_days, 'age_class': age_class,
                        'status': record['workflow_status'], 'returned': record['returned_from_mes'],
                        'source_missing': not record['source_present'], 'review': review,
+                       'notes': planning_note(record, review)[0],
                        'ship_date': displayed_ship_date(group) or snapshot.get('ship_date', ''),
                        'assignment': {'so': number, 'fingerprint': fingerprint,
                                       'review_id': str(review['id']) if review else '',
+                                      'source_revision': record['source_revision'], 'revision': record['revision'],
+                                      'notes_version': planning_note(record, review)[1],
                                       'submission_id': str(uuid4())}}
                 all_rows.append(row)
                 if number == selected and row['status'] == REVIEW and not row['source_missing']:
                     content = content_context(record)
                     allocations = wo_by_so[number]
-                    detail = {'so': number, 'fingerprint': fingerprint, 'suggestions': suggestions,
+                    detail = {'so': number, 'fingerprint': fingerprint,
+                              'suggestions': [dict(s, display_item=canonical_item(s['item'])) for s in suggestions],
                               'review': review, 'ship_date': row['ship_date'], 'content': content,
                               'returned': row['returned'], 'eligible': bool(content),
                               'notes': (record['metadata_fields'] or {}).get('notes', (review or {}).get('notes', '')) if row['returned'] else (review or {}).get('notes', ''),
@@ -179,16 +210,61 @@ def create_lt_planning(engine, source):
         rows = [row for row in all_rows if (query.casefold() in (row['so']+' '+row['customer']).casefold() if query else row['status'] == status)]
         rows.sort(key=lambda row: (row['ship_date'].split(', ')[0] or '9999-12-31', row['so']))
         return render_template('lt_planning.html', rows=rows, counts=counts, status=status, query=query,
-                               detail=detail, loaded=loaded, csrf_token=csrf(),
+                               detail=detail, loaded=loaded.strftime('%Y-%m-%d %H:%M:%S') if isinstance(loaded, datetime) else loaded, csrf_token=csrf(),
                                review_submission=str(uuid4()), stage_labels=LABELS)
 
     @bp.post('/lt_planning/acknowledge_source')
     def obsolete_source_approval():
         return jsonify(error='SO revisions must be reviewed through Needs Material Review.'), 410
 
+    def save_planning_notes(payload, submission, number, notes):
+        if str(payload.get('production_start') or '').strip():
+            raise ValueError('Use production assignment when a date is selected.')
+        with engine.begin() as conn:
+            conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
+            conn.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:so, 0))'), {'so': number})
+            record = conn.execute(text('SELECT * FROM public.sales_order_workflow WHERE sales_order=:so FOR UPDATE'), {'so': number}).mappings().first()
+            if not record or record['workflow_status'] != PLANNING:
+                raise ValueError('This SO is not owned by this MRP step. Reload the workspace.')
+            if not record['source_present'] or not record['latest_snapshot']:
+                raise ValueError('SO missing from current source. Resolve its disposition before saving.')
+            if is_drop_ship_order(record['latest_snapshot']):
+                raise ValueError('Drop Ship SOs are excluded from production planning.')
+            review = latest(conn, 'mrp_review_history', number)
+            if (not review or str(record['material_review_id']) != str(review['id'])
+                    or str(payload.get('review_id') or '') != str(review['id'])):
+                raise ValueError('Another review was saved. Reload before continuing.')
+            from mrp_system.so_workflow import order_signature
+            if record['approved_order_signature'] != order_signature(record['latest_snapshot']):
+                raise ValueError('Items or ordered quantities changed. Return to material review.')
+            metadata = dict(record['metadata_fields'] or {})
+            history = list(metadata.get('planning_note_history') or [])
+            previous = next((event for event in history if event['id'] == submission), None)
+            if previous:
+                if previous['notes'] != notes or previous['review_id'] != str(review['id']):
+                    raise ValueError('Invalid submission ID.')
+            else:
+                if (payload.get('source_revision') != record['source_revision']
+                        or payload.get('revision') != record['revision']):
+                    raise ValueError('SO changed since opening this form. Reload before saving.')
+                _, version = planning_note(record, review)
+                if str(payload.get('notes_version') or '') != version:
+                    raise ValueError('Notes changed in another tab. Reload before saving.')
+                event = dict(id=submission, review_id=str(review['id']), notes=notes,
+                             source_revision=record['source_revision'], revision=record['revision'],
+                             saved_at=datetime.now(timezone.utc).isoformat())
+                history.append(event)
+                metadata.update(planning_note=event, planning_note_history=history)
+                conn.execute(text('''UPDATE public.sales_order_workflow
+                    SET metadata_fields=CAST(:metadata AS jsonb) WHERE sales_order=:so'''),
+                    {'metadata': json.dumps(metadata), 'so': number})
+            current_notes, version = planning_note({'metadata_fields': metadata}, review)
+        return jsonify(ok=True, so=number, handed_off=False, next_status=PLANNING,
+                       notes=current_notes, notes_version=version, submission_id=str(uuid4()))
+
     @bp.post('/lt_planning/<action>')
     def save(action):
-        if action not in ('review', 'assign'):
+        if action not in ('review', 'assign', 'notes'):
             abort(404)
         if not secrets.compare_digest(request.headers.get('X-CSRF-Token', ''), csrf()):
             return jsonify(error='Session expired. Reload before saving.'), 403
@@ -201,6 +277,10 @@ def create_lt_planning(engine, source):
             notes = str(payload.get('notes') or '').strip()
             if not number or len(notes) > 4000:
                 raise ValueError('An SO is required. Notes must be under 4,000 characters.')
+            if action == 'notes':
+                if 'notes' not in payload:
+                    raise ValueError('Notes are required; use an empty string to clear them.')
+                return save_planning_notes(payload, submission, number, notes)
             so, ledger, pods, loaded = data(True)
             with engine.begin() as conn:
                 conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
@@ -236,9 +316,11 @@ def create_lt_planning(engine, source):
                 if assign_now and (returned or payload.get('no_blockers') is not True or payload.get('blockers')):
                     raise ValueError('Immediate production assignment requires an initial review with no material blockers.')
                 if 'notes' not in payload:
-                    notes = str(((record['metadata_fields'] or {}).get('notes', '') if returned else (review or {}).get('notes', '')) or '')
+                    notes = str(((record['metadata_fields'] or {}).get('notes', '') if returned else planning_note(record, review)[0]) or '')
                 if len(notes) > 4000:
                     raise ValueError('Notes must be under 4,000 characters.')
+                if action == 'assign' and str(payload.get('notes_version') or '') != planning_note(record, review)[1]:
+                    raise ValueError('Notes changed in another tab. Reload before assigning production.')
                 if action == 'assign' or assign_now:
                     start = date.fromisoformat(str(payload.get('production_start', '')))
                     if start < date.today() or start.weekday() >= 5:
@@ -277,6 +359,16 @@ def create_lt_planning(engine, source):
                 if action == 'assign' or assign_now:
                     assigned_review_id = submission if assign_now else str(review['id'])
                     assigned_blockers = [] if assign_now else review['blockers']
+                    # Retain the source creation date atomically with first assignment,
+                    # including orders imported before KPI retention was introduced.
+                    from mrp_system.planning_kpi import source_created_dates, retain_creation_date
+                    metadata = record['metadata_fields'] or {}
+                    retained = retain_creation_date(metadata, source_created_dates(so).get(number))
+                    if retained.get('planning_kpi') != metadata.get('planning_kpi'):
+                        conn.execute(text('''UPDATE public.sales_order_workflow SET metadata_fields=
+                            CAST(COALESCE(metadata_fields::jsonb, '{}'::jsonb)
+                                 || jsonb_build_object('planning_kpi', CAST(:kpi AS jsonb)) AS json)
+                            WHERE sales_order=:so'''), {'so': number, 'kpi': json.dumps(retained['planning_kpi'])})
                     publish_to_mes(conn, number, notes)
                     conn.execute(text('''INSERT INTO public.production_overrides
                         (wo_number,production_date,is_finished_goods,schedule_updated_at,schedule_updated_by,finished_goods_updated_at,finished_goods_updated_by)
