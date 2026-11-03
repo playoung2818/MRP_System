@@ -71,6 +71,41 @@ class WebUIAssetsTests(unittest.TestCase):
             '/planning?status=needs_production_planning',
         ])
 
+    def test_quotation_ledger_omits_nav_before_and_after(self):
+        server = ast.parse((WEB_ROOT / 'server.py').read_text(encoding='utf-8'))
+        lookup = next(node for node in server.body
+                      if isinstance(node, ast.FunctionDef) and node.name == 'quotation_lookup')
+        strings = {node.value for node in ast.walk(lookup)
+                   if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+        self.assertNotIn('NAV_before', strings)
+        self.assertNotIn('NAV_after', strings)
+        self.assertIn('Projected_NAV', strings)
+
+    def test_quotation_pending_date_zone(self):
+        from flask import Flask, render_template_string
+        template = runpy.run_path(str(WEB_ROOT / 'ui.py'))['QUOTE_TPL']
+        app = Flask(__name__, static_folder=str(WEB_ROOT / 'static'))
+        for dates, expected_pending in [
+            (['2099-01-01', '2099-12-30'], 0),
+            (['2099-12-30', '2099-12-31', '2100-01-01'], 2),
+            (['2099-12-31'], 1),
+            ([], 0),
+        ]:
+            with self.subTest(dates=dates), app.test_request_context('/quotation_lookup'):
+                html = render_template_string(
+                    template, ledger_columns=['Date', 'Projected_Qty'],
+                    ledger_rows=[{'Date': day, 'Projected_Qty': '12', '_is_min_nav': True}
+                                 for day in dates],
+                )
+                self.assertEqual(html.count('<tr class="quote-pending-row">'), expected_pending)
+                self.assertEqual(html.count('<tr class="quote-pending-divider">'),
+                                 int(expected_pending > 0))
+                for day in dates:
+                    self.assertIn('>' + day + '</td>', html)
+                if expected_pending:
+                    self.assertIn('>Unconfirmed dates</th>', html)
+                    self.assertIn('colspan="2" scope="rowgroup"', html)
+
     def test_one_transparent_asset_per_snoopy_figure(self):
         assets = sorted(path.name for path in (WEB_ROOT / "static").glob("snoopy*"))
         self.assertEqual(assets, ["snoopy-figure-transparent.png"])

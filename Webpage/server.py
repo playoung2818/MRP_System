@@ -2060,8 +2060,6 @@ def quotation_lookup():
                 "Source",
                 "Delta",
                 "Projected_NAV",
-                "NAV_before",
-                "NAV_after",
                 "QB Num",
                 "P. O. #",
                 "Name",
@@ -2097,7 +2095,7 @@ def quotation_lookup():
                     df_item.rename(columns={"Projected_NAV": "Projected_Qty"}, inplace=True)
                     keep_cols = ["Projected_Qty" if c == "Projected_NAV" else c for c in keep_cols]
 
-                for c in ("Delta", "Projected_NAV", "NAV_before", "NAV_after"):
+                for c in ("Delta", "Projected_NAV"):
                     if c in df_item.columns:
                         df_item[c] = df_item[c].apply(_format_intish)
                 if "Projected_Qty" in df_item.columns:

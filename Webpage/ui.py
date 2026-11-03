@@ -1080,6 +1080,9 @@ QUOTE_TPL = """
     .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); }
     .th-projected{ background:#dcfce7 !important; }
     .cell-projected-min{ background:#bbf7d0 !important; font-weight:700; }
+    .quote-pending-divider th{ background:#e5e7eb; color:#374151; border-top:3px solid #9ca3af; padding:.65rem; }
+    .quote-pending-row > td{ background:#f3f4f6; }
+    .quote-pending-row > td:first-child{ border-left:4px solid #9ca3af; }
     .suggest-head, .suggest-row{
       display:grid;
       grid-template-columns:minmax(0, 2.2fr) minmax(90px, .8fr) minmax(90px, .8fr);
@@ -1222,8 +1225,14 @@ QUOTE_TPL = """
           </thead>
           <tbody>
             {% if ledger_rows %}
+              {% set pending = namespace(started=false) %}
               {% for r in ledger_rows %}
-                <tr class="{% if r['Date'] == 'Lead Time Pending' %}table-warning{% elif r['_is_min_nav'] and (not r['Date'].startswith('2099')) %}table-warning{% endif %}">
+                {% set is_pending = r['Date'] >= '2099-12-31' or r['Date'] == 'Lead Time Pending' %}
+                {% if is_pending and not pending.started %}
+                  {% set pending.started = true %}
+                  <tr class="quote-pending-divider"><th colspan="{{ ledger_columns|length }}" scope="rowgroup">Unconfirmed dates</th></tr>
+                {% endif %}
+                <tr class="{% if is_pending %}quote-pending-row{% elif r['_is_min_nav'] %}table-warning{% endif %}">
                   {% for c in ledger_columns %}
                     <td class="{% if c == 'Projected_Qty' and r['_is_min_nav'] %}cell-projected-min{% endif %}">{{ r[c] }}</td>
                   {% endfor %}

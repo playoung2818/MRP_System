@@ -4,6 +4,23 @@ Record agent decisions, implementation context, validation, and unresolved work
 here (or in focused notes linked from INDEX.md), not in the human-facing README.
 Do not treat test results below as a current production audit.
 
+## Quotation lookup — ledger columns
+
+- Removed `NAV_before` and `NAV_after` from the quotation timeline display in
+  `Webpage/server.py`; underlying ledger data and Projected_OnHand are unchanged.
+
+## Quotation lookup — pending-date zone
+
+- `Webpage/ui.py`: distinguish timeline dates at or after `2099-12-31`
+  with an `Unconfirmed dates` divider, gray row backgrounds, and a gray left
+  border (updated per user preference). Original
+  dates, quantities, chronological order, and projected-minimum cells remain.
+- Classification uses the timeline's existing ISO-formatted date strings;
+  dates earlier in 2099 are not classified as pending. Legacy `Lead Time Pending`
+  display text is also recognized.
+- Validation: `python -m unittest discover -s 'MRP_System 3.0/tests' -p test_web_ui_assets.py`
+  passed (7 tests), including cutoff, later dates, pending-only and empty results.
+
 ## 2026-10-22 — Documentation policy
 
 - User requested that accumulated implementation notes be removed from README.
