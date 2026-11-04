@@ -4,6 +4,22 @@ Record agent decisions, implementation context, validation, and unresolved work
 here (or in focused notes linked from INDEX.md), not in the human-facing README.
 Do not treat test results below as a current production audit.
 
+## Quotation lookup — Planning blockers as Waiting_Item
+
+- `Webpage/quotation_blockers.py` reads the latest saved `mrp_review_history`
+  blockers per QB Num using the same assessed_at/id ordering as `/planning`.
+  `Waiting_Item` now lists these distinct sorted item names, not inventory
+  Component_Status Waiting/Shortage rows. No schema changes or writes.
+- Read blocker data on every quotation request, including cached ledger views;
+  copy rows so review values never become stale ledger-cache content.
+- Explicit empty review displays `{}`; a nonempty QB Num without a review shows
+  `Not reviewed`; blank QB Num displays `{}`. IN rows always show a blank
+  Waiting_Item and their QB numbers are excluded from blocker lookups.
+  Database errors return 503 rather
+  than falsely showing no blockers or falling back to inventory statuses.
+- Validation: 2 blocker unit tests, 8 UI tests, and the cached-ATP pytest passed.
+  Tests use mocked database reads; no live database validation performed.
+
 ## Quotation lookup — ledger columns
 
 - Removed `NAV_before` and `NAV_after` from the quotation timeline display in

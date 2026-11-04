@@ -33,7 +33,7 @@ def check_cached_ledger_atp(source=None):
                engine=object(), refresh_part_number_aliases=lambda engine: 0,
                earliest_atp_strict=earliest_atp_strict,
                _safe_date_col=lambda *args: None,
-               _build_runtime_indexes=lambda *args: ({}, {}, {}),
+               _build_runtime_indexes=lambda *args: ({}, {}),
                _build_global_search_index=lambda *args: [],
                _build_quote_item_summaries=lambda *args: [])
     ctx.update({name: None for name in ["SO_INV", "SAP", "OPEN_PO", "LEDGER", "ITEM_ATP"]})

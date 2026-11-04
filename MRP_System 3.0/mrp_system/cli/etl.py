@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -170,6 +172,25 @@ def _print_violation_diff(current: pd.DataFrame) -> None:
     current.to_csv(VIOLATION_SNAPSHOT_PATH, index=False)
 
 
+def _refresh_pdf_orders() -> None:
+    watcher = Path(r"C:\Users\Admin\Desktop\File_Watcher\file_watcher.py")
+    logging.info("Refreshing PDF ordering data with %s --only-pdf", watcher)
+    try:
+        subprocess.run(
+            [sys.executable, str(watcher), "--only-pdf"],
+            cwd=watcher.parent,
+            check=True,
+            capture_output=True,
+            text=True,
+            errors="replace",
+        )
+    except subprocess.CalledProcessError as exc:
+        logging.error("PDF scan failed (exit %s).\n%s\n%s",
+                      exc.returncode, exc.stdout or "", exc.stderr or "")
+        raise
+    logging.info("PDF scan completed.")
+
+
 def main() -> None:
     logging.info("Shipping schedule input: %s", SHIPPING_SCHEDULE_FILE)
     so_raw, inv_raw, ship_raw, pod_raw = extract_inputs()
@@ -185,6 +206,7 @@ def main() -> None:
     else:
         print('\nPARTIALLY SHIPPED SOs:')
         print(format_cli_table(shipment_report))
+    _refresh_pdf_orders()
     pdf_orders_df = fetch_pdf_orders_df_from_DB()
 
     wip_lookup = build_wip_lookup(so_full, mes_quantities)

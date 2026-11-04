@@ -12,6 +12,8 @@ from flask import Flask, request, render_template_string, jsonify, abort, redire
 import pandas as pd
 import numpy as np
 from sqlalchemy import text, bindparam
+from sqlalchemy.exc import SQLAlchemyError
+from quotation_blockers import with_planning_blockers
 from openpyxl import load_workbook
 
 from unassigned_so import COLUMNS as UNASSIGNED_COLUMNS, NUMERIC_COLUMNS as UNASSIGNED_NUMERIC_COLUMNS, unassigned_orders, report_rows
@@ -76,7 +78,6 @@ ITEM_INFO_SUGGEST_CACHE: list[str] = []
 ITEM_INFO_PHOTO_BY_SUGGESTION: dict[str, bool] = {}
 QUOTE_ITEM_SUGGEST_ROWS: list[dict[str, object]] = []
 SO_LOOKUP_BASE: pd.DataFrame | None = None
-WAITING_ITEMS_BY_QB: dict[str, str] = {}
 LEDGER_ITEM_INDEX: dict[str, pd.DataFrame] = {}
 PDF_DB_SEARCH_CACHE: dict[tuple[str, int], list[dict]] = {}
 INDEX_VIEW_CACHE: dict[tuple[str, str], dict] = {}
@@ -309,7 +310,7 @@ def _load_pdf_map(force: bool = False):
 
 def _build_runtime_indexes(
     so_src: pd.DataFrame, ledger_src: pd.DataFrame
-) -> tuple[pd.DataFrame, dict[str, str], dict[str, pd.DataFrame]]:
+) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     """Build read-optimized indexes used by index() and quotation_lookup()."""
     so = so_src.copy()
     if "QB Num" not in so.columns:
@@ -318,18 +319,6 @@ def _build_runtime_indexes(
         so["Name"] = ""
     so["__qb_upper"] = so["QB Num"].astype(str).str.upper().str.strip()
     so["__name_text"] = so["Name"].astype(str).str.strip()
-
-    waiting_map: dict[str, str] = {}
-    if {"QB Num", "Item", "Component_Status"}.issubset(so.columns):
-        so_wait = so.loc[so["Component_Status"].isin(["Waiting", "Shortage"])].copy()
-        so_wait["QB Num"] = so_wait["QB Num"].astype(str).str.strip()
-        so_wait["Item"] = so_wait["Item"].astype(str).str.strip()
-        if not so_wait.empty:
-            waiting_map = (
-                so_wait.groupby("QB Num")["Item"]
-                .apply(lambda s: "{%s}" % ", ".join(sorted(set(i for i in s if i))))
-                .to_dict()
-            )
 
     ledger_index: dict[str, pd.DataFrame] = {}
     if ledger_src is not None and not ledger_src.empty:
@@ -341,7 +330,7 @@ def _build_runtime_indexes(
             for item_key, grp in work.groupby("__item_lookup__", sort=False):
                 ledger_index[str(item_key)] = grp.drop(columns=["__item_lookup__"]).copy()
 
-    return so, waiting_map, ledger_index
+    return so, ledger_index
 
 
 def _build_quote_item_summaries(
@@ -471,7 +460,7 @@ def _build_global_search_index(so: pd.DataFrame, inventory: pd.DataFrame) -> lis
 def _load_from_db(force: bool = False):
     global SO_INV, INVENTORY_STATUS, SAP, OPEN_PO, LEDGER, ITEM_ATP, _LAST_LOAD_ERR, _LAST_LOADED_AT
     global ITEM_SUGGEST_CACHE, GLOBAL_SEARCH_INDEX
-    global SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX
+    global SO_LOOKUP_BASE, LEDGER_ITEM_INDEX
     global PDF_DB_SEARCH_CACHE, INDEX_VIEW_CACHE, QUOTATION_VIEW_CACHE, QUOTE_ITEM_SUGGEST_ROWS, READY_ASSIGN_CACHE
     try:
         if (
@@ -500,7 +489,7 @@ def _load_from_db(force: bool = False):
             SO_INV, INVENTORY_STATUS, SAP, OPEN_PO = so, inventory, sap, open_po
             LEDGER = ledger
             ITEM_ATP = build_atp_view(ledger)
-            SO_LOOKUP_BASE, WAITING_ITEMS_BY_QB, LEDGER_ITEM_INDEX = _build_runtime_indexes(so, ledger)
+            SO_LOOKUP_BASE, LEDGER_ITEM_INDEX = _build_runtime_indexes(so, ledger)
             suggest_items: list[str] = []
             if "Item" in so.columns:
                 suggest_items.extend(
@@ -527,7 +516,6 @@ def _load_from_db(force: bool = False):
         LEDGER = None
         ITEM_ATP = None
         SO_LOOKUP_BASE = None
-        WAITING_ITEMS_BY_QB = {}
         LEDGER_ITEM_INDEX = {}
         ITEM_SUGGEST_CACHE = []
         GLOBAL_SEARCH_INDEX = []
@@ -1998,6 +1986,14 @@ def peripheral_status():
                                       workbook_name="", loaded_at="")
 
 
+def _quotation_rows_with_blockers(rows):
+    try:
+        return with_planning_blockers(engine, rows)
+    except SQLAlchemyError:
+        app.logger.exception('Quotation planning blockers could not be loaded')
+        abort(503, description='Planning blockers are unavailable. Please try again.')
+
+
 @app.route("/quotation_lookup")
 def quotation_lookup():
     _ensure_loaded()
@@ -2028,7 +2024,7 @@ def quotation_lookup():
             opening_qty=opening_qty,
             earliest_atp=earliest_atp,
             ledger_columns=ledger_columns,
-            ledger_rows=ledger_rows,
+            ledger_rows=_quotation_rows_with_blockers(ledger_rows),
             loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
         )
 
@@ -2106,8 +2102,7 @@ def quotation_lookup():
                 if "QB Num" in keep_cols and "Waiting_Item" not in keep_cols:
                     keep_cols.append("Waiting_Item")
                     for rec in records:
-                        qb = rec.get("QB Num", "")
-                        rec["Waiting_Item"] = WAITING_ITEMS_BY_QB.get(str(qb), "{}")
+                        rec["Waiting_Item"] = ""
 
                 # Attach _is_min_nav flag for UI highlighting
                 if min_nav_value is not None and proj_series is not None:
@@ -2150,7 +2145,7 @@ def quotation_lookup():
         opening_qty=opening_qty,
         earliest_atp=earliest_atp,
         ledger_columns=ledger_columns,
-        ledger_rows=ledger_rows,
+        ledger_rows=_quotation_rows_with_blockers(ledger_rows),
         loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "",
     )
 

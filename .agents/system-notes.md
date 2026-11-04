@@ -186,6 +186,13 @@ using the removed hard-coded mappings.
 
 ### SO item ordering (PDF only)
 
+Before loading PDF ordering references, ETL synchronously runs the current Python
+interpreter with `C:\Users\Admin\Desktop\File_Watcher\file_watcher.py --only-pdf`,
+using the watcher directory as its working directory. Watcher stdout/stderr are
+captured to hide per-file SCAN/SKIP noise; ETL logs start/completion only on
+success. A nonzero subprocess exit logs the captured output and stops ETL. The watcher currently catches some scan errors internally without a
+nonzero exit, so exit success alone is not proof that every PDF was ingested.
+
 Production ETL uses only the PDF item sequence, matched by canonical part number
 and occurrence. Unmatched lines retain their relative source order after matched
 lines. With no PDF match, source order is retained. No trained model or WO Details

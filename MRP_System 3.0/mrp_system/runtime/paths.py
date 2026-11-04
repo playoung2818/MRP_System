@@ -7,7 +7,7 @@ BASE = ONEDRIVE / "Share NTA Warehouse" / "Daily Update"
 
 
 # Update Date in here
-DAILY_DATE = "11_03_2026"
+DAILY_DATE = "11_04_2026"
 
 SALES_ORDER_FILE = BASE / f"Open Sales Order_{DAILY_DATE}.CSV"
 WAREHOUSE_INV_FILE = BASE / f"WH01S_{DAILY_DATE}.CSV"
