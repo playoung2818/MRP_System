@@ -2,7 +2,7 @@
 ![Animation1](https://github.com/user-attachments/assets/d8266a1c-08dd-4b89-a996-ca9529e34241)
 # QuickBooks MRP System
 
-Rebuilt QuickBooks operational views into a unified pipeline, blending inventory, sales orders, purchase orders, picking signals, and shipping data to drive lead-time decisions and Inventory status visability.
+Rebuilt QuickBooks operational views into a unified pipeline, blending inventory, sales orders, purchase orders, picking status, and shipping data to drive lead-time decisions and Inventory status visability.
 
 ## Script
 
@@ -16,6 +16,59 @@ Rebuilt QuickBooks operational views into a unified pipeline, blending inventory
 - Shipping schedule
 - WO API (`http://192.168.60.215:5001/api/wo-quantities`) for picked quantities / WIP
 - PDF WO references (`pdf_file_log`)
+
+
+### Ledger timeline generation logic
+
+![alt text](image.png)
+
+The ledger combines an opening inventory snapshot with dated supply and demand
+movements.
+
+1. **Establish opening stock**
+   - Normalize item names and take `On Hand` from the inventory snapshot,
+     summed by item.
+   - Add an `OPEN` row dated today with `Source = Snapshot` and `Delta = 0`.
+   - Attach the item's opening quantity to its movement rows; items without an
+     opening-stock match start at zero.
+
+2. **Create inbound supply events**
+   - Expanded shipping-schedule supply becomes `Kind = IN`, `Source = HQ`.
+   - Eligible open purchase-order (POD) supply becomes `Kind = IN`, `Source = USA`.
+   - Use the transformed supply date and a positive `Delta = Qty(+)`.
+   - Apply configured POD source-name and inventory-site exclusions.
+
+3. **Create outbound demand events**
+   - Each positive required quantity in the structured SO data becomes
+     `Kind = OUT`, `Source = SO`.
+   - Use the SO's `Ship Date` as the event date and `Delta = -Qty(-)`.
+   - Retain order references such as `QB Num`, customer PO, and name.
+
+4. **Clean and order events**
+   - Normalize dates to calendar days and convert deltas to numbers.
+   - Drop rows with an invalid date, missing item, or invalid delta.
+   - Remove zero-quantity movements, but keep zero-quantity `OPEN` rows.
+   - Sort by item, then date, then kind: `OPEN → IN → ADJ → OUT`.
+     This places inbound supply before outbound demand on the same day.
+
+5. **Calculate the running balance**
+   - `CumDelta = cumulative sum of Delta`, separately for each item.
+   - `Projected_NAV = Opening + CumDelta`.
+   - In Quotation Lookup, this balance is displayed as **Projected_OnHand**.
+   - A negative balance means demand has exceeded the opening stock plus supply
+     accumulated through that event.
+
+6. **Display the item's timeline**
+   - Quotation Lookup shows the selected item's events in date/kind order.
+   - Rows with `Date >= 2099-12-31` remain in the ledger calculation but appear
+     in the gray **Unconfirmed dates** zone; these are not confirmed arrival dates.
+   - The lowest Projected_OnHand across the entire item ledger, including
+     unconfirmed dates, is highlighted green. All ties are highlighted.
+   - `Waiting_Item` shows the latest saved Planning blocking items for the row's
+     `QB Num`; it is blank for inbound rows and does not affect the balance.
+
+This builds the timeline itself. Removing a target SO's demand and calculating
+`FutureMin_NAV` are separate availability checks, not steps in ledger generation.
 
 
 
@@ -41,20 +94,4 @@ Rebuilt QuickBooks operational views into a unified pipeline, blending inventory
                |-- No  -> [Ask Taipei to place order]
 ```
 
-## Projected Inventory Shortages
-<img width="1691" height="567" alt="image" src="https://github.com/user-attachments/assets/995b4df0-06fe-4c86-86a8-ba2ff2670364" />
 
-### Logic
-- find the rows for this item
-- drop rows where:
-  - `QB Num == target SO`
-  - `Kind == OUT`
-- sort remaining ledger rows by date
-- rebuild running inventory from:
-  - `opening + cumulative delta`
-- build `FutureMin_NAV` from rebuilt `Projected_NAV`:
-  - scan backward from the last row to the first row
-  - at each row, store the minimum `Projected_NAV` from that row forward
-- test earliest available date:
-  - find the earliest date where `FutureMin_NAV >= required qty`
-  - if true, inserting this SO on that date will not make future inventory negative
