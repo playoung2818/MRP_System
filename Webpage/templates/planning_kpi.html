@@ -38,7 +38,7 @@
       <td class="nowrap"><strong>{{ row.so }}</strong></td><td>{{ row.customer }}</td><td class="nowrap">{{ row.created_date }}</td><td class="nowrap">{{ row.first_assigned_at }}</td>
       <td class="nowrap" title="{{ row.issue }}">{% if row.days is not none %}<strong>{{ row.days }}</strong> {{ 'days waiting' if row.awaiting else 'days' }}{% else %}<span class="text-muted">Unknown</span>{% endif %}</td><td class="{{ 'blocked' if row.blockers else '' }}">
         {% if row.blockers is none %}<span class="text-muted">SO and material review required</span>
-        {% else %}{% for b in row.blockers %}<div><strong>{{ b.item|canonical_item }}</strong>{% if b.pod_num %} <span class="hint">POD# {{ b.pod_num }}</span>{% endif %} · {{ b.uncovered_qty }} / {{ b.required_qty }}{% if b.reason %} <span class="hint">— {{ b.reason }}</span>{% endif %}{% if b.warning %}<div class="text-danger">{{ b.warning }}</div>{% endif %}</div>{% else %}<span class="text-success">No recorded material blockers</span>{% endfor %}{% endif %}
+        {% else %}{% for b in row.blockers %}<div><strong>{{ b.item|canonical_item }}</strong>{% if b.pod_num %} <span class="hint">POD# {{ b.pod_num }}</span>{% endif %} · {{ b.uncovered_qty|int }} / {{ b.required_qty|int }}{% if b.reason %} <span class="hint">— {{ b.reason }}</span>{% endif %}{% if b.warning %}<div class="text-danger">{{ b.warning }}</div>{% endif %}</div>{% else %}<span class="text-success">No recorded material blockers</span>{% endfor %}{% endif %}
       </td>
     </tr>{% else %}<tr><td colspan="6" class="text-center text-muted p-4">No sales orders available.</td></tr>{% endfor %}
     </tbody></table></div>

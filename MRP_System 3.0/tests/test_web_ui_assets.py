@@ -71,6 +71,17 @@ class WebUIAssetsTests(unittest.TestCase):
             '/planning?status=needs_production_planning',
         ])
 
+    def test_blocking_item_quantities_display_as_integers(self):
+        for name in ('lt_planning.html', 'planning_kpi.html'):
+            with self.subTest(template=name):
+                source = (WEB_ROOT / 'templates' / name).read_text(encoding='utf-8')
+                quantity = re.search(
+                    r'{{ b\.uncovered_qty[^}]*}} / {{ b\.required_qty[^}]*}}', source)
+                self.assertIsNotNone(quantity)
+                rendered = Environment().from_string(quantity.group()).render(
+                    b={'uncovered_qty': 8.0, 'required_qty': 10.0})
+                self.assertEqual(rendered, '8 / 10')
+
     def test_quotation_ledger_omits_nav_before_and_after(self):
         server = ast.parse((WEB_ROOT / 'server.py').read_text(encoding='utf-8'))
         lookup = next(node for node in server.body

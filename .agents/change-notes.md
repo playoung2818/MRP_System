@@ -4,6 +4,29 @@ Record agent decisions, implementation context, validation, and unresolved work
 here (or in focused notes linked from INDEX.md), not in the human-facing README.
 Do not treat test results below as a current production audit.
 
+## Blocking-item quantity display
+
+- Planning and Planning KPI format saved blocker uncovered/required quantities
+  as integers (`8 / 10`, not `8.0 / 10.0`). Display-only template change; saved
+  reviews and calculation values are unchanged.
+- Validation: all 9 web UI asset tests passed, including float-to-integer display
+  coverage for both templates.
+
+## PDF item ordering investigation — empty extracted items
+
+- Read-only investigation found a non-null PDF extraction payload with an empty
+  items array. `fetch_pdf_orders_df_from_DB()` emits a blank product reference;
+  `reorder_so_items()` ignores the blank key and preserves source ordering.
+- External File_Watcher `manual_scan_all_files()` skips any truthy extracted_data
+  payload, even when items is empty. `load_pdf_file()` likewise only replaces a
+  falsey payload. Re-running the new ETL scan does not repair these records.
+- External PDF parser accepts a narrow table-header shape and filters Site to WH;
+  these are possible empty-extraction causes, not confirmed for the investigated
+  document. Opening its stored UNC path failed with OSError (invalid argument),
+  so the actual PDF layout could not be verified.
+- No business data or external watcher code changed. A repair needs successful
+  extraction first, then a guarded refresh of empty payloads before ETL restaging.
+
 ## Quotation lookup — Planning blockers as Waiting_Item
 
 - `Webpage/quotation_blockers.py` reads the latest saved `mrp_review_history`

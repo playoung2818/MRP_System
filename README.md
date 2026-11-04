@@ -2,7 +2,7 @@
 ![Animation1](https://github.com/user-attachments/assets/d8266a1c-08dd-4b89-a996-ca9529e34241)
 # QuickBooks MRP System
 
-Rebuilt QuickBooks operational views into a unified pipeline, blending inventory, sales orders, purchase orders, picking status, and shipping data to drive lead-time decisions and Inventory status visability.
+Turning QuickBooks exports into a time-phased inventory ledger, extend functions based on this ledger table
 
 ## Script
 
@@ -19,57 +19,6 @@ Rebuilt QuickBooks operational views into a unified pipeline, blending inventory
 
 ## Ledger timeline generation logic
 
-
-1. **Establish opening stock**
-   - Normalize item names and take `On Hand` from the inventory snapshot,
-     summed by item.
-   - Add an `OPEN` row dated today with `Source = Snapshot` and `Delta = 0`.
-   - Attach the item's opening quantity to its movement rows; items without an
-     opening-stock match start at zero.
-
-2. **Create inbound supply events**
-   - Expanded shipping-schedule supply becomes `Kind = IN`, `Source = HQ`.
-   - Eligible open purchase-order (POD) supply becomes `Kind = IN`, `Source = USA`.
-   - Use the transformed supply date and a positive `Delta = Qty(+)`.
-   - Apply configured POD source-name and inventory-site exclusions.
-
-3. **Create outbound demand events**
-   - Each positive required quantity in the structured SO data becomes
-     `Kind = OUT`, `Source = SO`.
-   - Use the SO's `Ship Date` as the event date and `Delta = -Qty(-)`.
-   - Retain order references such as `QB Num`, customer PO, and name.
-
-4. **Clean and order events**
-   - Normalize dates to calendar days and convert deltas to numbers.
-   - Drop rows with an invalid date, missing item, or invalid delta.
-   - Remove zero-quantity movements, but keep zero-quantity `OPEN` rows.
-   - Sort by item, then date, then kind: `OPEN → IN → ADJ → OUT`.
-     This places inbound supply before outbound demand on the same day.
-
-5. **Calculate the running balance**
-   - `CumDelta = cumulative sum of Delta`, separately for each item.
-   - `Projected_NAV = Opening + CumDelta`.
-   - In Quotation Lookup, this balance is displayed as **Projected_OnHand**.
-   - A negative balance means demand has exceeded the opening stock plus supply
-     accumulated through that event.
-
-6. **Display the item's timeline**
-   - Quotation Lookup shows the selected item's events in date/kind order.
-   - Rows with `Date >= 2099-12-31` remain in the ledger calculation but appear
-     in the gray **Unconfirmed dates** zone; these are not confirmed arrival dates.
-   - The lowest Projected_OnHand across the entire item ledger, including
-     unconfirmed dates, is highlighted green. All ties are highlighted.
-   - `Waiting_Item` shows the latest saved Planning blocking items for the row's
-     `QB Num`; it is blank for inbound rows and does not affect the balance.
-
-This builds the timeline itself. Removing a target SO's demand and calculating
-`FutureMin_NAV` are separate availability checks, not steps in ledger generation.
-
-### Simple example
-
-Assume today is **2026-11-04** and item **PART-A** has **10 units on hand**.
-The opening quantity stays 10; each movement changes the cumulative delta.
-
 | Date | Kind | Source | Reference | Delta | CumDelta | Projected_OnHand |
 |---|---|---|---|---:|---:|---:|
 | 2026-11-04 | OPEN | Snapshot | Opening stock | 0 | 0 | 10 |
@@ -78,11 +27,35 @@ The opening quantity stays 10; each movement changes the cumulative delta.
 | 2026-11-06 | OUT | SO | SO-002 | -9 | -12 | **-2** |
 | 2099-12-31 | IN | HQ | Unconfirmed supply | +20 | +8 | 18 |
 
-- On November 5, the receipt is counted before the SO demand: `10 + 5 - 8 = 7`.
-- On November 6, the next SO creates a shortage: `10 + 5 - 8 - 9 = -2`.
-- The unconfirmed receipt raises the final projected balance to 18, but does not
-  resolve the earlier shortage. Its row appears in the gray **Unconfirmed dates**
-  zone, while the lowest balance, **-2**, is highlighted green in Quotation Lookup.
+1. **Establish opening stock**
+   - Add an `OPEN` row dated today with `Source = Snapshot` and `Delta = 0`.
+   - Normalize item names and take `On Hand` from the inventory snapshot, summed by item.
+
+2. **Create inbound supply events**
+   - HQ supply becomes `Kind = IN`, `Source = HQ`. Date = Shipping schedule sheet `ship date` + 5
+   - Local supply becomes `Kind = IN`, `Source = USA`. Date = POD ship date
+   - Use the transformed supply date and a positive `Delta = Qty(+)`.
+
+3. **Create outbound demand events**
+   - Each positive required quantity in the structured SO data becomes `Kind = OUT`, `Source = SO`.
+   - Use the SO's `Ship Date` as the event date and `Delta = -Qty(-)`.
+
+4. **Calculate the running balance**
+   - `CumDelta = cumulative sum of Delta`, separately for each item.
+   - `Projected_NAV = Opening + CumDelta`.
+   - In Quotation Lookup, this balance is displayed as **Projected_OnHand**.
+
+
+6. **Display the item's timeline**
+   - Rows with `Date >= 2099-12-31` remain in the ledger calculation but appear in the gray **Unconfirmed dates** zone; these are not confirmed arrival dates.
+   - The lowest Projected_OnHand across the entire ledger, including unconfirmed dates, is highlighted as green. 
+   - A negative lowest Projected_OnHand indicates demand is not fully covered by scheduled inventory. (Mostly caused by unscheduled PODs)
+   - `Waiting_Item` shows the latest saved Planning blocking items for the row's `QB Num`
+
+
+
+
+
 
 
 
