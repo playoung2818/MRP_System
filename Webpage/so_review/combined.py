@@ -66,7 +66,7 @@ def review_content(conn, number, payload):
     planned, saved = defaultdict(int), defaultdict(int)
     for item in items:
         planned[item['item'].strip().casefold()] += item['quantity']
-    for wo in conn.execute(text('SELECT items FROM public."WO Details" WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings():
+    for wo in conn.execute(text('SELECT items FROM public.wo_details WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings():
         for item in wo['items'] or []:
             saved[item['item'].strip().casefold()] += int(item.get('quantity', 0))
     if not row.get('returned_from_mes') and any(qty > planned.get(item, 0) for item, qty in saved.items()):

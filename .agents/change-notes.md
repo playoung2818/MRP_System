@@ -12,6 +12,91 @@ Do not treat test results below as a current production audit.
 - Validation: all 9 web UI asset tests passed, including float-to-integer display
   coverage for both templates.
 
+## Operational table names standardized
+
+- User authorized five in-place renames: Item Info → item_info, NT Shipping
+  Schedule → hq_shipping_schedule, Open_Purchase_Orders → open_purchase_orders,
+  WO Details → wo_details, combined_wo_outgoing_form_filing → outgoing_records.
+  The user's copied list included so_material_readiness, but prior retirement was
+  preserved; it was not recreated.
+- Added preview/apply CLI `mrp_system.cli.rename_operational_tables`. Checks all
+  pairs for collisions/missing tables before DDL; apply uses one transaction,
+  bounded lock/statement timeouts, locks tables, and verifies OIDs/row counts.
+  Applied successfully; all five kept their identities and counts. No copying,
+  new tables, column renames, or business-row changes.
+- Updated MRP ETL config/contracts, Planning/review/staging/WO queries, purchase
+  lookup/receiving queries, item-info source label and relevant tests. Updated
+  external MES model/startup/migration SQL and tests/docs. Receiving Log WO and
+  outgoing queries also updated; its unrelated pre-existing changes preserved.
+  File_Watcher retirement messages/docs aligned with wo_details.
+- No stored routines or pgAgent job bodies matched the old names. A Desktop
+  source search found no additional executable references; migration mapping
+  intentionally retains legacy names. Updated a stale notebook comment.
+- Validation: 177 focused MRP tests and 9 File_Watcher tests passed. Live MRP
+  home/Planning/purchase/item-info pages returned 200. All MES model SELECTs
+  succeed against live schema; MES home/planning/generated routes return 200
+  using a read-only DB-backed Flask client without startup DDL. Receiving WO
+  lookups/model queries and outgoing_records SELECT succeed read-only. Syntax
+  checks passed for MES and Receiving. Full ETL and table-creating tests not run.
+- Live service caveat: MRP debug reload has picked up changes. MES port 5001 was
+  unavailable. Receiving runs without a reloader and needs restarting; Process
+  Compose control API was not reachable at the required LAN address/port 8080,
+  so supervisor/service state was not altered.
+
+## so_material_readiness retired
+
+- User authorized retirement. Removed the ETL refresh import/call and deleted
+  `mrp_system/ledger/material_readiness.py` plus its SQL query. Deleted external
+  `MES/app/material_readiness.py` (unused read helper).
+- Dropped `public.so_material_readiness` with RESTRICT and bounded lock/statement
+  timeouts. Verified `to_regclass` returns NULL afterward. No replacement or
+  backup tables created; manual review history and workflow data untouched.
+- No remaining references in application Python/SQL/HTML across MRP and MES.
+  Added regression tests preventing ETL reintroduction of the retired producer.
+- Validation: 16 focused tests passed (retirement, UI, PDF scan, quotation
+  blockers); all 20 remaining MES app Python files parse. No full ETL execution,
+  database-creating test suites, service restart, or end-to-end UI run performed.
+- Deploy/restart or reload long-running processes as needed: an ETL process that
+  imported the old producer before removal can still hold that code in memory.
+
+## so_material_readiness retirement impact audit
+
+- Read-only MRP/MES source and live catalog audit: ETL calls
+  `refresh_material_readiness()` after ledger writes/SO staging. Refresher has
+  CREATE TABLE IF NOT EXISTS and repopulates the table, so dropping it alone
+  normally causes recreation on the next successful refresh. Refresh failures
+  are caught/logged by ETL after core outputs have already been saved.
+- Planning material suggestions use `lt_materials.material_context`; blockers
+  use `mrp_review_history`; KPI uses the linked review; quotation uses latest
+  review blockers. None require this calculated snapshot.
+- MES has `app/material_readiness.py::load_material_readiness` but no source
+  callers/imports found. Helper handles a missing table with an unavailable
+  result. No matching ORM model or active scheduling/release dependency found.
+- Live catalog: no incoming/outgoing FKs, dependent views/materialized views,
+  custom triggers, routine bodies mentioning the table, or pgAgent step bodies
+  mentioning table/refresher. Catalog dependencies were internal objects only.
+  This does not prove absence of external ad hoc reports or indirect scripts.
+- No database/schema/business-data changes made. Recommended retirement order:
+  disable ETL producer, remove unused MES helper, verify external consumers,
+  explicitly authorize/drop table without CASCADE, validate next ETL and UIs.
+
+## File_Watcher empty-PDF retry fix
+
+- Updated external `File_Watcher/file_watcher.py` and
+  `functions/Data_Loader.py`: completion requires usable product items, not merely
+  nonempty JSON. Empty extractions retry and can be replaced; valid existing
+  sequences are preserved. No schema changes.
+- Parser examines all tables and finds required columns by normalized header
+  names, tolerating extra columns, header spacing/case, and title rows. Warehouse
+  filtering trims whitespace and normalizes case. Empty extraction paths emit
+  diagnostics for missing tables, missing warehouse rows, or missing products.
+- External regression tests cover parser order/repeated rows, exclusions, empty
+  diagnostics, successful retry persistence, preservation of valid data, and scan
+  retry/skip decisions. All 9 watcher tests passed from its project directory.
+- Did not run the live watcher/ETL or change business rows; the investigated PDF's
+  UNC path remains inaccessible from this session. Next ETL scan retries empties;
+  actual document extraction success remains to be verified.
+
 ## PDF item ordering investigation — empty extracted items
 
 - Read-only investigation found a non-null PDF extraction payload with an empty

@@ -137,7 +137,7 @@ class StagingTests(unittest.TestCase):
         args = conn.execute.call_args.args[1]
         self.assertTrue(args['reconcile'])
         self.assertEqual(json.loads(args['details'])['allocations'], [{'item': 'a', 'ordered': 3, 'allocated': 4}])
-        self.assertFalse(any(str(c.args[0]).lstrip().startswith(('UPDATE public."WO Details"', 'INSERT INTO public.production_overrides')) for c in conn.execute.call_args_list))
+        self.assertFalse(any(str(c.args[0]).lstrip().startswith(('UPDATE public.wo_details', 'INSERT INTO public.production_overrides')) for c in conn.execute.call_args_list))
 
     def test_missing_identity_does_not_begin_transaction(self):
         engine = MagicMock()

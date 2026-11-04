@@ -9,6 +9,25 @@ Turning QuickBooks exports into a time-phased inventory ledger, extend functions
 - From `MRP_System 3.0`, run `python -m mrp_system.cli.etl` to run the ETL and update the system.
 
 
+## Database table names
+
+Operational tables use lowercase `snake_case`: `item_info`,
+`hq_shipping_schedule`, `open_purchase_orders`, `wo_details`, and
+`outgoing_records`. Column names are unchanged.
+
+For an existing installation using the former table names, stop the applications
+and ETL, then run from `MRP_System 3.0`:
+
+```powershell
+python -m mrp_system.cli.rename_operational_tables
+python -m mrp_system.cli.rename_operational_tables --apply
+```
+
+The first command previews changes. `--apply` renames the existing tables in one
+transaction and verifies table identity and row counts; it does not create or
+copy tables. Both-name collisions abort the migration. Restart MRP, MES, and the
+Receiving Log app with the updated code afterward.
+
 ## Data inputs
 - Inventory Status (warehouse snapshot)
 - Open Sales Order

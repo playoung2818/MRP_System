@@ -121,8 +121,8 @@ TABLE_CONTRACTS: dict[str, TableContract] = {
             "On PO": COLUMN_TYPE_NUMBER,
         },
     ),
-    "NT Shipping Schedule": TableContract(
-        table_name="NT Shipping Schedule",
+    "hq_shipping_schedule": TableContract(
+        table_name="hq_shipping_schedule",
         required_columns=("QB Num", "Item", "Ship Date", "Qty(+)", "Pre/Bare"),
         column_types={
             "SO NO.": COLUMN_TYPE_STRING,
@@ -136,8 +136,8 @@ TABLE_CONTRACTS: dict[str, TableContract] = {
             "Reference": COLUMN_TYPE_STRING,
         },
     ),
-    "Open_Purchase_Orders": TableContract(
-        table_name="Open_Purchase_Orders",
+    "open_purchase_orders": TableContract(
+        table_name="open_purchase_orders",
         required_columns=("Order Date", "QB Num", "Item", "Qty(+)"),
         column_types={
             "Order Date": COLUMN_TYPE_DATETIME,

@@ -50,7 +50,7 @@ def test_validate_open_purchase_orders_contract_fails_for_renamed_qty_column() -
     )
 
     with pytest.raises(ValueError) as exc_info:
-        validate_output_table(df, TABLE_CONTRACTS["Open_Purchase_Orders"])
+        validate_output_table(df, TABLE_CONTRACTS["open_purchase_orders"])
 
     assert "Qty(+)" in str(exc_info.value)
     assert "QtyPlus" in str(exc_info.value)

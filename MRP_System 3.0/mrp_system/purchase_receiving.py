@@ -61,7 +61,7 @@ def fingerprint(rows):
 
 
 def source_context(conn, pod):
-    rows = [dict(r) for r in conn.execute(text('''SELECT * FROM public."Open_Purchase_Orders"
+    rows = [dict(r) for r in conn.execute(text('''SELECT * FROM public.open_purchase_orders
         WHERE UPPER(BTRIM(COALESCE(NULLIF(BTRIM("POD#"), ''), "QB Num"))) IN (:pod,:digits,:compact)
         ORDER BY "Item", "Inventory Site", ctid'''),
         {'pod':pod,'digits':pod[4:],'compact':pod.replace('-','')}).mappings()]
@@ -238,7 +238,7 @@ def apply_receipts(engine, pod, source_hash, review, choices):
             conn.execute(text("SET LOCAL lock_timeout = '10s'"))
             # Same lock as port 5000: concurrent receivers cannot race serial checks.
             conn.execute(text('LOCK TABLE public.receiving_log IN SHARE ROW EXCLUSIVE MODE'))
-            conn.execute(text('LOCK TABLE public."Open_Purchase_Orders" IN SHARE MODE'))
+            conn.execute(text('LOCK TABLE public.open_purchase_orders IN SHARE MODE'))
             source, parts, current_source = source_context(conn, pod)
             if current_source != source_hash:
                 raise ValueError('POD changed since preview. Nothing saved; preview again.')

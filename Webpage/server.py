@@ -156,7 +156,7 @@ def _pdf_view_url_for_path(path: str | None) -> str | None:
 def _load_item_info(force: bool = False) -> pd.DataFrame:
     global ITEM_INFO, ITEM_INFO_SUGGEST_CACHE, ITEM_INFO_PHOTO_BY_SUGGESTION
     if force or ITEM_INFO is None:
-        item_info = _read_table("public", "Item Info")
+        item_info = _read_table("public", "item_info")
         ITEM_INFO = item_info
 
         suggest_items: list[str] = []
@@ -474,8 +474,8 @@ def _load_from_db(force: bool = False):
             refresh_part_number_aliases(engine)
             so = _read_table("public", "wo_structured")
             inventory = _read_table("public", "inventory_status")
-            sap = _read_table("public", "NT Shipping Schedule")
-            open_po = _read_table("public", "Open_Purchase_Orders")
+            sap = _read_table("public", "hq_shipping_schedule")
+            open_po = _read_table("public", "open_purchase_orders")
             ledger = _read_table("public", "ledger_analytics")
             for c in ("Ship Date", "Order Date"):
                 _safe_date_col(so, c)
@@ -889,7 +889,7 @@ def _execution_metrics_for_orders(sales: pd.DataFrame) -> pd.DataFrame:
     """Read MES facts without requiring its HTTP service or writing any records."""
     numbers = sorted(set(sales['QB Num'].astype(str).map(normalize_wo_number)))
     statement = text('''SELECT sales_order, items, is_shipped, record_source
-                        FROM public."WO Details"
+                        FROM public.wo_details
                         WHERE record_source = 'mes' AND sales_order IN :numbers''')
     statement = statement.bindparams(bindparam('numbers', expanding=True))
     with engine.connect() as connection:

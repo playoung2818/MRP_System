@@ -23,7 +23,6 @@ from mrp_system.ingest.sources import (
 )
 from mrp_system.ledger.events import build_events
 from mrp_system.ledger.ledger import build_ledger_from_events
-from mrp_system.ledger.material_readiness import refresh_material_readiness
 from mrp_system.normalize.mrp_normalize import refresh_pod_site
 from mrp_system.runtime.config import (
     DB_SCHEMA,
@@ -242,12 +241,6 @@ def main() -> None:
         logging.info("Total %s SOs loaded.", stage_cli_orders(review_engine, final_sales_order))
     finally:
         review_engine.dispose()
-    try:
-        logging.info("Material readiness refreshed: %s", refresh_material_readiness())
-    except Exception:
-        logging.exception("Material readiness refresh failed; check calculated_at before using the previous snapshot.")
-
-
 
     # Google Sheet export temporarily disabled; Planning and MES use the database.
     # Kept here so it can be re-enabled later.

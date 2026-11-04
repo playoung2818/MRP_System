@@ -88,7 +88,7 @@ def stage_cli_orders(engine, frame):
         conn.execute(text('SELECT pg_advisory_xact_lock(26091003)'))
         existing = {r['sales_order']: r for r in conn.execute(text('SELECT * FROM public.sales_order_workflow FOR UPDATE')).mappings()}
         wo_by_so = defaultdict(list)
-        for wo in conn.execute(text('SELECT sales_order, items, is_shipped FROM public."WO Details" WHERE record_source=\'mes\'')).mappings():
+        for wo in conn.execute(text('SELECT sales_order, items, is_shipped FROM public.wo_details WHERE record_source=\'mes\'')).mappings():
             wo_by_so[wo['sales_order']].append(wo)
         for number in sorted(set(existing) | set(orders)):
             old = existing.get(number)
@@ -163,7 +163,7 @@ def publish_completed_order(conn, number, notes=None, allow_reconciliation=False
         elif str(item.get('id', '')).startswith('manual-'):
             items.append(deepcopy(item))
     items.extend(by_id.values())
-    wo_records = list(conn.execute(text('SELECT items, is_shipped FROM public."WO Details" WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings())
+    wo_records = list(conn.execute(text('SELECT items, is_shipped FROM public.wo_details WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings())
     saved_items = [i for wo in wo_records for i in wo['items'] or []]
     limits = execution_limits(items, wo_records, incoming)
     conflicts = allocation_conflicts([{'item': name, 'quantity': qty} for name, qty in limits.items()], saved_items)

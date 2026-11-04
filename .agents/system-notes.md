@@ -5,6 +5,14 @@ preserve the existing implementation notes; they are context, not permission to
 run migrations or create database tables. Verify current behavior against code
 before relying on a historical description.
 
+### Current operational table names
+
+Operational SQL/model references now use `item_info`, `hq_shipping_schedule`,
+`open_purchase_orders`, `wo_details`, and `outgoing_records`. These were in-place
+renames, with column names unchanged. Older investigation notes may use former
+names. `so_material_readiness` and its producer/MES helper have been retired;
+Planning still calculates suggestions and saves manual reviews independently.
+
 ### Manual LT planning workspace
 
 Open **Planning** from the homepage card (`/planning`; `/lt_planning` remains a compatibility alias). The sidebar directly links to each planning stage. Its compact

@@ -157,7 +157,7 @@ def create_lt_planning(engine, source):
             reviews = {r['qb_num']: dict(r) for r in conn.execute(text('SELECT DISTINCT ON (qb_num) * FROM public.mrp_review_history ORDER BY qb_num, assessed_at DESC, id DESC')).mappings().all()}
             from collections import defaultdict
             wo_by_so = defaultdict(list)
-            for wo in conn.execute(text('SELECT sales_order,items,is_shipped FROM public."WO Details" WHERE record_source=\'mes\'')).mappings().all():
+            for wo in conn.execute(text('SELECT sales_order,items,is_shipped FROM public.wo_details WHERE record_source=\'mes\'')).mappings().all():
                 wo_by_so[wo['sales_order']].append(wo)
             finished = {r['wo_number']: r['is_finished_goods'] for r in conn.execute(text('SELECT wo_number,is_finished_goods FROM public.production_overrides')).mappings().all()}
             from mrp_system.transform.sales_order import normalize_wo_number
@@ -301,7 +301,7 @@ def create_lt_planning(engine, source):
                     raise ValueError('SO missing from current source. Resolve its disposition before release.')
                 if is_drop_ship_order(record['latest_snapshot']):
                     raise ValueError('Drop Ship SOs are excluded from production planning.')
-                wo_records = conn.execute(text('SELECT items,is_shipped FROM public."WO Details" WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings().all()
+                wo_records = conn.execute(text('SELECT items,is_shipped FROM public.wo_details WHERE sales_order=:so AND record_source=\'mes\''), {'so': number}).mappings().all()
                 finished_goods = conn.execute(text('SELECT is_finished_goods FROM public.production_overrides WHERE wo_number=:so'), {'so': number}).scalar_one_or_none() is True
                 group = requirements_frame(so, record, wo_records, finished_goods)
                 review = latest(conn, 'mrp_review_history', number)

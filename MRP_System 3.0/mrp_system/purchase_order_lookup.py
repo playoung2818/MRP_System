@@ -93,7 +93,7 @@ def request_filters():
 def select_sql(where, sort_col, direction):
     """Shared columns and stable ordering; sort choices are validated upstream."""
     fields = ", ".join('"' + col + '"' for col in COLUMNS)
-    return f'''SELECT {fields} FROM public."Open_Purchase_Orders"{where}
+    return f'''SELECT {fields} FROM public.open_purchase_orders{where}
         ORDER BY "{sort_col}" {direction.upper()} NULLS LAST,
             "QB Num" NULLS LAST, "Item" NULLS LAST,
             "Source Name" NULLS LAST, ctid'''
@@ -122,7 +122,7 @@ def lookup():
                         option_where, option_params, *_ = build_query({**args, field: []})
                         expression = f'nullif(btrim("{column}"), \'\')' if field == "source_names" else f'"{column}"::date'
                         values = conn.execute(text(
-                            f'SELECT DISTINCT {expression} AS value FROM public."Open_Purchase_Orders"'
+                            f'SELECT DISTINCT {expression} AS value FROM public.open_purchase_orders'
                             + option_where + ' ORDER BY value NULLS LAST'
                         ), option_params).scalars().all()
                         filter_options[field] = [
@@ -134,7 +134,7 @@ def lookup():
                         for selected in args[field]:
                             if selected not in existing and selected != "__none__":
                                 filter_options[field].append({"value": selected, "label": "(Blanks)" if selected == "__blank__" else selected})
-                    total = conn.execute(text('SELECT COUNT(*) FROM public."Open_Purchase_Orders"' + where), params).scalar_one()
+                    total = conn.execute(text('SELECT COUNT(*) FROM public.open_purchase_orders' + where), params).scalar_one()
                     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
                     page = min(page, pages)
                     sql = select_sql(where, sort_col, direction) + " LIMIT :limit OFFSET :offset"
@@ -196,7 +196,7 @@ def export_excel():
             with engine.connect() as conn:
                 with conn.begin():
                     conn.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
-                    total = conn.execute(text('SELECT COUNT(*) FROM public."Open_Purchase_Orders"' + where), params).scalar_one()
+                    total = conn.execute(text('SELECT COUNT(*) FROM public.open_purchase_orders' + where), params).scalar_one()
                     if total > 1_048_575:
                         return "Too many rows for one Excel worksheet. Narrow the purchase-order filters and try again.", 413
                     workbook = Workbook(write_only=True)

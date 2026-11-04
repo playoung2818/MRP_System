@@ -749,7 +749,7 @@ ITEM_INFO_TPL = """
           </tbody>
         </table>
       </div>
-      <div class="text-muted small">Source: public.Item Info</div>
+      <div class="text-muted small">Source: public.item_info</div>
     </div>
   </div>
 
