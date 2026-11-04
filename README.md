@@ -14,16 +14,11 @@ Rebuilt QuickBooks operational views into a unified pipeline, blending inventory
 - Open Sales Order
 - Open Purchase Orders (POD)
 - Shipping schedule
-- WO API (`http://192.168.60.215:5001/api/wo-quantities`) for picked quantities / WIP
 - PDF WO references (`pdf_file_log`)
 
 
-### Ledger timeline generation logic
+## Ledger timeline generation logic
 
-![alt text](image.png)
-
-The ledger combines an opening inventory snapshot with dated supply and demand
-movements.
 
 1. **Establish opening stock**
    - Normalize item names and take `On Hand` from the inventory snapshot,
@@ -69,6 +64,25 @@ movements.
 
 This builds the timeline itself. Removing a target SO's demand and calculating
 `FutureMin_NAV` are separate availability checks, not steps in ledger generation.
+
+### Simple example
+
+Assume today is **2026-11-04** and item **PART-A** has **10 units on hand**.
+The opening quantity stays 10; each movement changes the cumulative delta.
+
+| Date | Kind | Source | Reference | Delta | CumDelta | Projected_OnHand |
+|---|---|---|---|---:|---:|---:|
+| 2026-11-04 | OPEN | Snapshot | Opening stock | 0 | 0 | 10 |
+| 2026-11-05 | IN | USA | PO-001 | +5 | +5 | 15 |
+| 2026-11-05 | OUT | SO | SO-001 | -8 | -3 | 7 |
+| 2026-11-06 | OUT | SO | SO-002 | -9 | -12 | **-2** |
+| 2099-12-31 | IN | HQ | Unconfirmed supply | +20 | +8 | 18 |
+
+- On November 5, the receipt is counted before the SO demand: `10 + 5 - 8 = 7`.
+- On November 6, the next SO creates a shortage: `10 + 5 - 8 - 9 = -2`.
+- The unconfirmed receipt raises the final projected balance to 18, but does not
+  resolve the earlier shortage. Its row appears in the gray **Unconfirmed dates**
+  zone, while the lowest balance, **-2**, is highlighted green in Quotation Lookup.
 
 
 
