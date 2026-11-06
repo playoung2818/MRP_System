@@ -57,6 +57,32 @@ class WebUIAssetsTests(unittest.TestCase):
             '/quotation_lookup', '/item_info', '/purchase_orders',
         ])
 
+    def test_home_uses_glass_layout_and_live_alerts(self):
+        ui = runpy.run_path(str(WEB_ROOT / 'ui.py'))['INDEX_TPL']
+        self.assertIn('/static/home.css', ui)
+        self.assertIn('id="time-greeting"', ui)
+        self.assertIn('snoopy-figure-transparent.png', ui)
+        self.assertNotIn('<header class="home-topbar">', ui)
+        self.assertIn('id="snoopy-search-toggle"', ui)
+        self.assertIn('aria-expanded="false"', ui)
+        self.assertIn('aria-controls="snoopy-search-bubble"', ui)
+        self.assertIn('aria-label="Search with Snoopy" hidden', ui)
+        bubble = ui.split('id="snoopy-search-bubble"', 1)[1].split('</section>', 1)[0]
+        self.assertIn('id="global-search-input"', bubble)
+        self.assertIn('action="/global_search"', bubble)
+        script = (WEB_ROOT / 'static' / 'home-search.js').read_text(encoding='utf-8')
+        self.assertIn("event.key === 'Escape'", script)
+        self.assertIn('input.focus()', script)
+        self.assertEqual(ui.count('id="global-search-input"'), 1)
+        self.assertIn('class="home-planning" href="/planning"', ui)
+        self.assertIn('{% for item in alerts %}', ui)
+        self.assertNotIn('Overview', ui)
+        self.assertNotIn('Quick access', ui)
+        self.assertNotIn('Sample data', ui)
+        css = (WEB_ROOT / 'static' / 'home.css').read_text(encoding='utf-8')
+        self.assertIn('backdrop-filter:blur(24px)', css)
+        self.assertIn('prefers-reduced-motion', css)
+
     def test_planning_sidebar_has_only_two_active_stages(self):
         from flask import Flask, render_template
         app = Flask(__name__, template_folder=str(WEB_ROOT / 'templates'))
@@ -118,7 +144,8 @@ class WebUIAssetsTests(unittest.TestCase):
                     self.assertIn('colspan="2" scope="rowgroup"', html)
 
     def test_one_transparent_asset_per_snoopy_figure(self):
-        assets = sorted(path.name for path in (WEB_ROOT / "static").glob("snoopy*"))
+        assets = sorted(path.name for path in (WEB_ROOT / "static").glob("snoopy*")
+                        if path.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'})
         self.assertEqual(assets, ["snoopy-figure-transparent.png"])
         for name in assets:
             header = (WEB_ROOT / "static" / name).read_bytes()[:26]

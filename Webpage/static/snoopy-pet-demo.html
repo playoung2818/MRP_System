@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Snoopy pet · Demo only</title>
+<link rel="icon" href="/static/robot.svg" type="image/svg+xml">
+<style>
+*{box-sizing:border-box}body{margin:0;font:14px "Segoe UI",Arial,sans-serif;color:#203047;background:#f6f8fb}button,input{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible{outline:3px solid #6f9bf3;outline-offset:4px}.shell{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100vh}aside{background:#fff;border-right:1px solid #e5eaf1;padding:30px 22px;display:flex;flex-direction:column;gap:34px}.brand{display:flex;align-items:center;gap:12px}.brand img{width:35px;height:35px}.brand strong{font-size:16px}.brand small{display:block;color:#718096;font-size:11px;margin-top:5px}.nav-label{color:#718096;font-size:10px;letter-spacing:1.5px;margin-bottom:16px}.nav{display:grid;gap:8px}.nav span{padding:12px 8px;color:#526377;font-size:13px}.aside-note{margin-top:auto;color:#718096;font-size:11px;line-height:1.7}main{padding:38px 42px;min-width:0;max-width:1250px;width:100%;margin:auto}.preview{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:28px;font-size:11px;color:#718096}.badge{border:1px solid #d8e3f0;background:#edf3fa;padding:6px 9px;border-radius:5px;color:#4c6684}.preview a{color:#526377;text-decoration:none}.greeting{min-height:225px;display:flex;align-items:center;gap:32px;position:relative;margin-bottom:24px}h1{font-size:29px;letter-spacing:-.7px;font-weight:650;margin:0 0 9px}p{color:#718096;line-height:1.6;margin:0}.greeting p{font-size:13px}.pet-zone{position:relative;flex-shrink:0}.pet-button{position:relative;display:flex;align-items:center;justify-content:center;width:150px;height:180px;padding:0;border:0;background:transparent;border-radius:30px;touch-action:manipulation}.pet-button::after{content:"";position:absolute;bottom:12px;width:74px;height:10px;border-radius:50%;background:rgba(32,48,71,.1);filter:blur(3px);animation:shadow 3.6s ease-in-out infinite}.pet-image{width:136px;height:170px;object-fit:contain;position:relative;z-index:1;transform-origin:50% 88%;animation:breathe 3.6s ease-in-out infinite}.pet-button:hover .pet-image{animation:perk .65s ease-in-out infinite alternate}.pet-button[data-state="curious"] .pet-image{animation:curious 2s ease-in-out infinite}.pet-button[data-state="happy"] .pet-image{animation:happy .48s ease-in-out 3}.pet-button[data-state="sleepy"] .pet-image{animation:sleep 5s ease-in-out infinite;filter:saturate(.8)}.pet-button[data-state="sleepy"]::before{content:"z z Z";position:absolute;right:0;top:5px;color:#8394ad;font-size:16px;letter-spacing:4px;animation:zzz 3s ease-in-out infinite}.pet-button[data-state="paused"] .pet-image,.pet-button[data-state="paused"]::after{animation:none}.status{font-size:11px;color:#718096;text-align:center;height:18px;margin-top:4px}.bubble[hidden]{display:none}.bubble{position:absolute;z-index:5;left:calc(100% + 15px);top:0;width:360px;padding:18px;border:1px solid #d8e1ed;background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(32,48,71,.1)}.bubble::before{content:"";position:absolute;left:-8px;top:58px;width:14px;height:14px;background:#fff;border-left:1px solid #d8e1ed;border-bottom:1px solid #d8e1ed;transform:rotate(45deg)}.bubble-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.bubble-head label{font-weight:600;font-size:14px}.close{border:0;background:none;font-size:22px;color:#718096;padding:2px 5px}.bubble p{font-size:12px;margin:6px 0 14px}.search{display:flex;border:1px solid #ccd9e8;border-radius:8px;background:#f8fafc;padding:9px;gap:8px}.search:focus-within{outline:2px solid #8dabec;outline-offset:2px}.search input{width:100%;min-width:0;border:0;background:transparent;outline:none;font-size:12px;color:#203047}.search button{border:0;background:#285ed8;color:#fff;padding:7px 10px;border-radius:5px;font-size:11px}.search-result{font-size:12px;line-height:1.6;color:#425b78;margin-top:12px;overflow-wrap:anywhere}.section-head{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:20px}h2{font-size:16px;font-weight:650;margin:0 0 6px}.section-head p{font-size:12px}.dummy-action{font-size:12px;color:#285ed8;background:#eaf1ff;border:1px solid #d8e4fc;padding:10px 14px;border-radius:7px}.panel{background:#fff;border:1px solid #e5eaf1;border-radius:9px;overflow:hidden}.panel-title{padding:20px 22px;font-size:14px;font-weight:600;border-bottom:1px solid #e5eaf1}.panel-row{padding:22px;color:#718096;font-size:13px;line-height:1.7}.controls{margin-top:24px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}.controls span{font-size:11px;color:#718096;margin-right:6px}.controls button{background:white;border:1px solid #d9e2ed;color:#425b78;border-radius:6px;padding:8px 12px;font-size:11px}.controls button:hover{background:#edf3fc}.controls button[aria-pressed="true"]{background:#e7efff;border-color:#8daeed}.note{font-size:11px;color:#8190a4;margin-top:20px;max-width:640px;line-height:1.8}@keyframes breathe{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-7px) rotate(2deg)}}@keyframes shadow{0%,100%{transform:scaleX(1);opacity:.9}50%{transform:scaleX(.8);opacity:.5}}@keyframes perk{from{transform:translateY(-4px) rotate(-5deg)}to{transform:translateY(-10px) rotate(5deg)}}@keyframes curious{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(5deg) translateY(-4px)}}@keyframes happy{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-20px) rotate(7deg)}}@keyframes sleep{0%,100%{transform:rotate(12deg) scaleY(.94)}50%{transform:rotate(12deg) scaleY(.97)}}@keyframes zzz{0%,100%{opacity:.25;transform:translateY(0)}50%{opacity:1;transform:translateY(-10px)}}@media(max-width:1150px){.bubble{left:auto;right:0;top:calc(100% + 14px)}.bubble::before{top:-8px;left:auto;right:65px;border:0;border-top:1px solid #d8e1ed;border-left:1px solid #d8e1ed}}@media(max-width:720px){.shell{display:block}aside{padding:18px;gap:18px}.nav{display:flex;flex-wrap:wrap;gap:4px}.nav span{font-size:11px;padding:6px}.nav-label,.aside-note{display:none}main{padding:24px 20px}.greeting{gap:8px;justify-content:space-between;min-height:200px}h1{font-size:25px}.pet-button{width:120px;height:160px}.pet-image{width:115px;height:145px}.bubble{width:min(360px,calc(100vw - 40px))}.section-head{align-items:flex-start;flex-direction:column}.preview{align-items:flex-start}}@media(prefers-reduced-motion:reduce){.pet-image,.pet-button::after,.pet-button::before{animation:none!important}}
+</style>
+</head><body>
+<div class="shell"><aside><div class="brand"><img src="/static/robot.svg" alt=""><div><strong>NTA MRP</strong><small>Sales workspace · Preview</small></div></div><div><div class="nav-label">WORKSPACE</div><nav class="nav" aria-label="Illustrative navigation"><span>Quotation Lookup</span><span>Item Information</span><span>Purchase Orders</span></nav></div><div class="aside-note">Standalone pet experiment.<br>Your live homepage is unchanged.</div></aside>
+<main><div class="preview"><span class="badge">PET DEMO · NO LIVE DATA</span><a href="/">Back to live homepage →</a></div>
+<section class="greeting" aria-label="Greeting and Snoopy pet"><div><h1 id="greeting">Howdy</h1><p>A little company for your workday.</p></div><div class="pet-zone"><button id="pet" class="pet-button" data-state="idle" type="button" aria-label="Snoopy: open search" aria-controls="bubble" aria-expanded="false"><img class="pet-image" src="/static/snoopy-figure-transparent.png" alt="Snoopy"><span aria-hidden="true"></span></button><div class="status" id="pet-status">Just hanging out</div>
+<section class="bubble" id="bubble" aria-label="Snoopy search demo" hidden><div class="bubble-head"><label for="query">What are we looking for?</label><button class="close" id="close" type="button" aria-label="Close Snoopy search">×</button></div><p>Tell me an order, item, or customer.</p><form class="search" id="search"><input id="query" placeholder="Type something to try…" autocomplete="off" required><button type="submit">Search</button></form><div id="result" class="search-result" role="status"></div></section>
+</div></section>
+<div class="section-head"><div><h2>Stay ahead of your sales orders</h2><p>Same clean workspace. A slightly more playful companion.</p></div><span class="dummy-action">Sales workspace preview</span></div>
+<div class="panel"><div class="panel-title">Meet your desk companion</div><div class="panel-row">Hover over Snoopy to get his attention. Click him to open search.<br>Leave him alone for 20 seconds and he’ll get sleepy.</div></div>
+<div class="controls" aria-label="Pet demo controls"><span>Try a reaction</span><button id="happy" type="button">Happy hop</button><button id="sleep" type="button">Take a nap</button><button id="wake" type="button">Wake up</button><button id="pause" type="button" aria-pressed="false">Pause motion</button></div>
+<p class="note">This demo animates the existing static image, so movements are playful transforms—not frame-by-frame character animation. Search only simulates a response: no API calls, live searches, or database changes. Motion respects your device’s reduced-motion setting.</p>
+</main></div>
+<script>
+(() => {
+ const pet = document.getElementById('pet'), bubble = document.getElementById('bubble');
+ const input = document.getElementById('query'), status = document.getElementById('pet-status');
+ const pause = document.getElementById('pause'), result = document.getElementById('result');
+ let paused = false, napTimer, reactionTimer;
+ const hour = new Date().getHours();
+ document.getElementById('greeting').textContent = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+ function state(name, text) { pet.dataset.state = paused ? 'paused' : name; status.textContent = text; }
+ function scheduleNap() {
+  clearTimeout(napTimer);
+  if (!paused && bubble.hidden) napTimer = setTimeout(() => state('sleepy', 'A little nap…'), 20000);
+ }
+ function wake() {
+  clearTimeout(reactionTimer);
+  state(bubble.hidden ? 'idle' : 'curious', bubble.hidden ? 'Just hanging out' : 'Listening…');
+  scheduleNap();
+ }
+ function openSearch(open, focus = false) {
+  clearTimeout(reactionTimer); clearTimeout(napTimer);
+  bubble.hidden = !open; pet.setAttribute('aria-expanded', String(open));
+  if (open) { state('curious', 'Listening…'); input.focus(); }
+  else { wake(); if (focus) pet.focus(); }
+ }
+ function happy() {
+  clearTimeout(napTimer); clearTimeout(reactionTimer);
+  state('happy', 'Found my happy place!');
+  reactionTimer = setTimeout(wake, 1500);
+ }
+ pet.addEventListener('click', () => openSearch(bubble.hidden));
+ pet.addEventListener('pointerenter', () => { if (bubble.hidden) wake(); });
+ pet.addEventListener('focus', () => { if (bubble.hidden) wake(); });
+ document.getElementById('close').addEventListener('click', () => openSearch(false, true));
+ document.addEventListener('keydown', event => { if (event.key === 'Escape' && !bubble.hidden) { event.preventDefault(); openSearch(false, true); } });
+ document.addEventListener('click', event => { if (!bubble.hidden && !event.target.closest('.pet-zone')) openSearch(false); });
+ document.addEventListener('focusin', event => { if (!bubble.hidden && !event.target.closest('.pet-zone')) openSearch(false); });
+ document.getElementById('search').addEventListener('submit', event => {
+  event.preventDefault();
+  const query = input.value.trim();
+  if (!query) { input.focus(); return; }
+  result.textContent = '“' + query + '” — got it! On the real homepage, this would search your orders, items, and customers. This demo hasn’t sent anything.';
+  happy();
+ });
+ document.getElementById('happy').addEventListener('click', happy);
+ document.getElementById('sleep').addEventListener('click', () => { clearTimeout(napTimer); clearTimeout(reactionTimer); state('sleepy', 'A little nap…'); });
+ document.getElementById('wake').addEventListener('click', wake);
+ pause.addEventListener('click', () => {
+  paused = !paused; pause.setAttribute('aria-pressed', String(paused));
+  pause.textContent = paused ? 'Resume motion' : 'Pause motion';
+  clearTimeout(napTimer); clearTimeout(reactionTimer);
+  if (paused) state('paused', 'Taking it easy · motion paused'); else wake();
+ });
+ scheduleNap();
+})();
+</script>
+</body></html>

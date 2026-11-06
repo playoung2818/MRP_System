@@ -99,7 +99,8 @@ INDEX_TPL = """
 <head>
   <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
-  <title>LT Check - Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NTA MRP · Home</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     :root{
@@ -232,12 +233,14 @@ INDEX_TPL = """
       .topbar{ flex-direction:column; }
     }
   </style>
+  <link rel="stylesheet" href="/static/home.css?v=8">
+  <script src="/static/home-search.js" defer></script>
 </head>
-<body>
+<body class="home-page">
   <div class="shell">
     <aside class="sidebar">
       <div>
-        <div class="brand-title">NTA MRP System</div>
+        <a class="home-brand" href="/" aria-label="NTA MRP home"><img class="home-logo" src="/static/robot.svg" alt="" width="35" height="35"><span><span class="brand-title">NTA MRP</span><small>Operations workspace</small></span></a>
       </div>
       <div class="nav-group">
         <div class="nav-label">Workspace</div>
@@ -253,61 +256,50 @@ INDEX_TPL = """
     <main class="main">
       <div class="topbar">
         <div class="greeting-wrap">
-          <div id="time-greeting" class="hero-title">Howdy</div>
-          <img class="greeting-image" src="/static/snoopy-figure-transparent.png" alt="Snoopy dancing">
-        </div>
-        <div class="topbar-actions">
-          <div class="loaded-badge">Loaded {{ loaded_at }}</div>
-          <a class="btn btn-outline-secondary" href="/?reload=1">Reload</a>
+          <div><h1 id="time-greeting" class="hero-title">Howdy</h1></div>
+          <div class="snoopy-search">
+            <button id="snoopy-search-toggle" class="snoopy-button" type="button" aria-expanded="false" aria-controls="snoopy-search-bubble" aria-label="Ask Snoopy: search orders, items, or customers">
+              <img class="greeting-image" src="/static/snoopy-figure-transparent.png" alt="Snoopy dancing">
+            </button>
+            <section id="snoopy-search-bubble" class="snoopy-bubble" aria-label="Search with Snoopy" hidden>
+              <div class="snoopy-bubble-heading"><label for="global-search-input">What are we looking for?</label><button id="snoopy-search-close" type="button" aria-label="Close search">×</button></div>
+              <p>Tell me a sales order, item, or customer.</p>
+              <form id="global-search-form" class="home-search" method="get" action="/global_search" role="search">
+                <div class="global-search-wrap">
+                  <input id="global-search-input" autocomplete="off" class="form-control search-input" name="q" aria-label="Search sales orders, items, or customers" placeholder="Search SO, item, or customer…" value="" required>
+                  <div id="global-search-suggest" class="list-group global-suggest"></div>
+                </div>
+                <button type="submit">Search</button>
+              </form>
+            </section>
+          </div>
         </div>
       </div>
 
       {% if not so_num and not customer_val %}
-        <div class="card-lite search-card">
-          <div class="search-title">Global Search</div>
-          <form id="global-search-form" class="row g-3 align-items-end" method="get" action="/global_search">
-            <div class="col-12 col-xl-10 global-search-wrap">
-              <input id="global-search-input" autocomplete="off" class="form-control search-input" name="q" placeholder="SO, item, or customer" value="">
-              <div id="global-search-suggest" class="list-group global-suggest"></div>
-            </div>
-            <div class="col-6 col-xl-1 d-grid">
-              <button class="btn btn-primary" style="height:58px;font-weight:700;">Go</button>
-            </div>
-          </form>
+        <div class="home-section-heading">
+          <div><h2>Keep production moving</h2><p>Review materials, priorities, and upcoming work.</p></div>
+          <a class="home-planning" href="/planning">Open planning <span aria-hidden="true">→</span></a>
         </div>
-
-        <div class="row g-4">
-          <div class="col-12 col-xl-4">
-            <a class="card-lite metric-card metric-link" href="/planning">
-              <div class="metric-value">Planning</div>
-              <div class="metric-label">Review materials and schedule production</div>
-              <div class="metric-note">Open planning workspace →</div>
-            </a>
-          </div>
-        </div>
-
-        <div class="row g-4 page-section">
-          <div class="col-12">
-            <div class="card-lite panel-card h-100">
-              <div class="section-title">Alerts</div>
-              <ul class="panel-list">
-                {% for item in alerts %}
-                  <li>
-                    <div>
-                      <div class="panel-kicker">System</div>
-                      {% if item.href %}
-                        <a class="fw-semibold" href="{{ item.href }}">{{ item.label }}</a>
-                      {% else %}
-                        <div class="fw-semibold">{{ item.label }}</div>
-                      {% endif %}
-                    </div>
-                  </li>
-                {% endfor %}
-              </ul>
-            </div>
-          </div>
-        </div>
+        <section class="card-lite panel-card" aria-labelledby="home-alerts-title">
+          <h2 id="home-alerts-title" class="section-title">Needs attention</h2>
+          <ul class="panel-list">
+            {% for item in alerts %}
+              <li><div>
+                <div class="panel-kicker">System</div>
+                {% if item.href %}
+                  <a class="fw-semibold" href="{{ item.href }}">{{ item.label }} <span aria-hidden="true">→</span></a>
+                {% else %}
+                  <div class="fw-semibold">{{ item.label }}</div>
+                {% endif %}
+              </div></li>
+            {% else %}
+              <li><div class="muted">No updates to review.</div></li>
+            {% endfor %}
+          </ul>
+        </section>
       {% endif %}
+      <div class="home-data-status"><span>Data loaded {{ loaded_at }}</span><a href="/?reload=1">Refresh data ↻</a></div>
 
   {% if customer_query is not none %}
   <div class="card-lite bg-white my-4 p-4">

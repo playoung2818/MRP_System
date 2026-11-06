@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from mrp_system.normalize.mrp_normalize import normalize_item
+from mrp_system.normalize.inventory_rows import exclude_inventory_summary_rows
 
 from .sales_order import normalize_wo_number
 
@@ -22,7 +23,8 @@ def build_wip_lookup(so_full: pd.DataFrame, mes_quantities: pd.DataFrame, site: 
 
 
 def transform_inventory(inventory_df: pd.DataFrame, wip_lookup: pd.DataFrame | None = None) -> pd.DataFrame:
-    inv = inventory_df.copy()
+    # Also guard direct callers that bypass extract_inputs().
+    inv = exclude_inventory_summary_rows(inventory_df)
     inv = inv.rename(columns={"Unnamed: 0": "Part_Number"})
     inv["Part_Number"] = inv["Part_Number"].astype(str).str.strip().map(normalize_item)
     for c in ["On Hand", "On Sales Order", "On PO", "Available", "On Hand - WIP", "WIP_Qty"]:

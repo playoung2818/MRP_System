@@ -7,6 +7,7 @@ import pandas as pd
 from mrp_system.runtime.config import POD_FILE, SALES_ORDER_FILE, SHIPPING_SCHEDULE_FILE, WAREHOUSE_INV_FILE
 from mrp_system.runtime.db_config import get_engine
 from mrp_system.transform.sales_order import normalize_wo_number
+from mrp_system.normalize.inventory_rows import exclude_inventory_summary_rows
 
 from ._helpers import read_excel_safe
 
@@ -15,7 +16,9 @@ def extract_inputs():
     df_sales_order = pd.read_csv(
         str(SALES_ORDER_FILE), encoding="ISO-8859-1", engine="python", dtype={"P. O. #": "string"}
     )
-    inventory_df = pd.read_csv(str(WAREHOUSE_INV_FILE), encoding="cp1252")
+    inventory_df = exclude_inventory_summary_rows(
+        pd.read_csv(str(WAREHOUSE_INV_FILE), encoding="cp1252")
+    )
     df_shipping_schedule = read_excel_safe(SHIPPING_SCHEDULE_FILE)
     df_pod = pd.read_csv(str(POD_FILE), encoding="ISO-8859-1", engine="python")
     return df_sales_order, inventory_df, df_shipping_schedule, df_pod

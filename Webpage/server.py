@@ -8,7 +8,7 @@ import secrets
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
-from flask import Flask, request, render_template_string, jsonify, abort, redirect, url_for, send_file, Response
+from flask import Flask, request, render_template, render_template_string, jsonify, abort, redirect, url_for, send_file, Response
 import pandas as pd
 import numpy as np
 from sqlalchemy import text, bindparam
@@ -43,6 +43,7 @@ from mrp_system.ingest.mes import quantities_from_saved_wos
 from mrp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_atp_for_items_strict
 from mrp_system.runtime.db_config import get_engine, DATABASE_DSN
 from planning_kpi import create_planning_kpi
+from stock_coverage import stock_coverage_exceptions
 from mrp_system.quotation_cards import load_item_cards
 from mrp_system.purchase_order_lookup import purchase_orders
 from mrp_system.runtime.constants import PLACEHOLDER_DATE
@@ -715,6 +716,15 @@ def _dashboard_alerts() -> list[dict[str, str]]:
         if neg_item_count:
             alerts.append({"label": f"{int(neg_item_count)} items will go negative in the future", "href": "/dashboard/negative_inventory"})
 
+    coverage_rows = stock_coverage_exceptions(INVENTORY_STATUS)
+    if coverage_rows:
+        low = sum(row['status'].startswith('Below') for row in coverage_rows)
+        high = len(coverage_rows) - low
+        alerts.append({
+            "label": f"{len(coverage_rows)} items outside stock coverage targets: {low} below 1× and {high} above 4× weekly sales (Available + On PO).",
+            "href": "/dashboard/stock_coverage",
+        })
+
     if _LAST_LOADED_AT is not None:
         age_minutes = max(0, int((datetime.now() - _LAST_LOADED_AT).total_seconds() // 60))
         if age_minutes >= 60:
@@ -1340,6 +1350,17 @@ def dashboard_unassigned_so():
         UNASSIGNED_SO_TPL, columns=UNASSIGNED_COLUMNS,
         numeric_cols=UNASSIGNED_NUMERIC_COLUMNS, rows=rows, count=count,
         total_count=_dashboard_lt_unassigned_count(), query=query,
+        loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "—",
+    )
+
+
+@app.get("/dashboard/stock_coverage")
+def dashboard_stock_coverage():
+    _ensure_loaded()
+    if _LAST_LOAD_ERR:
+        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
+    return render_template(
+        "stock_coverage.html", rows=stock_coverage_exceptions(INVENTORY_STATUS),
         loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "—",
     )
 

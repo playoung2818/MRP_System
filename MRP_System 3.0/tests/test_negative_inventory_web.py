@@ -11,6 +11,7 @@ def dashboard_functions(ledger):
     functions = [node for node in ast.parse(source.read_text(encoding='utf-8-sig')).body
                  if isinstance(node, ast.FunctionDef) and node.name in names]
     context = {'pd': pd, 'LEDGER': ledger, 'OPEN_PO': None, '_LAST_LOADED_AT': None,
+               'INVENTORY_STATUS': None, 'stock_coverage_exceptions': lambda _: [],
                'PLACEHOLDER_DATE': pd.Timestamp('2099-12-31')}
     exec(compile(ast.Module(body=functions, type_ignores=[]), '<negative-inventory-test>', 'exec'), context)
     return context

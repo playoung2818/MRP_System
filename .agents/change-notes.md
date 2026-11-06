@@ -4,6 +4,64 @@ Record agent decisions, implementation context, validation, and unresolved work
 here (or in focused notes linked from INDEX.md), not in the human-facing README.
 Do not treat test results below as a current production audit.
 
+## Inventory summary rows excluded at ETL entry
+
+- Inventory extraction previously allowed report labels such as `Total CPU`
+  into inventory_status. Added shared `exclude_inventory_summary_rows` at CSV
+  ingestion and as a defensive guard in transform_inventory before normalization.
+- Filters case-insensitive leading Total, Subtotal/Sub Total, and Grand Total
+  labels on Part_Number or raw Unnamed: 0. Preserves part names containing
+  `total` elsewhere and words such as TOTALIZER. Does not alter source files.
+- Validation: 21 focused summary-filter, execution-metric, and extraction tests
+  passed. Broader run: 44 passed, 2 unrelated failures (hardcoded old inventory
+  filename assertion and mixed-site drop-ship SO expectation). Initial root-level
+  test attempt failed package imports; rerun from MRP_System 3.0.
+- No ETL execution or database mutation performed. Existing stored summary rows
+  remain until an authorized normal ETL refresh; this code change alone does
+  not remove them from the loaded web snapshot.
+
+## Homepage stock coverage alert
+
+- Added read-only item-level coverage exceptions from `INVENTORY_STATUS`, not
+  repeated SO lines. Uses Available + On PO strictly below Sales/Week or above
+  4 × Sales/Week. Only Sales/Week >= 0.2 is considered (inclusive minimum).
+  Coverage boundary equality and missing/nonfinite inputs are excluded.
+  No database changes.
+- Homepage alert links to `/dashboard/stock_coverage`, showing quantities,
+  thresholds, status, and existing global-search item links. Pure helper lives
+  in `Webpage/stock_coverage.py`; duplicates are counted once by Part_Number.
+- Validation: 15 focused read-only tests passed; live homepage/detail render.
+  Asset regression now limits the Snoopy image check to image extensions so
+  the standalone pet-demo HTML is not mistaken for an extra figure asset.
+
+## Snoopy search and sidebar refinement
+
+- Live homepage sidebar is now solid white; earlier light-blue/glass treatments
+  remain only in preview assets or overridden CSS.
+- Removed the live homepage top header and greeting subtitle. Search is hidden
+  initially and opens in a speech bubble when Snoopy is clicked. Existing GET
+  search route and autocomplete IDs are retained; this is not an AI chat API.
+- `home-search.js` handles focus, expanded state, close button, Escape,
+  outside click, and focus leaving the control. Responsive bubble styling is
+  in `home.css`; greeting and Snoopy remain visible.
+- Validation: 10 database-independent UI tests passed; live `/` HTML includes
+  hidden Snoopy search and no top header. Browser visual checks not performed.
+
+## Default homepage operations design
+
+- Promoted the operations-dashboard concept to the existing `/` INDEX_TPL;
+  no redirect to the sample demo and no new database objects or writes.
+- Added `Webpage/static/home.css`: liquid-glass sidebar with opaque fallback,
+  top-right global search (existing autocomplete IDs retained), larger Snoopy
+  and existing time-based greeting, Planning button in main content only.
+- No Overview navigation or Quick Access section. Uses existing live alerts
+  and loaded timestamp, not the standalone demo's illustrative KPI counts.
+  Existing SO/customer results and item-detail functionality remain in place.
+- Standalone preview remains at `/static/operations-dashboard-demo.html`.
+- Validation: 10 database-independent web UI asset tests passed; live GET `/`
+  at 192.168.60.215:5002 serves the new stylesheet and Planning button without
+  Overview labels. No browser visual or end-to-end workflow check performed.
+
 ## Blocking-item quantity display
 
 - Planning and Planning KPI format saved blocker uncovered/required quantities
