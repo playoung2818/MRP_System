@@ -44,6 +44,7 @@ from mrp_system.ledger.atp import build_atp_view, earliest_atp_strict, earliest_
 from mrp_system.runtime.db_config import get_engine, DATABASE_DSN
 from planning_kpi import create_planning_kpi
 from stock_coverage import stock_coverage_exceptions
+from assigned_ship_dates import assigned_placeholder_ship_dates
 from mrp_system.quotation_cards import load_item_cards
 from mrp_system.purchase_order_lookup import purchase_orders
 from mrp_system.runtime.constants import PLACEHOLDER_DATE
@@ -684,6 +685,16 @@ def _dashboard_top_shortage_items(limit: int = 5) -> list[dict[str, object]]:
     return out
 
 
+def _assigned_placeholder_ship_date_rows() -> list[dict]:
+    if SO_INV is None or SO_INV.empty:
+        return []
+    assignments = pd.read_sql_query(text(
+        'SELECT wo_number, production_date FROM public.production_overrides '
+        'WHERE production_date IS NOT NULL'
+    ), con=engine)
+    return assigned_placeholder_ship_dates(SO_INV, assignments)
+
+
 def _dashboard_alerts() -> list[dict[str, str]]:
     alerts: list[dict[str, str]] = []
 
@@ -730,9 +741,15 @@ def _dashboard_alerts() -> list[dict[str, str]]:
         if age_minutes >= 60:
             alerts.append({"label": f"Homepage data is {age_minutes} minutes old.", "href": "/?reload=1"})
 
+    assigned_unknown = _assigned_placeholder_ship_date_rows()
+    if assigned_unknown:
+        alerts.append({
+            "label": f"{len(assigned_unknown)} SOs have an assigned production date but still have a 2099 ship date.",
+            "href": "/dashboard/assigned_unknown_ship_dates",
+        })
     if not alerts:
         alerts.append({"label": "No active system alerts.", "href": ""})
-    return alerts[:4]
+    return alerts
 
 def _negative_inventory_detail_rows(limit: int | None = None) -> tuple[list[str], list[dict[str, object]]]:
     columns = ["Item", "Date", "Projected Qty"]
@@ -1352,6 +1369,14 @@ def dashboard_unassigned_so():
         total_count=_dashboard_lt_unassigned_count(), query=query,
         loaded_at=_LAST_LOADED_AT.strftime("%Y-%m-%d %H:%M:%S") if _LAST_LOADED_AT else "—",
     )
+
+
+@app.get("/dashboard/assigned_unknown_ship_dates")
+def dashboard_assigned_unknown_ship_dates():
+    _ensure_loaded()
+    if _LAST_LOAD_ERR:
+        return render_template_string(ERR_TPL, error=_LAST_LOAD_ERR), 503
+    return render_template("assigned_unknown_ship_dates.html", rows=_assigned_placeholder_ship_date_rows())
 
 
 @app.get("/dashboard/stock_coverage")

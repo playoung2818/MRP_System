@@ -24,6 +24,18 @@ Do not treat test results below as a current production audit.
 - Browser previews used synthetic fixtures and never imported the DB-backed
   server. No database access, ETL execution, deployment, or remote push occurred.
 
+## Assigned SOs with placeholder ship dates
+
+- Added live homepage alert and `/dashboard/assigned_unknown_ship_dates` detail
+  for distinct SOs with any imported wo_structured Ship Date in calendar year
+  2099 and a current nonnull production_overrides.production_date. Uses current
+  overrides rather than historical planning assignments; no schema/data writes.
+- Pure comparison in `Webpage/assigned_ship_dates.py`; detail shows customer,
+  assigned production date, and distinct placeholder ship dates. SO links open
+  homepage lookup. Removed four-alert truncation so additional metrics stay visible.
+- Validation: 8 focused comparison/negative-inventory/coverage tests passed;
+  live detail renders and homepage currently shows 5 qualifying SOs.
+
 ## Inventory summary rows excluded at ETL entry
 
 - Inventory extraction previously allowed report labels such as `Total CPU`

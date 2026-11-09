@@ -233,7 +233,7 @@ INDEX_TPL = """
       .topbar{ flex-direction:column; }
     }
   </style>
-  <link rel="stylesheet" href="/static/home.css?v=9">
+  <link rel="stylesheet" href="/static/home.css?v=10">
   <script src="/static/home-search.js" defer></script>
 </head>
 <body class="home-page">
@@ -254,7 +254,7 @@ INDEX_TPL = """
       </div>
     </aside>
 
-    <main id="home-content" class="main" tabindex="-1">
+    <main id="home-content" class="main{% if so_num and rows %} home-order-view{% endif %}" tabindex="-1">
       <div class="topbar">
         <div class="greeting-wrap">
           <div><h1 id="time-greeting" class="hero-title">Howdy</h1></div>
