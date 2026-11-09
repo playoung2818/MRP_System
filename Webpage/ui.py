@@ -95,7 +95,7 @@ UNASSIGNED_SO_TPL = """
 
 INDEX_TPL = """
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <link rel="icon" href="/static/robot.svg?v=1" type="image/svg+xml">
   <meta charset="utf-8">
@@ -233,36 +233,38 @@ INDEX_TPL = """
       .topbar{ flex-direction:column; }
     }
   </style>
-  <link rel="stylesheet" href="/static/home.css?v=8">
+  <link rel="stylesheet" href="/static/home.css?v=9">
   <script src="/static/home-search.js" defer></script>
 </head>
 <body class="home-page">
+  <a class="home-skip" href="#home-content">Skip to content</a>
   <div class="shell">
     <aside class="sidebar">
       <div>
         <a class="home-brand" href="/" aria-label="NTA MRP home"><img class="home-logo" src="/static/robot.svg" alt="" width="35" height="35"><span><span class="brand-title">NTA MRP</span><small>Operations workspace</small></span></a>
       </div>
-      <div class="nav-group">
+      <nav class="nav-group" aria-label="Workspace">
         <div class="nav-label">Workspace</div>
-        <a class="nav-link" href="/quotation_lookup"><span class="nav-dot"></span><span>Quotation Lookup</span></a>
-        <a class="nav-link" href="/item_info"><span class="nav-dot"></span><span>Item Information</span></a>
-        <a class="nav-link" href="/purchase_orders"><span class="nav-dot"></span><span>Purchase Orders</span></a>
-      </div>
+        <a class="nav-link" href="/quotation_lookup"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><span>Quotation Lookup</span></a>
+        <a class="nav-link" href="/item_info"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 5v9l9 5 9-5V8M12 13v9M7.5 5.5l9 5"/></svg><span>Item Information</span></a>
+        <a class="nav-link" href="/purchase_orders"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3h12a1 1 0 0 1 1 1v17l-3-2-4 2-4-2-3 2V4a1 1 0 0 1 1-1ZM9 8h6M9 12h6"/></svg><span>Purchase Orders</span></a>
+      </nav>
       <div class="sidebar-note">
         Review sales orders and materials, assign production dates, then send completed plans to MES.
       </div>
     </aside>
 
-    <main class="main">
+    <main id="home-content" class="main" tabindex="-1">
       <div class="topbar">
         <div class="greeting-wrap">
           <div><h1 id="time-greeting" class="hero-title">Howdy</h1></div>
           <div class="snoopy-search">
             <button id="snoopy-search-toggle" class="snoopy-button" type="button" aria-expanded="false" aria-controls="snoopy-search-bubble" aria-label="Ask Snoopy: search orders, items, or customers">
-              <img class="greeting-image" src="/static/snoopy-figure-transparent.png" alt="Snoopy dancing">
+              <img class="greeting-image" src="/static/snoopy-figure-transparent.png" alt="Snoopy dancing" width="110" height="138">
+              <span class="snoopy-hint">Search with Snoopy <svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></span>
             </button>
             <section id="snoopy-search-bubble" class="snoopy-bubble" aria-label="Search with Snoopy" hidden>
-              <div class="snoopy-bubble-heading"><label for="global-search-input">What are we looking for?</label><button id="snoopy-search-close" type="button" aria-label="Close search">×</button></div>
+              <div class="snoopy-bubble-heading"><label for="global-search-input">What are we looking for?</label><button id="snoopy-search-close" type="button" aria-label="Close search"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
               <p>Tell me a sales order, item, or customer.</p>
               <form id="global-search-form" class="home-search" method="get" action="/global_search" role="search">
                 <div class="global-search-wrap">
@@ -279,27 +281,26 @@ INDEX_TPL = """
       {% if not so_num and not customer_val %}
         <div class="home-section-heading">
           <div><h2>Keep production moving</h2><p>Review materials, priorities, and upcoming work.</p></div>
-          <a class="home-planning" href="/planning">Open planning <span aria-hidden="true">→</span></a>
+          <a class="home-planning" href="/planning">Open planning <svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></a>
         </div>
         <section class="card-lite panel-card" aria-labelledby="home-alerts-title">
           <h2 id="home-alerts-title" class="section-title">Needs attention</h2>
           <ul class="panel-list">
             {% for item in alerts %}
-              <li><div>
-                <div class="panel-kicker">System</div>
+              <li>
                 {% if item.href %}
-                  <a class="fw-semibold" href="{{ item.href }}">{{ item.label }} <span aria-hidden="true">→</span></a>
+                  <a class="home-alert home-alert-link" href="{{ item.href }}"><span class="home-alert-copy">{{ item.label }}</span><svg class="home-icon home-alert-arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></a>
                 {% else %}
-                  <div class="fw-semibold">{{ item.label }}</div>
+                  <div class="home-alert"><span class="home-alert-copy">{{ item.label }}</span></div>
                 {% endif %}
-              </div></li>
+              </li>
             {% else %}
-              <li><div class="muted">No updates to review.</div></li>
+              <li><div class="home-alert home-alert-empty">No updates to review.</div></li>
             {% endfor %}
           </ul>
         </section>
       {% endif %}
-      <div class="home-data-status"><span>Data loaded {{ loaded_at }}</span><a href="/?reload=1">Refresh data ↻</a></div>
+      <div class="home-data-status"><span class="home-loaded"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Data loaded <span class="home-timestamp">{{ loaded_at }}</span></span></span><a class="home-refresh" href="/?reload=1"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 7v5h-5M4 17v-5h5M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"/></svg>Refresh data</a></div>
 
   {% if customer_query is not none %}
   <div class="card-lite bg-white my-4 p-4">

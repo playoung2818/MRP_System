@@ -4,6 +4,26 @@ Record agent decisions, implementation context, validation, and unresolved work
 here (or in focused notes linked from INDEX.md), not in the human-facing README.
 Do not treat test results below as a current production audit.
 
+## Homepage appearance refinement
+
+- Scope is presentation only. The white sidebar, Snoopy search, existing module
+  links, Planning action, alert labels, and stock calculations remain unchanged.
+- Consolidated homepage CSS removes obsolete glass/gradient overrides. Increased
+  text sizes, aligned spacing, and added consistent outline SVG navigation icons.
+- Alert links now occupy the whole row. Repeated System labels are removed.
+  Snoopy has a visible search hint, but the search form stays hidden until clicked.
+- Mobile navigation uses three visible module cells. Tablet header height no
+  longer stretches to fill unused screen space. Fixed mobile horizontal overflow.
+- Added a keyboard skip link, English document language, explicit image size,
+  larger close control, focus styling, and reduced-motion support.
+- Validation: 16 focused UI/stock-coverage tests and 14 subtests passed. Chromium
+  fixture checks covered widths 320, 390, 820, 1440, and 1920, plus 200% text.
+  Checked search focus/suggestions/GET submission and Escape, close, and outside
+  click; empty, long-label, customer, and SO states had no page overflow or JS errors.
+  Primary text/control contrast pairs exceed 4.5:1. Design scan reported no findings.
+- Browser previews used synthetic fixtures and never imported the DB-backed
+  server. No database access, ETL execution, deployment, or remote push occurred.
+
 ## Inventory summary rows excluded at ETL entry
 
 - Inventory extraction previously allowed report labels such as `Total CPU`

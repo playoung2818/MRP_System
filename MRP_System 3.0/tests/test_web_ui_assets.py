@@ -57,7 +57,7 @@ class WebUIAssetsTests(unittest.TestCase):
             '/quotation_lookup', '/item_info', '/purchase_orders',
         ])
 
-    def test_home_uses_glass_layout_and_live_alerts(self):
+    def test_home_preserves_white_sidebar_snoopy_search_and_live_alerts(self):
         ui = runpy.run_path(str(WEB_ROOT / 'ui.py'))['INDEX_TPL']
         self.assertIn('/static/home.css', ui)
         self.assertIn('id="time-greeting"', ui)
@@ -80,8 +80,46 @@ class WebUIAssetsTests(unittest.TestCase):
         self.assertNotIn('Quick access', ui)
         self.assertNotIn('Sample data', ui)
         css = (WEB_ROOT / 'static' / 'home.css').read_text(encoding='utf-8')
-        self.assertIn('backdrop-filter:blur(24px)', css)
+        self.assertNotIn('backdrop-filter', css)
+        self.assertNotIn('radial-gradient', css)
         self.assertIn('prefers-reduced-motion', css)
+        self.assertIn('Search with Snoopy', ui)
+        self.assertIn('class="home-skip" href="#home-content"', ui)
+        self.assertIn('id="home-content" class="main" tabindex="-1"', ui)
+        self.assertIn('<nav class="nav-group" aria-label="Workspace">', ui)
+        self.assertNotIn('<div class="panel-kicker">System</div>', ui)
+
+    def test_home_alerts_preserve_labels_destinations_and_escaping(self):
+        from flask import Flask, render_template_string
+        app = Flask(__name__)
+        template = runpy.run_path(str(WEB_ROOT / 'ui.py'))['INDEX_TPL']
+        with app.test_request_context('/'):
+            html = render_template_string(
+                template, alerts=[
+                    {'label': '<part> will go negative', 'href': '/dashboard/negative_inventory'},
+                    {'label': '3 PODs are missing ship dates.', 'href': ''},
+                ], loaded_at='2026-11-08 09:42:18',
+                so_num='', customer_val='', customer_query=None,
+            )
+        self.assertIn('&lt;part&gt; will go negative', html)
+        self.assertIn('href="/dashboard/negative_inventory"', html)
+        self.assertIn('<div class="home-alert"><span class="home-alert-copy">3 PODs are missing ship dates.</span></div>', html)
+        self.assertIn('Data loaded <span class="home-timestamp">2026-11-08 09:42:18</span>', html)
+        self.assertIn('class="home-refresh" href="/?reload=1"', html)
+        self.assertNotIn('href=""', html)
+        self.assertEqual(html.count('id="global-search-input"'), 1)
+
+    def test_home_empty_state_keeps_planning_and_search(self):
+        from flask import Flask, render_template_string
+        app = Flask(__name__)
+        template = runpy.run_path(str(WEB_ROOT / 'ui.py'))['INDEX_TPL']
+        with app.test_request_context('/'):
+            html = render_template_string(template, alerts=[], loaded_at='test',
+                                          so_num='', customer_val='', customer_query=None)
+        self.assertIn('No updates to review.', html)
+        self.assertIn('class="home-planning" href="/planning"', html)
+        self.assertIn('id="global-search-form"', html)
+        self.assertIn('aria-label="Search with Snoopy" hidden', html)
 
     def test_planning_sidebar_has_only_two_active_stages(self):
         from flask import Flask, render_template
