@@ -208,7 +208,10 @@ def create_lt_planning(engine, source):
                               'allocations': [i for wo in allocations for i in wo['items'] or []]}
         counts = {key: sum(row['status'] == key for row in all_rows) for key in LABELS}
         rows = [row for row in all_rows if (query.casefold() in (row['so']+' '+row['customer']).casefold() if query else row['status'] == status)]
-        rows.sort(key=lambda row: (row['ship_date'].split(', ')[0] or '9999-12-31', row['so']))
+        if status == PLANNING:
+            rows.sort(key=lambda row: (row['created_date'] or '9999-12-31', row['so']))
+        else:
+            rows.sort(key=lambda row: (row['ship_date'].split(', ')[0] or '9999-12-31', row['so']))
         return render_template('lt_planning.html', rows=rows, counts=counts, status=status, query=query,
                                detail=detail, loaded=loaded.strftime('%Y-%m-%d %H:%M:%S') if isinstance(loaded, datetime) else loaded, csrf_token=csrf(),
                                review_submission=str(uuid4()), stage_labels=LABELS)

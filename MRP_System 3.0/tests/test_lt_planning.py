@@ -298,6 +298,34 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn('so-age-danger',html)
         self.assertIn('—',html)
 
+    def test_production_planning_sorts_by_creation_date_oldest_first(self):
+        from copy import deepcopy
+        self.existing_review()
+        self.records=[]
+        for number,created,ship in [('SO-1','2026-06-20','2026-07-01'),
+                                    ('SO-3','2026-06-01','2026-07-03'),
+                                    ('SO-2','2026-06-01','2026-07-02'),
+                                    ('SO-4',None,'2026-06-01'),
+                                    ('SO-5','2099-12-31','2026-06-02')]:
+            record=deepcopy(self.staged)
+            record['sales_order']=number
+            record['latest_snapshot']['ship_date']=ship
+            self.records.append(record)
+            self.source_dates.append({'sales_order':number,'created_date':created})
+        self.so=self.so.iloc[0:0]
+        for suffix in ('','&q=SO-'):
+            with self.subTest(search=suffix), patch('lt_planning.render_template',return_value='ok') as render:
+                response=self.client.get('/planning?status=needs_production_planning'+suffix)
+                self.assertEqual(response.status_code,200)
+                rows=render.call_args.kwargs['rows']
+                self.assertEqual([row['so'] for row in rows],['SO-2','SO-3','SO-1','SO-4','SO-5'])
+        for record in self.records:
+            record['workflow_status']='needs_material_review'
+        with patch('lt_planning.render_template',return_value='ok') as render:
+            self.client.get('/planning?status=needs_material_review')
+            self.assertEqual([row['so'] for row in render.call_args.kwargs['rows']],
+                             ['SO-4','SO-5','SO-1','SO-2','SO-3'])
+
     def test_material_requirements_only_include_work_not_already_covered(self):
         self.so.loc[0,'Qty(-)']=12
         self.staged['latest_snapshot']['items'][0].update(quantity=12,remaining_quantity=12,shipped_quantity=0)

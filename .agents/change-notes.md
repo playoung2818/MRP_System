@@ -4,6 +4,16 @@ Record agent decisions, implementation context, validation, and unresolved work
 here (or in focused notes linked from INDEX.md), not in the human-facing README.
 Do not treat test results below as a current production audit.
 
+## Production planning creation-date sort
+
+- Needs Production Planning now sorts by displayed SO Created Date ascending
+  (oldest first), with missing/placeholder dates last and SO number breaking ties.
+  Applies to search results while that tab is active; Material Review retains
+  its ship-date ordering. No database writes or schema changes.
+- Validation: `python -m pytest tests/test_lt_planning.py -q` from
+  `MRP_System 3.0`: 56 passed, including creation-date ordering, ties, unknown
+  dates, search, and preservation of Material Review ordering.
+
 ## Homepage appearance refinement
 
 - Scope is presentation only. The white sidebar, Snoopy search, existing module
