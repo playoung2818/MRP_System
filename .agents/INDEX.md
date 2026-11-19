@@ -15,6 +15,8 @@ human-facing root README. Repository-wide behavior rules remain in `AGENTS.md`.
 - [Purchase orders and receiving](purchase-receiving.md): POD search/detail,
   append-only receiving, workbook/manual validation, locking, and tests.
 
+- [Safety-stock continuous improvement](safety-stock-improvement.md): Markdown-only roadmap and project memory, SO Planning KPI outcome measurement, proposed milestones, and open decisions. Do not connect to Notion for this project.
+
 Read the relevant notes before making related changes, then verify current code.
 Historical schema commands are not authorization to create database tables.
 Never put credentials, secret configuration values, or private business exports
