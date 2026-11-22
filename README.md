@@ -1,5 +1,5 @@
 
-![Animation1](https://github.com/user-attachments/assets/d8266a1c-08dd-4b89-a996-ca9529e34241)
+![Animated inventory ledger showing a two-unit shortage](mrp-ledger-demo.gif)
 # QuickBooks MRP System
 
 Turning QuickBooks exports into a time-phased inventory ledger, extend functions based on this ledger table
