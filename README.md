@@ -1,4 +1,4 @@
-# [QuickBooks MRP System](https://zyuan.org/mrp-system)
+# QuickBooks MRP System
 
 An MRP system that turns QuickBooks exports into a time-phased inventory ledger and provides metrics to support purchasing and production planning.
 
