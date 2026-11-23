@@ -1,39 +1,29 @@
-
-![Animation1](https://github.com/user-attachments/assets/d8266a1c-08dd-4b89-a996-ca9529e34241)
 # QuickBooks MRP System
 
-Turning QuickBooks exports into a time-phased inventory ledger, extend functions based on this ledger table
+An MRP system that turns QuickBooks exports into a time-phased inventory ledger and provides metrics to support purchasing and production planning.
+
+<img width="1514" height="867" alt="image" src="https://github.com/user-attachments/assets/68a2301a-cedb-410f-86df-e8674b4ff940" />
+
+
+
+
 
 ## Script
 
 - From `MRP_System 3.0`, run `python -m mrp_system.cli.etl` to run the ETL and update the system.
 
 
-## Database table names
-
-Operational tables use lowercase `snake_case`: `item_info`,
-`hq_shipping_schedule`, `open_purchase_orders`, `wo_details`, and
-`outgoing_records`. Column names are unchanged.
-
-For an existing installation using the former table names, stop the applications
-and ETL, then run from `MRP_System 3.0`:
-
-```powershell
-python -m mrp_system.cli.rename_operational_tables
-python -m mrp_system.cli.rename_operational_tables --apply
-```
-
-The first command previews changes. `--apply` renames the existing tables in one
-transaction and verifies table identity and row counts; it does not create or
-copy tables. Both-name collisions abort the migration. Restart MRP, MES, and the
-Receiving Log app with the updated code afterward.
 
 ## Data inputs
-- Inventory Status (warehouse snapshot)
-- Open Sales Order
-- Open Purchase Orders (POD)
-- Shipping schedule
-- PDF WO references (`pdf_file_log`)
+| Table                  | Data source or contents               |
+| ---------------------- | ------------------------------------- |
+| `open_purchase_orders` | QuickBooks Open Purchase Order report |
+| `wo_details`           | QuickBooks Open Sales Order report    |
+| Inventory Status       | QuickBooks Inventory Status report    |
+| `item_info`            | Item information                      |
+| `hq_shipping_schedule` | HQ shipping schedule                  |
+| `outgoing_records`     | Scanned work order forms              |
+
 
 
 ## Ledger timeline generation logic
@@ -95,5 +85,4 @@ Receiving Log app with the updated code afterward.
                |-- Yes -> [Assign LT = Vendor Ship Date + 7]
                |-- No  -> [Ask Taipei to place order]
 ```
-
 
