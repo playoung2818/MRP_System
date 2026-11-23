@@ -1072,7 +1072,8 @@ QUOTE_TPL = """
     .table-responsive{ max-height:70vh; overflow:auto; }
     .table thead th{ position:sticky; top:0; z-index:2; background:var(--hdr); }
     .th-projected{ background:#dcfce7 !important; }
-    .cell-projected-min{ background:#bbf7d0 !important; font-weight:700; }
+    .cell-projected-min{ background:#fed7aa !important; color:#7c2d12 !important; font-weight:700; }
+    .cell-projected-overall-min{ background:#bbf7d0 !important; color:#14532d !important; font-weight:700; }
     .quote-pending-divider th{ background:#e5e7eb; color:#374151; border-top:3px solid #9ca3af; padding:.65rem; }
     .quote-pending-row > td{ background:#f3f4f6; }
     .quote-pending-row > td:first-child{ border-left:4px solid #9ca3af; }
@@ -1180,6 +1181,8 @@ QUOTE_TPL = """
   <div class="quote-legend mb-4">
     <span><span class="swatch swatch-red"></span>red = Max 0</span>
     <span><span class="swatch swatch-green"></span>green = Max 99</span>
+    <span>Orange Projected_OnHand = lowest balance before unconfirmed dates</span>
+    <span>Green Projected_OnHand = lowest balance across all dates (takes priority over orange)</span>
   </div>
 
   {% if companion_error %}
@@ -1225,9 +1228,9 @@ QUOTE_TPL = """
                   {% set pending.started = true %}
                   <tr class="quote-pending-divider"><th colspan="{{ ledger_columns|length }}" scope="rowgroup">Unconfirmed dates</th></tr>
                 {% endif %}
-                <tr class="{% if is_pending %}quote-pending-row{% elif r['_is_min_nav'] %}table-warning{% endif %}">
+                <tr class="{% if is_pending %}quote-pending-row{% endif %}">
                   {% for c in ledger_columns %}
-                    <td class="{% if c == 'Projected_Qty' and r['_is_min_nav'] %}cell-projected-min{% endif %}">{{ r[c] }}</td>
+                    <td class="{% if c in ('Date', 'Projected_Qty') %}{% if r['_is_overall_min_nav'] %}cell-projected-overall-min{% elif r['_is_min_nav'] and not is_pending %}cell-projected-min{% endif %}{% endif %}">{{ r[c] }}</td>
                   {% endfor %}
                 </tr>
               {% endfor %}

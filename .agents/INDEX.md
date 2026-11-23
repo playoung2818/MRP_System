@@ -15,6 +15,10 @@ human-facing root README. Repository-wide behavior rules remain in `AGENTS.md`.
 - [Purchase orders and receiving](purchase-receiving.md): POD search/detail,
   append-only receiving, workbook/manual validation, locking, and tests.
 
+- [Quotation ledger presentation](quotation-ledger.md): orange minimum Projected_OnHand within confirmed dates, pending-date exclusion, and regression coverage.
+
+- [Studio KPI UI pilot](studio-kpi-ui.md): user-selected Hallmark Studio direction, page-scoped restyle, browser checks, and known test/lint limitations.
+
 - [Safety-stock continuous improvement](safety-stock-improvement.md): Markdown-only roadmap and project memory, SO Planning KPI outcome measurement, proposed milestones, and open decisions. Do not connect to Notion for this project.
 
 Read the relevant notes before making related changes, then verify current code.

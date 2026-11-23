@@ -14,6 +14,7 @@ import numpy as np
 from sqlalchemy import text, bindparam
 from sqlalchemy.exc import SQLAlchemyError
 from quotation_blockers import with_planning_blockers
+from quotation_ledger import confirmed_minimum_flags, overall_minimum_flags
 from openpyxl import load_workbook
 
 from unassigned_so import COLUMNS as UNASSIGNED_COLUMNS, NUMERIC_COLUMNS as UNASSIGNED_NUMERIC_COLUMNS, unassigned_orders, report_rows
@@ -2125,13 +2126,12 @@ def quotation_lookup():
                 date_vals = pd.to_datetime(df_item["Date"], errors="coerce")
                 df_item["Date"] = date_vals.dt.strftime("%Y-%m-%d")
 
-                # Determine minimum Projected_NAV for highlighting (after sort so alignment is correct)
-                min_nav_value = None
-                proj_series = None
+                # Highlight only the confirmed horizon, before the pending-date zone.
+                min_nav_flags = pd.Series(False, index=df_item.index)
+                overall_min_flags = pd.Series(False, index=df_item.index)
                 if "Projected_NAV" in df_item.columns:
-                    proj_series = pd.to_numeric(df_item["Projected_NAV"], errors="coerce")
-                    if not proj_series.dropna().empty:
-                        min_nav_value = proj_series.min()
+                    min_nav_flags = confirmed_minimum_flags(date_vals, df_item["Projected_NAV"])
+                    overall_min_flags = overall_minimum_flags(df_item["Projected_NAV"])
 
                 if "Projected_NAV" in df_item.columns:
                     df_item.rename(columns={"Projected_NAV": "Projected_Qty"}, inplace=True)
@@ -2150,18 +2150,12 @@ def quotation_lookup():
                     for rec in records:
                         rec["Waiting_Item"] = ""
 
-                # Attach _is_min_nav flag for UI highlighting
-                if min_nav_value is not None and proj_series is not None:
-                    proj_vals = proj_series.tolist()
-                    for rec, v in zip(records, proj_vals):
-                        try:
-                            fv = float(v)
-                        except Exception:
-                            fv = None
-                        rec["_is_min_nav"] = (fv == float(min_nav_value))
-                else:
-                    for rec in records:
-                        rec["_is_min_nav"] = False
+                # Preserve sorted row alignment, including tied minimum values.
+                for rec, is_minimum, is_overall_minimum in zip(
+                    records, min_nav_flags.tolist(), overall_min_flags.tolist()
+                ):
+                    rec["_is_min_nav"] = bool(is_minimum)
+                    rec["_is_overall_min_nav"] = bool(is_overall_minimum)
 
                 ledger_columns = keep_cols
                 ledger_rows = records
