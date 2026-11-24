@@ -15,6 +15,7 @@ from sqlalchemy import text, bindparam
 from sqlalchemy.exc import SQLAlchemyError
 from quotation_blockers import with_planning_blockers
 from quotation_ledger import confirmed_minimum_flags, overall_minimum_flags
+from item_cost_history import item_history, suggest_items
 from openpyxl import load_workbook
 
 from unassigned_so import COLUMNS as UNASSIGNED_COLUMNS, NUMERIC_COLUMNS as UNASSIGNED_NUMERIC_COLUMNS, unassigned_orders, report_rows
@@ -1831,6 +1832,27 @@ def api_inventory_lookup():
     except Exception:
         app.logger.exception('Inventory lookup failed')
         return jsonify(ok=False, error='MRP inventory lookup failed.'), 503
+
+
+@app.route("/api/item_cost/suggest")
+def api_item_cost_suggest():
+    try:
+        return jsonify({"ok": True, "items": suggest_items(engine, request.args.get("q", ""))})
+    except Exception:
+        app.logger.exception("Item cost suggestions failed")
+        return jsonify({"ok": False, "error": "Price history is unavailable."}), 503
+
+
+@app.route("/api/item_cost")
+def api_item_cost():
+    try:
+        history = item_history(engine, request.args.get("item", ""), normalize_item)
+    except Exception:
+        app.logger.exception("Item cost history failed")
+        return jsonify({"ok": False, "error": "Price history is unavailable."}), 503
+    if history["item"] is None:
+        return jsonify({"ok": False, "error": "No price history found for that item."}), 404
+    return jsonify({"ok": True, **history})
 
 
 @app.route("/api/global_suggest")

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="NTA MRP operations workspace preview.">
+  <title>NTA MRP | Homepage demo</title>
+  <link rel="icon" href="/static/robot.svg" type="image/svg+xml">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&display=swap" rel="stylesheet">
+  <link href="/static/studio-home-demo.css?v=10" rel="stylesheet">
+  <script src="/static/studio-home-demo.js?v=2" defer></script>
+  <script src="/static/home-search.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#workspace">Skip to workspace</a>
+<header class="topbar">
+  <a class="brand" href="/" aria-label="NTA MRP home"><img src="/static/robot.svg" alt="" width="35" height="35"><span>NTA MRP</span></a>
+  <nav class="workspaces" aria-label="Workspaces">
+    <a href="/quotation_lookup">Quotation Lookup</a>
+    <a href="/item_info">Item Information</a>
+    <a href="/purchase_orders">Purchase Orders</a>
+  </nav>
+  <a class="preview-link" href="/">Current homepage</a>
+</header>
+<main id="workspace" class="container">
+  <div class="greeting-wrap">
+    <h1 id="time-greeting" class="greeting">Welcome</h1>
+    <div class="snoopy-search">
+      <button id="snoopy-search-toggle" class="snoopy-button" type="button" aria-expanded="false" aria-controls="snoopy-search-bubble" aria-label="Ask Snoopy: search orders, items, or customers">
+        <img src="/static/snoopy-figure-transparent.png" alt="Snoopy dancing" width="108" height="132">
+        <span>Search with Snoopy</span>
+      </button>
+      <section id="snoopy-search-bubble" class="snoopy-bubble" aria-label="Search with Snoopy" hidden>
+        <div class="snoopy-bubble-heading"><label for="global-search-input">What are we looking for?</label><button id="snoopy-search-close" type="button" aria-label="Close search">×</button></div>
+        <form id="global-search-form" class="snoopy-form" method="get" action="/global_search" role="search">
+          <input id="global-search-input" type="search" name="q" aria-label="Search sales orders, items, or customers" placeholder="SO, item, or customer" required>
+          <button type="submit">Search</button>
+        </form>
+      </section>
+    </div>
+  </div>
+  <section class="attention" aria-labelledby="attention-title">
+    <div class="section-heading">
+      <h2 id="attention-title">Needs attention</h2>
+      <a class="planning-link" href="/planning">Open planning</a>
+    </div>
+    <div id="attention-content" aria-live="polite" aria-busy="true">
+      <p class="status">Loading current alerts…</p>
+    </div>
+    <noscript><p class="status">Enable JavaScript to load alerts, or <a href="/">view the current dashboard</a>.</p></noscript>
+  </section>
+</main>
+</body>
+</html>

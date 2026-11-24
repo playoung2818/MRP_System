@@ -233,8 +233,9 @@ INDEX_TPL = """
       .topbar{ flex-direction:column; }
     }
   </style>
-  <link rel="stylesheet" href="/static/home.css?v=10">
+  <link rel="stylesheet" href="/static/home.css?v=21">
   <script src="/static/home-search.js" defer></script>
+  <script src="/static/home-price.js?v=1" defer></script>
 </head>
 <body class="home-page">
   <a class="home-skip" href="#home-content">Skip to content</a>
@@ -249,9 +250,6 @@ INDEX_TPL = """
         <a class="nav-link" href="/item_info"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 5v9l9 5 9-5V8M12 13v9M7.5 5.5l9 5"/></svg><span>Item Information</span></a>
         <a class="nav-link" href="/purchase_orders"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3h12a1 1 0 0 1 1 1v17l-3-2-4 2-4-2-3 2V4a1 1 0 0 1 1-1ZM9 8h6M9 12h6"/></svg><span>Purchase Orders</span></a>
       </nav>
-      <div class="sidebar-note">
-        Review sales orders and materials, assign production dates, then send completed plans to MES.
-      </div>
     </aside>
 
     <main id="home-content" class="main{% if so_num and rows %} home-order-view{% endif %}" tabindex="-1">
@@ -280,7 +278,6 @@ INDEX_TPL = """
 
       {% if not so_num and not customer_val %}
         <div class="home-section-heading">
-          <div><h2>Keep production moving</h2><p>Review materials, priorities, and upcoming work.</p></div>
           <a class="home-planning" href="/planning">Open planning <svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></a>
         </div>
         <section class="card-lite panel-card" aria-labelledby="home-alerts-title">
@@ -298,6 +295,21 @@ INDEX_TPL = """
               <li><div class="home-alert home-alert-empty">No updates to review.</div></li>
             {% endfor %}
           </ul>
+        </section>
+        <section class="card-lite panel-card price-card" aria-labelledby="price-title">
+          <h2 id="price-title" class="section-title">Item price history</h2>
+          <div class="price-body">
+            <form id="price-form" class="price-form" role="search">
+              <label class="visually-hidden" for="price-item">Item</label>
+              <input id="price-item" class="form-control" name="item" list="price-item-options" autocomplete="off" placeholder="Search an item" required>
+              <datalist id="price-item-options"></datalist>
+              <button type="submit">Show prices</button>
+            </form>
+            <p id="price-status" class="price-status" aria-live="polite">Search an item to see its unit cost on past PODs.</p>
+            <div id="price-chart" class="price-chart" hidden></div>
+            <div id="price-summary" class="price-summary" hidden></div>
+            <p class="price-note">Unit cost = POD line amount ÷ quantity, from saved daily POD exports. PODs opened and closed between exports are not included.</p>
+          </div>
         </section>
       {% endif %}
       <div class="home-data-status"><span class="home-loaded"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Data loaded <span class="home-timestamp">{{ loaded_at }}</span></span></span><a class="home-refresh" href="/?reload=1"><svg class="home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 7v5h-5M4 17v-5h5M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"/></svg>Refresh data</a></div>

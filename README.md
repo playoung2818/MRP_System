@@ -12,6 +12,8 @@ An MRP system that turns QuickBooks exports into a time-phased inventory ledger 
 
 - From `MRP_System 3.0`, run `python -m mrp_system.cli.etl` to run the ETL and update the system.
 
+-From `MRP_System 3.0`, run `python -m mrp_system.cli.load_item_cost` to update item_cost table
+
 
 
 ## Data inputs
